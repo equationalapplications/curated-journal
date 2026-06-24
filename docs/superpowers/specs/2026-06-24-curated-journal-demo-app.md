@@ -1,7 +1,7 @@
 # Curated Journal — Technical Specification
 
 Date: 2026-06-24  
-Status: Approved  
+Status: Implemented
 Working title: **Curated Journal**  
 Repository: `equationalapplications/curated-journal`  
 Target platform: Expo SDK 56 (React Native 0.85, React 19)
@@ -129,7 +129,7 @@ One **Journal** maps to one wiki `entity_id` (UUID v4 generated on first launch,
 | SQLite write lock during `importDump` | Chunked transactions (see §7.3); `requestAnimationFrame` yield between chunks; progress bar on import screen. |
 | LLM latency | Stream tokens to chat UI where llama.rn supports streaming; Night Shift shows indeterminate + phase labels, not per-token. |
 | Thermal throttling | Night Shift requires `expo-battery` `PowerState.CHARGING`; show dismissible warning if unplugged mid-run. |
-| Screen sleep | `expo-screen-keep-awake` activated for Night Shift route only; deactivated on blur/unmount. |
+| Screen sleep | `expo-keep-awake` (`activateKeepAwakeAsync` / `deactivateKeepAwake`) on Night Shift route only; deactivated on blur/unmount. |
 
 ### 4.5 Navigation (expo-router)
 
@@ -194,7 +194,7 @@ export function createLlamaProvider(config: {
 | `expo-document-picker` | `.zip` / `.gguf` selection |
 | `expo-sharing` | Share exported OKF zip |
 | `expo-battery` | Night Shift charging gate |
-| `expo-screen-keep-awake` | Prevent sleep during maintenance |
+| `expo-keep-awake` | Prevent sleep during maintenance (`activateKeepAwakeAsync` / `deactivateKeepAwake`) |
 | `expo-secure-store` | Persist entity id + model path |
 | `expo-haptics` | Citation tap feedback (optional polish) |
 
@@ -216,7 +216,7 @@ export function createLlamaProvider(config: {
 | `react-native-gesture-handler` | Graph pan/zoom, split-pane drag |
 | `react-native-reanimated` | Pane transitions, Night Shift ambient animations |
 | `react-native-safe-area-context` | Already in template |
-| `@xstate/react` + `xstate` | `journalWikiMachine` |
+| `@xstate/react` + `xstate` ^5.x | `journalWikiMachine` |
 
 ### 5.5 Dev / Tooling
 
@@ -230,6 +230,7 @@ export function createLlamaProvider(config: {
 - Firebase, Supabase, any HTTP client for core flows
 - `@google/generative-ai` or cloud LLM SDKs
 - `expo-background-fetch`
+- `@xstate/test` — deprecated; targets XState v4 only. Machine tests use XState v5 `createActor` + `waitFor` instead.
 
 ---
 
@@ -251,7 +252,7 @@ A dedicated **Night Shift** full-screen route that:
    - User explicitly started session (no auto-navigation).
 
 2. **Runtime behavior:**
-   - `activateKeepAwakeAsync()` on mount; `deactivateKeepAwake()` on unmount.
+   - `expo-keep-awake`: `activateKeepAwakeAsync()` on mount; `deactivateKeepAwake()` on unmount.
    - `journalWikiMachine` sends `START_NIGHT_SHIFT` with queue built from:
      - Pending events count vs thresholds (librarian if ≥ `autoLibrarianThreshold`, heal if ≥ `autoHealThreshold`).
      - User-selected optional `runReembed` / `runPrune`.
@@ -330,7 +331,8 @@ A dedicated **Night Shift** full-screen route that:
 
 **`CitationParser`** (app module):
 
-- Regex: `/\[cite:([a-zA-Z0-9_-]+)\]/g`
+- Exported pattern: `/\[cite:([a-zA-Z0-9_-]+)\]/g` (`CITE_REGEX`).
+- `extractCitationIds` and `splitCitationSegments` iterate via a private `citeMatches()` helper that instantiates `new RegExp(CITE_REGEX.source, 'g')` per call. This avoids stale `lastIndex` on the shared global regex when tests (or UI) call `CITE_REGEX.exec()` and then parse the same string.
 - Renders tappable chips in assistant bubbles.
 - On press: `router.setParams({ factId })` or shared context `openCitation(factId)` → JournalPane loads entry, calls `scrollTo({ y: anchorOffset })`.
 
@@ -515,9 +517,9 @@ After each Night Shift librarian pass, `useOntologyManifest(entityId)` reflects 
 | Layer | Approach |
 |-------|----------|
 | `CitationParser`, `chunkedImportDump`, OKF walkers | Jest unit tests (Node) |
-| `journalWikiMachine` | `@xstate/test` model-based transitions |
+| `journalWikiMachine` | XState v5 `createActor` + `waitFor` transition tests (not `@xstate/test`) |
 | `formatGraphContext` integration | Snapshot tests with fixture neighborhoods |
-| Night Shift gates | Mock `expo-battery` / keep-awake |
+| Night Shift gates | Mock `expo-battery` / `expo-keep-awake` |
 | E2E smoke | Detox/Maestro: launch → write note → mock LLM → export zip |
 
 Manual QA matrix: iPhone (memory pressure), iPad split-pane, Android charging detection.
