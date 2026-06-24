@@ -125,14 +125,20 @@ Dependencies include `@equationalapplications/expo-llm-wiki`, `llama.rn`, Skia, 
 
 ### Run (development build)
 
+Native modules require a local compile — there is no Expo Go path. First run generates the native `ios/`/`android/` projects (`expo prebuild`) then builds and installs on a simulator/emulator/device.
+
 ```bash
-# Create native projects and run locally
+# iOS Simulator — requires Xcode + Command Line Tools (macOS only)
 npx expo run:ios
-# or
+npx expo run:ios --device "iPhone 17 Pro Max"   # target a specific simulator
+
+# Android Emulator/device — requires Android Studio (any OS)
 npx expo run:android
 ```
 
-For day-to-day JS development after the native build is installed:
+No Xcode? Build iOS in the cloud instead: `eas build --platform ios --profile development`.
+
+Rebuild only when native code/config changes. For day-to-day JS/TS development after the first build:
 
 ```bash
 npx expo start --dev-client
