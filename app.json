@@ -1,14 +1,15 @@
 {
   "expo": {
-    "name": "cur",
-    "slug": "cur",
+    "name": "curated-journal",
+    "slug": "curated-journal",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cur",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.equationalapplicationsllc.curatedjournal"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +18,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.equationalapplicationsllc.curatedjournal"
     },
     "web": {
       "output": "static",
@@ -25,6 +27,9 @@
     },
     "plugins": [
       "expo-router",
+      "expo-dev-client",
+      "expo-sqlite",
+      "expo-secure-store",
       [
         "expo-splash-screen",
         {
@@ -34,7 +39,10 @@
             "imageWidth": 76
           }
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
