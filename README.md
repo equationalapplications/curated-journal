@@ -1,56 +1,158 @@
-# Welcome to your Expo app 👋
+# Curated Journal
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A privacy-first, **100% offline** mobile second brain built with [Expo SDK 56](https://docs.expo.dev/versions/v56.0.0/). Curated Journal is the flagship reference app for the [`@equationalapplications/expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) ecosystem — a practical personal journal and a developer cookbook for on-device LLM memory on iOS and Android.
 
-## Get started
+> **Status:** Early scaffold. Feature implementation follows the [technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md).
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## Why Curated Journal?
 
-2. Start the app
+Mobile LLM apps often assume a cloud backend, background jobs, and unlimited RAM. Real devices impose hard limits — iOS Jetsam, battery drain, and strict background execution caps.
 
-   ```bash
-   npx expo start
-   ```
+Curated Journal shows how to build a **Google NotebookLM-style experience entirely on-device**:
 
-In the output, you'll find options to open the app in a
+- **Zero backend** — all memory lives in local SQLite via `@equationalapplications/expo-llm-wiki`
+- **Bring Your Own Inference (BYOI)** — run quantized GGUF models with [`llama.rn`](https://github.com/mybigday/llama.rn)
+- **Mobile-safe maintenance** — heavy librarian/heal passes run in foreground **Night Shift** mode while plugged in, not silently in the background
+- **Portable knowledge** — import and export [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) zip bundles
+- **Self-organizing graph** — emergent ontology mode visualized at 60fps with Skia + D3 force layout
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+---
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Features
 
-## Get a fresh project
+### NotebookLM-style journal + synthesis
 
-When you're ready, run:
+Split-pane layout on tablet and landscape: markdown journal entries on the left, chat synthesis on the right. Assistant replies include tappable `[cite:fact_id]` chips that scroll directly to the source note.
 
-```bash
-npm run reset-project
+### Night Shift
+
+When your journal is ready for deep processing, plug in your device and start **Night Shift** — an ambient, full-screen maintenance session that runs `runLibrarian` and `runHeal` safely in the foreground with keep-awake and charging gates.
+
+### OKF import & export
+
+- **Import:** pick a `.zip` → fast JSI extraction via `react-native-nitro-unzip` → chunked SQLite ingestion
+- **Export:** dump wiki memory to OKF markdown → zip with `react-native-zip-archive` → share via the system sheet
+
+### Emergent graph explorer
+
+Default ontology mode is **emergent** — the LLM invents `node_types` and `edge_types` as it organizes your notes. Explore the resulting knowledge graph in an interactive Skia canvas.
+
+---
+
+## Architecture at a glance
+
+```text
+expo-router UI
+    ├── Journal + Synthesis (split pane)
+    ├── Graph Explorer (Skia + d3-force)
+    ├── Night Shift (maintenance queue)
+    └── OKF import / export
+
+@equationalapplications/expo-llm-wiki  (SQLite memory engine)
+    └── llama.rn  (BYOI — LLMProvider.generateText)
+
+v1 retrieval: MiniSearch keyword search (no second embedding model)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+For the full design — memory constraints, citation protocol, chunked import, graph node caps, and package list — see the **[Technical Specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md)**.
 
-### Other setup steps
+---
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Tech stack
 
-## Learn more
+| Layer | Packages |
+|-------|----------|
+| **Framework** | Expo SDK 56, React Native 0.85, expo-router |
+| **Memory engine** | `@equationalapplications/expo-llm-wiki`, `expo-sqlite` |
+| **Inference** | `llama.rn` (BYOI GGUF) |
+| **Knowledge interchange** | `@equationalapplications/core-okf` |
+| **Graph UI** | `@shopify/react-native-skia`, `d3-force` |
+| **Zip I/O** | `react-native-nitro-unzip` (import), `react-native-zip-archive` (export) |
+| **Orchestration** | XState (`journalWikiMachine`) |
 
-To learn more about developing your project with Expo, look at the following resources:
+Native modules require a **development build** — Expo Go is not supported.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+## Getting started
 
-Join our community of developers creating universal apps.
+### Prerequisites
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Node.js 20+
+- Xcode (iOS) or Android Studio (Android)
+- A GGUF model file for on-device inference (not bundled with the app)
+
+### Install
+
+```bash
+git clone https://github.com/equationalapplications/curated-journal.git
+cd curated-journal
+npm install
+```
+
+### Run (development build)
+
+```bash
+# Create native projects and run locally
+npx expo run:ios
+# or
+npx expo run:android
+```
+
+For day-to-day JS development after the native build is installed:
+
+```bash
+npx expo start --dev-client
+```
+
+### Configure your model
+
+In Settings, point the app at a local `.gguf` file via the document picker. Until a model is loaded, the app operates in keyword-only retrieval mode (MiniSearch) — useful for exploring the journal UI without inference.
+
+---
+
+## Ecosystem
+
+Curated Journal is part of the Equational Applications LLM Wiki family:
+
+| Package | Role |
+|---------|------|
+| [`expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) | Expo/React Native memory engine + hooks |
+| [`core-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki/tree/main/packages/core) | Core SQLite memory, OKF adapters, graph traversal |
+| [`core-okf`](https://github.com/equationalapplications/expo-llm-wiki/tree/main/packages/okf) | OKF v0.1 parse/serialize primitives |
+| [ScopeLab](https://equationalapplications.github.io/expo-llm-wiki/scopelab/) | Interactive retrieval tuning demo (web) |
+| [WikiDemo](https://equationalapplications.github.io/expo-llm-wiki/wiki-demo/) | Full memory lifecycle demo (web) |
+
+---
+
+## Project structure
+
+```text
+src/
+  app/              # expo-router screens (tabs, night-shift, import, …)
+  components/       # UI primitives
+  machines/         # journalWikiMachine (planned)
+  lib/              # llama provider, OKF pipeline, citation parser (planned)
+docs/
+  superpowers/specs/  # Design & technical specifications
+```
+
+---
+
+## Contributing
+
+This repository is intended as an open-source reference implementation. Before opening a PR:
+
+1. Read the [technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md)
+2. Follow existing code conventions in `src/`
+3. Consult [Expo SDK 56 docs](https://docs.expo.dev/versions/v56.0.0/) for platform APIs
+
+Issues and PRs welcome at [github.com/equationalapplications/curated-journal](https://github.com/equationalapplications/curated-journal).
+
+---
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
