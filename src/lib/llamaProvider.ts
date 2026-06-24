@@ -42,7 +42,7 @@ export function createLlamaProvider(config: {
   }
 
   return {
-    generateText: async ({ systemPrompt, userPrompt }, onToken) => {
+    generateText: async ({ systemPrompt, userPrompt }) => {
       const ctx = await ensureContext();
       const result = await ctx.completion(
         {
@@ -54,7 +54,7 @@ export function createLlamaProvider(config: {
           temperature: 0.7,
         },
         (data) => {
-          if (data.token && onToken) onToken(data.token);
+          void data.token;
         },
       );
       return result.text;

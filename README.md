@@ -10,7 +10,7 @@ A privacy-first, **100% offline** mobile second brain built with [Expo SDK 56](h
 
 > Inspired by [Andrej Karpathy's LLM Wiki memory spec](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-> **Status:** Early scaffold. Feature implementation follows the [technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md).
+> **Status:** Demo app implemented per the [technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md) and [implementation plan](./docs/superpowers/plans/2026-06-24-curated-journal-demo-app.md).
 
 Supports [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) import and export for portable, interoperable knowledge bases.
 
@@ -112,16 +112,16 @@ Native modules require a **development build** — Expo Go is not supported.
 git clone https://github.com/equationalapplications/curated-journal.git
 cd curated-journal
 npm install
+npx expo prebuild
 ```
 
-When wiki integration lands, install the memory engine peer:
+### Test
 
 ```bash
-npx expo install expo-sqlite
-npm install @equationalapplications/expo-llm-wiki
+npm test
 ```
 
-Use `npx expo install` for Expo-managed packages so the version resolver picks builds compatible with SDK 56.
+Dependencies include `@equationalapplications/expo-llm-wiki`, `llama.rn`, Skia, and OKF zip tooling. Use `npx expo install` for Expo-managed packages so the version resolver picks builds compatible with SDK 56.
 
 ### Run (development build)
 
@@ -140,7 +140,7 @@ npx expo start --dev-client
 
 ### Configure your model
 
-In Settings, point the app at a local `.gguf` file via the document picker. Until a model is loaded, the app operates in keyword-only retrieval mode (MiniSearch) — useful for exploring the journal UI without inference.
+In Settings, pick a local `.gguf` via the document picker. Until a model is loaded, the app uses a deterministic mock LLM for chat and maintenance demos. **Night Shift** requires a loaded model and a charging power state.
 
 ---
 
@@ -181,11 +181,15 @@ Curated Journal is part of the Equational Applications LLM Wiki family:
 ```text
 src/
   app/              # expo-router screens (tabs, night-shift, import, …)
-  components/       # UI primitives
-  machines/         # journalWikiMachine (planned)
-  lib/              # llama provider, OKF pipeline, citation parser (planned)
+  components/       # journal, synthesis, graph, night-shift UI
+  contexts/         # Journal, citation navigation, LLM provider
+  hooks/            # split pane, Night Shift gates, journalWiki actor
+  machines/         # journalWikiMachine (Night Shift queue, import/export)
+  lib/              # llama provider, OKF pipeline, citation parser, graph
+  services/         # wiki bootstrap, chat_messages SQLite
 docs/
   superpowers/specs/  # Design & technical specifications
+  superpowers/plans/  # Implementation plans
 ```
 
 ---
