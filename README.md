@@ -10,8 +10,6 @@ A privacy-first, **100% offline** mobile second brain built with [Expo SDK 56](h
 
 > Inspired by [Andrej Karpathy's LLM Wiki memory spec](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-> **Status:** Demo app implemented per the [technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md) and [implementation plan](./docs/superpowers/plans/2026-06-24-curated-journal-demo-app.md).
-
 Supports [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) import and export for portable, interoperable knowledge bases.
 
 ---
@@ -76,8 +74,6 @@ expo-router UI
 
 v1 retrieval: MiniSearch keyword search (no second embedding model)
 ```
-
-For the full design — memory constraints, citation protocol, chunked import, graph node caps, and package list — see the **[Technical Specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md)**.
 
 ---
 
@@ -154,7 +150,6 @@ In Settings, pick a local `.gguf` via the document picker. Until a model is load
 
 | Resource | Description |
 |----------|-------------|
-| [Technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md) | Full architecture, features, and acceptance criteria |
 | [expo-llm-wiki README](https://github.com/equationalapplications/expo-llm-wiki) | Memory engine API, hooks, and configuration |
 | [expo-llm-wiki — OKF import/export](https://github.com/equationalapplications/expo-llm-wiki/blob/main/packages/core/README.md#okf-importexport) | `parseOkfBundle` / `formatOkfBundle` adapters |
 | [expo-llm-wiki — Emergent ontology](https://github.com/equationalapplications/expo-llm-wiki/blob/main/docs/superpowers/specs/2026-06-23-per-entity-seeded-ontology-design.md) | Strict, Emergent, and Off ontology modes |
@@ -204,7 +199,7 @@ docs/
 
 This repository is intended as an open-source reference implementation. Before opening a PR:
 
-1. Read the [technical specification](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md)
+1. Read the [technical specifications](./docs/superpowers/specs/)
 2. Follow existing code conventions in `src/`
 3. Consult [Expo SDK 56 docs](https://docs.expo.dev/versions/v56.0.0/) for platform APIs
 

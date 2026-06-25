@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { formatOkfBundle, type MemoryDump } from '@equationalapplications/expo-llm-wiki';
 import { zip } from 'react-native-zip-archive';
@@ -13,7 +14,7 @@ function ensureDirectory(root: Directory, relativePath: string): Directory {
 }
 
 export async function exportOkfFromDump(dump: MemoryDump): Promise<void> {
-  const id = crypto.randomUUID();
+  const id = Crypto.randomUUID();
   const exportDir = new Directory(Paths.cache, `export-${id}`);
   exportDir.create({ idempotent: true });
   const { files } = formatOkfBundle(dump);

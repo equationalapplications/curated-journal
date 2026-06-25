@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
 import { createActor } from 'xstate';
@@ -13,12 +14,16 @@ import { useWikiMaintenance } from '@equationalapplications/expo-llm-wiki';
 import {
   journalWikiMachine,
   type JournalWikiMachineEvents,
+  type NightShiftOperation,
 } from '@/machines/journalWikiMachine';
 
 type JournalWikiContextValue = {
   send: (event: JournalWikiMachineEvents) => void;
   queueIndex: number;
   queueLength: number;
+  currentOperation: NightShiftOperation | null;
+  isStepRunning: boolean;
+  isAdvancing: boolean;
   lastError: Error | null;
   isNightShift: boolean;
 };
@@ -35,6 +40,8 @@ export function JournalWikiProvider({
   children: ReactNode;
 }) {
   const { runLibrarian, runHeal, runPrune, runReembed } = useWikiMaintenance();
+  const maintenanceRef = useRef({ runLibrarian, runHeal, runPrune, runReembed });
+  maintenanceRef.current = { runLibrarian, runHeal, runPrune, runReembed };
 
   const actor = useMemo(
     () =>
@@ -42,18 +49,18 @@ export function JournalWikiProvider({
         input: {
           wiki,
           maintenance: {
-            runLibrarian,
-            runHeal,
+            runLibrarian: (entityId: string) => maintenanceRef.current.runLibrarian(entityId),
+            runHeal: (entityId: string) => maintenanceRef.current.runHeal(entityId),
             runReembed: async (id?: string) => {
-              await runReembed(id);
+              await maintenanceRef.current.runReembed(id);
             },
             runPrune: async (id: string) => {
-              await runPrune(id);
+              await maintenanceRef.current.runPrune(id);
             },
           },
         },
       }).start(),
-    [runHeal, runLibrarian, runPrune, runReembed, wiki],
+    [wiki],
   );
 
   useEffect(() => {
@@ -65,12 +72,31 @@ export function JournalWikiProvider({
   const send = useCallback((event: JournalWikiMachineEvents) => actor.send(event), [actor]);
   const queueIndex = useSelector(actor, (s) => s.context.queueIndex);
   const queueLength = useSelector(actor, (s) => s.context.queue.length);
+  const currentOperation = useSelector(actor, (s) => {
+    const { queue, queueIndex } = s.context;
+    if (!s.matches('nightShift') || queue.length === 0) return null;
+    if (s.matches({ nightShift: 'advance' }) && queueIndex + 1 < queue.length) {
+      return queue[queueIndex + 1]?.operation ?? null;
+    }
+    return queue[queueIndex]?.operation ?? null;
+  });
+  const isStepRunning = useSelector(actor, (s) => s.matches({ nightShift: 'step' }));
+  const isAdvancing = useSelector(actor, (s) => s.matches({ nightShift: 'advance' }));
   const lastError = useSelector(actor, (s) => s.context.lastError);
   const isNightShift = useSelector(actor, (s) => s.matches('nightShift'));
 
   const value = useMemo(
-    () => ({ send, queueIndex, queueLength, lastError, isNightShift }),
-    [isNightShift, lastError, queueIndex, queueLength, send],
+    () => ({
+      send,
+      queueIndex,
+      queueLength,
+      currentOperation,
+      isStepRunning,
+      isAdvancing,
+      lastError,
+      isNightShift,
+    }),
+    [currentOperation, isAdvancing, isNightShift, isStepRunning, lastError, queueIndex, queueLength, send],
   );
 
   return <JournalWikiContext.Provider value={value}>{children}</JournalWikiContext.Provider>;

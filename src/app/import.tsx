@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import { parseOkfBundle, useSetOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
@@ -22,7 +23,7 @@ export default function ImportScreen() {
   const runImport = async () => {
     const picked = await DocumentPicker.getDocumentAsync({ type: 'application/zip' });
     if (picked.canceled || !picked.assets[0]) return;
-    const id = crypto.randomUUID();
+    const id = Crypto.randomUUID();
     const zipDest = new File(Paths.cache, `import-${id}.zip`);
     const source = new File(picked.assets[0].uri);
     source.copy(zipDest);

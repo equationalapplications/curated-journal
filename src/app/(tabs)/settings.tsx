@@ -1,12 +1,12 @@
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Alert, Button, StyleSheet, View } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import { File, Paths } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { useWikiExport } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
 import { exportOkfFromDump } from '@/lib/okfExport';
-import { setModelPath } from '@/lib/entityStorage';
+import { getModelPath, clearModelPath } from '@/lib/entityStorage';
 import { useJournal } from '@/contexts/JournalContext';
+import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 import { useNightShiftGates } from '@/hooks/useNightShiftGates';
 
 export default function SettingsScreen() {
@@ -14,16 +14,28 @@ export default function SettingsScreen() {
   const { entityId } = useJournal();
   const { canStart } = useNightShiftGates();
   const { execute: exportDump } = useWikiExport();
+  const rebootstrap = useModelHubCompletion();
 
-  const pickModel = async () => {
-    const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-    if (picked.canceled || !picked.assets[0]) return;
-    const name = picked.assets[0].name ?? `model-${Date.now()}.gguf`;
-    const dest = new File(Paths.document, name);
-    const source = new File(picked.assets[0].uri);
-    source.copy(dest);
-    await setModelPath(dest.uri);
-    Alert.alert('Model saved', 'Restart the app to load the new GGUF model.');
+  const performChangeModel = async () => {
+    const path = await getModelPath();
+    if (path) {
+      const file = new File(path);
+      if (file.exists) file.delete();
+    }
+    await clearModelPath();
+    await rebootstrap();
+    router.replace('/model-hub' as Href);
+  };
+
+  const changeModel = () => {
+    Alert.alert(
+      'Change AI model',
+      'This will delete your current model immediately. You will not be able to use the AI until the new download completes.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', style: 'destructive', onPress: () => void performChangeModel() },
+      ],
+    );
   };
 
   return (
@@ -42,7 +54,7 @@ export default function SettingsScreen() {
           await exportOkfFromDump(dump);
         }}
       />
-      <Button title="Pick GGUF model" onPress={() => void pickModel()} />
+      <Button title="Change AI model" onPress={changeModel} />
     </View>
   );
 }

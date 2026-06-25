@@ -1,8 +1,20 @@
 import * as SecureStore from 'expo-secure-store';
-import { getOrCreateEntityId, getModelPath, setModelPath } from '@/lib/entityStorage';
-import { ENTITY_ID_KEY, MODEL_PATH_KEY } from '@/lib/constants';
+import {
+  getOrCreateEntityId,
+  getModelPath,
+  setModelPath,
+  getModelId,
+  setModelId,
+  getDisplayName,
+  setDisplayName,
+  clearModelPath,
+} from '@/lib/entityStorage';
+import { ENTITY_ID_KEY, MODEL_PATH_KEY, MODEL_ID_KEY, DISPLAY_NAME_KEY } from '@/lib/constants';
 
 jest.mock('expo-secure-store');
+jest.mock('expo-crypto', () => ({
+  randomUUID: jest.fn(() => 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'),
+}));
 
 describe('entityStorage', () => {
   beforeEach(() => {
@@ -29,5 +41,25 @@ describe('entityStorage', () => {
     await expect(getModelPath()).resolves.toBe('/docs/model.gguf');
     await setModelPath('/docs/model.gguf');
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith(MODEL_PATH_KEY, '/docs/model.gguf');
+  });
+
+  it('round-trips model id', async () => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce('deep-thinker');
+    await expect(getModelId()).resolves.toBe('deep-thinker');
+    await setModelId('deep-thinker');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(MODEL_ID_KEY, 'deep-thinker');
+  });
+
+  it('round-trips display name', async () => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce('My Journal');
+    await expect(getDisplayName()).resolves.toBe('My Journal');
+    await setDisplayName('My Journal');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(DISPLAY_NAME_KEY, 'My Journal');
+  });
+
+  it('clearModelPath deletes the stored path and model id', async () => {
+    await clearModelPath();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(MODEL_PATH_KEY);
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(MODEL_ID_KEY);
   });
 });

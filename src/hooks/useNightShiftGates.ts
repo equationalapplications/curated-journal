@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Battery from 'expo-battery';
+import * as Device from 'expo-device';
 import { getModelPath } from '@/lib/entityStorage';
 
 export function useNightShiftGates() {
@@ -25,5 +26,8 @@ export function useNightShiftGates() {
     return () => sub?.remove();
   }, []);
 
-  return { charging, hasModel, canStart: charging && hasModel };
+  const simulatorDevBypass = __DEV__ && !Device.isDevice;
+  const chargingOk = charging || simulatorDevBypass;
+
+  return { charging: chargingOk, hasModel, canStart: chargingOk && hasModel };
 }

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useMemoryRead, useWikiIngest } from '@equationalapplications/expo-llm-wiki';
+import { useFocusEffect } from 'expo-router';
+import { useWikiIngest } from '@equationalapplications/expo-llm-wiki';
 import { JournalList, type JournalListItem } from '@/components/journal/JournalList';
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
 import { JournalPane } from '@/components/journal/JournalPane';
@@ -8,14 +9,21 @@ import { SynthesisPane } from '@/components/synthesis/SynthesisPane';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useJournal } from '@/contexts/JournalContext';
+import { useJournalMemoryRead } from '@/hooks/useJournalMemoryRead';
 import { useSplitPaneLayout } from '@/hooks/useSplitPaneLayout';
 
 export default function JournalScreen() {
   const { entityId, selectedFactId, setSelectedFactId, paneMode, setPaneMode } = useJournal();
-  const { data, refetch } = useMemoryRead(entityId, '');
+  const { data, refetch } = useJournalMemoryRead(entityId);
   const { execute: ingest } = useWikiIngest();
   const [composing, setComposing] = useState(false);
   const { isWide } = useSplitPaneLayout();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   const items: JournalListItem[] = useMemo(() => {
     const facts = data?.facts ?? [];
@@ -59,7 +67,7 @@ export default function JournalScreen() {
           />
         </View>
         <View style={styles.readPane}>
-          <JournalPane />
+          <JournalPane facts={data?.facts} />
         </View>
         <View style={styles.chatPane}>
           <SynthesisPane />
@@ -81,7 +89,7 @@ export default function JournalScreen() {
       {items.length === 0 && paneMode === 'notes' ? <TutorialCard /> : null}
       {paneMode === 'notes' ? (
         selectedFactId ? (
-          <JournalPane />
+          <JournalPane facts={data?.facts} />
         ) : (
           <JournalList
             items={items}
