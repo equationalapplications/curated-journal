@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useWikiIngest } from '@equationalapplications/expo-llm-wiki';
+import { countIngestFailures } from '@/lib/ingestReport';
 import { JournalList, type JournalListItem } from '@/components/journal/JournalList';
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
 import { JournalPane } from '@/components/journal/JournalPane';
@@ -37,11 +38,19 @@ export default function JournalScreen() {
   const handleSave = useCallback(
     async ({ title, body }: { title: string; body: string }) => {
       const markdown = `# ${title}\n\n${body}`;
-      await ingest(entityId, {
+      const result = await ingest(entityId, {
         sourceRef: `journal://${Date.now()}`,
         sourceHash: `${Date.now()}`,
         documentChunk: markdown,
       });
+      const failures = countIngestFailures(result);
+      if (failures > 0) {
+        Alert.alert(
+          'Saved with warnings',
+          `${failures} chunk${failures === 1 ? '' : 's'} failed to process. ` +
+            'Try running Night Shift, or edit and re-save this entry.',
+        );
+      }
       setComposing(false);
       refetch();
     },

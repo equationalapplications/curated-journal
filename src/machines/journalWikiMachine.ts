@@ -5,6 +5,11 @@ import {
   type MemoryDump,
   type WikiMemory,
 } from '@equationalapplications/expo-llm-wiki';
+import {
+  runHealToCompletion,
+  type HealBatchRunner,
+  type HealStepSummary,
+} from '@/lib/healLoop';
 
 export type NightShiftOperation = 'librarian' | 'heal' | 'reembed' | 'prune';
 
@@ -20,7 +25,8 @@ export type JournalWikiMachineEvents =
 
 export type MaintenanceApi = {
   runLibrarian: (entityId: string) => Promise<void>;
-  runHeal: (entityId: string) => Promise<void>;
+  /** One library heal batch. The machine loops batches via runHealToCompletion. */
+  runHeal: HealBatchRunner;
   runReembed: (entityId?: string) => Promise<void>;
   runPrune: (entityId: string) => Promise<void>;
 };
@@ -36,6 +42,14 @@ type Context = {
   queue: QueueItem[];
   queueIndex: number;
   aborted: boolean;
+  /**
+   * Shared stop signal for the in-flight heal loop. Constructed in the
+   * context factory (never caller-supplied) so an actor rebuild cannot
+   * inherit a stale signal. `ABORT_NIGHT_SHIFT` mutates it deliberately:
+   * the running invoked actor reads it by reference between batches.
+   */
+  nightShiftSignal: { aborted: boolean };
+  lastHealSummary: HealStepSummary | null;
   status: EntityStatus;
   lastError: Error | null;
   pendingImport: { dump: MemoryDump; merge: boolean } | null;
@@ -45,14 +59,14 @@ type Context = {
 async function runQueueStep(
   maintenance: MaintenanceApi,
   item: QueueItem,
-): Promise<void> {
+  shouldContinue: () => boolean,
+): Promise<void | HealStepSummary> {
   switch (item.operation) {
     case 'librarian':
       await maintenance.runLibrarian(item.entityId);
       return;
     case 'heal':
-      await maintenance.runHeal(item.entityId);
-      return;
+      return runHealToCompletion(maintenance.runHeal, item.entityId, { shouldContinue });
     case 'reembed':
       await maintenance.runReembed(item.entityId);
       return;
@@ -72,14 +86,43 @@ export const journalWikiMachine = setup({
     isBusyState: ({ context }) =>
       context.queue.length > 0 || context.pendingImport !== null || context.pendingExport !== null,
   },
+  actions: {
+    resetNightShift: assign(({ context, event }) => {
+      context.nightShiftSignal.aborted = false;
+      return {
+        queue: event.type === 'START_NIGHT_SHIFT' ? event.queue : [],
+        queueIndex: 0,
+        aborted: false,
+        nightShiftSignal: context.nightShiftSignal,
+        lastHealSummary: null,
+        lastError: null,
+      };
+    }),
+    abortNightShift: assign({
+      aborted: true,
+      nightShiftSignal: ({ context }) => {
+        // Deliberate mutation: the in-flight heal loop reads this object by
+        // reference between batches, so abort latency is one batch.
+        context.nightShiftSignal.aborted = true;
+        return context.nightShiftSignal;
+      },
+    }),
+  },
   actors: {
     runStep: fromPromise(
       async ({
         input,
+        signal,
       }: {
-        input: { maintenance: MaintenanceApi; item: QueueItem };
+        input: { maintenance: MaintenanceApi; item: QueueItem; signal: { aborted: boolean } };
+        signal: AbortSignal;
       }) => {
-        await runQueueStep(input.maintenance, input.item);
+        return runQueueStep(input.maintenance, input.item, () =>
+          // Both stop paths, checked between batches: the machine's abort
+          // flag and xstate's invoke AbortSignal (fires when this actor is
+          // stopped — e.g. an IMPORT transition or provider unmount).
+          !input.signal.aborted && !signal.aborted,
+        );
       },
     ),
     importDump: fromPromise(
@@ -107,6 +150,8 @@ export const journalWikiMachine = setup({
     queue: [],
     queueIndex: 0,
     aborted: false,
+    nightShiftSignal: { aborted: false },
+    lastHealSummary: null,
     status: { ingesting: false, librarian: false, heal: false },
     lastError: null,
     pendingImport: null,
@@ -117,12 +162,7 @@ export const journalWikiMachine = setup({
       on: {
         START_NIGHT_SHIFT: {
           target: 'nightShift',
-          actions: assign({
-            queue: ({ event }) => event.queue,
-            queueIndex: 0,
-            aborted: false,
-            lastError: null,
-          }),
+          actions: 'resetNightShift',
         },
         IMPORT: [
           {
@@ -149,11 +189,17 @@ export const journalWikiMachine = setup({
     nightShift: {
       initial: 'step',
       on: {
-        ABORT_NIGHT_SHIFT: { actions: assign({ aborted: true }) },
+        ABORT_NIGHT_SHIFT: { actions: 'abortNightShift' },
         STATUS: { actions: assign({ status: ({ event }) => event.status }) },
         IMPORT: {
           actions: assign({
             pendingImport: ({ event }) => ({ dump: event.dump, merge: event.merge }),
+            // Clear night-shift state so a stale queue cannot keep
+            // isBusyState true after the import lands (would force every
+            // later IMPORT through busyRetry).
+            queue: [],
+            queueIndex: 0,
+            aborted: false,
           }),
           target: 'busyRetry',
         },
@@ -165,9 +211,16 @@ export const journalWikiMachine = setup({
             input: ({ context }) => ({
               maintenance: context.maintenance,
               item: context.queue[context.queueIndex]!,
+              signal: context.nightShiftSignal,
             }),
             onDone: {
               target: 'advance',
+              actions: assign({
+                lastHealSummary: ({ context, event }) =>
+                  event.output && typeof event.output === 'object' && 'batches' in event.output
+                    ? event.output
+                    : context.lastHealSummary,
+              }),
             },
             onError: {
               target: '#journalWiki.error',
@@ -261,12 +314,7 @@ export const journalWikiMachine = setup({
       on: {
         START_NIGHT_SHIFT: {
           target: 'nightShift',
-          actions: assign({
-            queue: ({ event }) => event.queue,
-            queueIndex: 0,
-            aborted: false,
-            lastError: null,
-          }),
+          actions: 'resetNightShift',
         },
         IMPORT: { target: 'importing' },
         RETRY: { target: 'idle', actions: assign({ lastError: null }) },

@@ -1,16 +1,16 @@
 # Curated Journal
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2056-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v56.0.0/)
+[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 **[GitHub](https://github.com/equationalapplications/curated-journal)** · **[Technical Spec](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md)** · **[Issues](https://github.com/equationalapplications/curated-journal/issues)** · **[expo-llm-wiki](https://github.com/equationalapplications/expo-llm-wiki)** · **[ScopeLab](https://equationalapplications.github.io/expo-llm-wiki/scopelab/)** · **[WikiDemo](https://equationalapplications.github.io/expo-llm-wiki/wiki-demo/)**
 
-A privacy-first, **100% offline** mobile second brain built with [Expo SDK 56](https://docs.expo.dev/versions/v56.0.0/). Curated Journal is the flagship reference app for the [`@equationalapplications/expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) ecosystem — a practical personal journal and a developer cookbook for on-device LLM memory on iOS and Android.
+A privacy-first, **100% offline** mobile second brain built with [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/). Curated Journal is the flagship reference app for the [`@equationalapplications/expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) ecosystem — a practical personal journal and a developer cookbook for on-device LLM memory on iOS and Android.
 
 > Inspired by [Andrej Karpathy's LLM Wiki memory spec](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-Supports [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) import and export for portable, interoperable knowledge bases.
+Supports [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) import and export for portable, interoperable knowledge bases (legacy v0.1 bundles import cleanly).
 
 ---
 
@@ -23,7 +23,7 @@ Curated Journal shows how to build a **Google NotebookLM-style experience entire
 - **Zero backend** — all memory lives in local SQLite via `@equationalapplications/expo-llm-wiki`
 - **Bring Your Own Inference (BYOI)** — run quantized GGUF models with [`llama.rn`](https://github.com/mybigday/llama.rn)
 - **Mobile-safe maintenance** — heavy librarian/heal passes run in foreground **Night Shift** mode while plugged in, not silently in the background
-- **Portable knowledge** — import and export OKF v0.1 zip bundles
+- **Portable knowledge** — import and export OKF v0.2 zip bundles (reads legacy v0.1)
 - **Self-organizing graph** — emergent ontology mode visualized at 60fps with Skia + D3 force layout
 
 ---
@@ -81,7 +81,7 @@ v1 retrieval: MiniSearch keyword search (no second embedding model)
 
 | Layer | Packages |
 |-------|----------|
-| **Framework** | Expo SDK 56, React Native 0.85, expo-router |
+| **Framework** | Expo SDK 57, React Native 0.86, expo-router |
 | **Memory engine** | `@equationalapplications/expo-llm-wiki`, `expo-sqlite` |
 | **Inference** | `llama.rn` (BYOI GGUF) |
 | **Knowledge interchange** | `@equationalapplications/core-okf` |
@@ -117,7 +117,7 @@ npx expo prebuild
 npm test
 ```
 
-Dependencies include `@equationalapplications/expo-llm-wiki`, `llama.rn`, Skia, and OKF zip tooling. Use `npx expo install` for Expo-managed packages so the version resolver picks builds compatible with SDK 56.
+Dependencies include `@equationalapplications/expo-llm-wiki`, `llama.rn`, Skia, and OKF zip tooling. Use `npx expo install` for Expo-managed packages so the version resolver picks builds compatible with SDK 57.
 
 ### Run (development build)
 
@@ -154,8 +154,8 @@ In Settings, pick a local `.gguf` via the document picker. Until a model is load
 | [expo-llm-wiki — OKF import/export](https://github.com/equationalapplications/expo-llm-wiki/blob/main/packages/core/README.md#okf-importexport) | `parseOkfBundle` / `formatOkfBundle` adapters |
 | [expo-llm-wiki — Emergent ontology](https://github.com/equationalapplications/expo-llm-wiki/blob/main/docs/superpowers/specs/2026-06-23-per-entity-seeded-ontology-design.md) | Strict, Emergent, and Off ontology modes |
 | [expo-llm-wiki — Graph traversal](https://github.com/equationalapplications/expo-llm-wiki/blob/main/docs/superpowers/specs/2026-06-23-graph-traversal-api-design.md) | `traverseGraph` and `formatGraphContext` |
-| [OKF v0.1 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) | Open Knowledge Format bundle layout |
-| [Expo SDK 56 docs](https://docs.expo.dev/versions/v56.0.0/) | Platform APIs used by this app |
+| [OKF v0.2 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) | Open Knowledge Format bundle layout |
+| [Expo SDK 57 docs](https://docs.expo.dev/versions/v57.0.0/) | Platform APIs used by this app |
 | [llama.rn](https://github.com/mybigday/llama.rn) | On-device GGUF inference for React Native |
 
 ---
@@ -168,7 +168,7 @@ Curated Journal is part of the Equational Applications LLM Wiki family:
 |---------|------|
 | [`expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) | Expo/React Native memory engine + hooks |
 | [`core-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki/tree/main/packages/core) | Core SQLite memory, OKF adapters, graph traversal |
-| [`core-okf`](https://github.com/equationalapplications/expo-llm-wiki/tree/main/packages/okf) | OKF v0.1 parse/serialize primitives |
+| [`core-okf`](https://github.com/equationalapplications/expo-llm-wiki/tree/main/packages/okf) | OKF v0.2 parse/serialize primitives (reads legacy v0.1) |
 | [`core-llm-tools`](https://github.com/equationalapplications/expo-llm-wiki/tree/main/packages/core-llm-tools) | Agent tool schemas (reference for future chat tooling) |
 | [ScopeLab](https://equationalapplications.github.io/expo-llm-wiki/scopelab/) | Interactive retrieval tuning demo (web) |
 | [WikiDemo](https://equationalapplications.github.io/expo-llm-wiki/wiki-demo/) | Full memory lifecycle demo (web) |
@@ -201,7 +201,7 @@ This repository is intended as an open-source reference implementation. Before o
 
 1. Read the [technical specifications](./docs/superpowers/specs/)
 2. Follow existing code conventions in `src/`
-3. Consult [Expo SDK 56 docs](https://docs.expo.dev/versions/v56.0.0/) for platform APIs
+3. Consult [Expo SDK 57 docs](https://docs.expo.dev/versions/v57.0.0/) for platform APIs
 
 Issues and PRs welcome at [github.com/equationalapplications/curated-journal](https://github.com/equationalapplications/curated-journal).
 
