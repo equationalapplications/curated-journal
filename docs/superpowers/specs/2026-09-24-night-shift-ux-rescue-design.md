@@ -19,7 +19,7 @@ machine, and review of the stash found defects that must not be carried forward:
    `advance` exit, whose guard is `aborted || lastStep`. Pressing Stop marks the run finished.
 2. **Immediate restart can fault the machine.** The stash's `START_NIGHT_SHIFT` handler inside
    `nightShift` re-enters `.step`. An in-flight `runLibrarian` cannot be cancelled and holds the
-   library's per-entity librarian lock (`core-llm-wiki` `JobManager.isBlocked`), so the new step
+   library's per-entity librarian lock (`core-llm-wiki` 7.7.4 `JobManager.isBlocked`), so the new step
    throws `WikiBusyError`; `runStep.onError` routes that to `error`. The stash's test passes only
    because its mocks take no lock.
 3. **Heal status is misread as step 2.** The library runs its own `runLibrarianThenMaybeHeal`
@@ -45,7 +45,7 @@ screen watches a run that is about to end as aborted.
 | G2 | `START_NIGHT_SHIFT` during a running shift **reattaches**: the abort is undone and the current run continues. No step restarts, no duplicate LLM work, no `WikiBusyError`. |
 | G3 | Step counter and operation title follow the machine queue only. Library heal activity during the librarian step appears in the phase text only. |
 | G4 | Progress keeps moving during long non-LLM work within a step (the stash's time-based creep). |
-| G5 | `npx jest`, `npx tsc --noEmit` and `npm run lint` pass; `stash@{0}` is dropped once the PR branch is committed. |
+| G5 | `npx jest` passes; `npx tsc --noEmit` and `npm run lint` report nothing beyond the §5 baseline; `stash@{0}` is dropped once the PR branch is pushed. |
 
 ## 3. Non-Goals
 
@@ -142,12 +142,17 @@ Port the stash's creep, without the status heuristic:
 
 - `inStepProgress(llm, elapsedSeconds = 0)`:
   - generating: unchanged (`STEP_PREP + STEP_LLM * tokenFraction`);
-  - post-LLM: `STEP_PREP + STEP_LLM + STEP_POST * (0.7 + 0.3 * (1 - e^(-t/30)))`, capped at 1;
-  - pre-LLM: `STEP_PREP + STEP_LLM * 0.2 * (1 - e^(-t/15))`, capped at `STEP_PREP + STEP_LLM * 0.25`.
+  - post-LLM: `STEP_PREP + STEP_LLM + STEP_POST * (0.7 + 0.3 * (1 - e^(-t/30)))` — approaches
+    but never reaches 1;
+  - pre-LLM: `STEP_PREP + STEP_LLM * 0.2 * (1 - e^(-t/15))` — approaches but never reaches
+    `0.25` of the step. (The stash also clamped this at `STEP_PREP + STEP_LLM * 0.25` = 0.2875,
+    which the curve can never reach; the clamp is dropped as dead code.)
 - `computeNightShiftProgress(queueIndex, queueLength, isStepRunning, llm, elapsedSecondsWhileStepRunning = 0)`.
-- `useNightShiftProgress` keeps its current signature and adds an `elapsedSeconds` state driven
-  by a 1 s interval while `isStepRunning && !llm.isGenerating`, reset on `queueIndex` change
-  and when generation starts.
+- `useNightShiftProgress` keeps its current signature and derives `elapsedSeconds` from a 1 s
+  interval that runs while `isStepRunning && !llm.isGenerating`. The count restarts when
+  `queueIndex` changes or the step moves between preparing and applying. It must not call
+  `setState` synchronously in an effect body (`react-hooks/set-state-in-effect`; the stash's
+  version did): key the ticked value by step/phase and read it as 0 when the key differs.
 
 Remove `effectiveQueueIndex` and the `EntityStatus` import from both files.
 
@@ -173,15 +178,22 @@ Remove `effectiveQueueIndex` and the `EntityStatus` import from both files.
 - Drop the stash's `resolveNightShiftOperation` tests and the heal→"Step 2 / 2" test.
 
 `__tests__/nightShiftProgress.test.ts`
-- Keep: creep increases with elapsed time (pre-LLM and post-LLM); pre-LLM creep never exceeds
-  `STEP_PREP + STEP_LLM * 0.25` of the step.
+- Keep: creep increases with elapsed time (pre-LLM and post-LLM); pre-LLM creep stays below
+  `0.25` of the step; post-LLM creep stays below the end of the step.
 - Drop the heal-status-as-step-2 test.
 
 Gate: `npx jest`, `npx tsc --noEmit`, `npm run lint`.
 
+**Baseline (`65aad5b`, after `npm ci`):** jest 25 suites / 109 tests pass; `tsc` reports one
+error, `src/components/app-tabs.web.tsx(27,38)` — the SDK 56 scaffold's `href="/explore"`
+has no route (untouched since `dd03380`, out of scope); lint reports 0 errors, 23 warnings.
+The gate is: jest green, no new `tsc` errors, no new lint errors or warnings.
+
 ## 6. Delivery
 
 1. Branch `feature/night-shift-ux-rescue` from `feature/curated-journal-demo` @ `65aad5b`.
+   Run `npm ci` first: a working copy last installed before PR #9 still has SDK 56 /
+   wiki 4.17.0 in `node_modules`, and jest passes against it while `tsc` does not.
 2. Port the stash per §4 by hand; do not `stash apply` onto the branch (the machine hunk
    conflicts and the rest carries the removed heuristic).
 3. Tests per §5, then gates.
