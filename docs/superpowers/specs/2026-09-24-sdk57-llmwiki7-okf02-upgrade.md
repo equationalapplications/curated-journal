@@ -20,7 +20,7 @@ Curated Journal has been frozen at SDK 56 since June 2026. Three drifts have acc
 | ID | Goal |
 |----|------|
 | G1 | App builds and runs on Expo SDK 57 (`expo ~57.0.24`, RN 0.86.3, React 19.2.3 unchanged, TS ~6.0.3 unchanged). |
-| G2 | `@equationalapplications/expo-llm-wiki` exact-pinned at **7.7.4** (no caret), all three facade packages moving in lockstep. |
+| G2 | `@equationalapplications/expo-llm-wiki` exact-pinned at **7.7.4** (no caret); `@equationalapplications/core-llm-wiki` (imported directly by `src/`, currently only transitive) declared and exact-pinned at **7.7.4** — all facade packages in lockstep. |
 | G3 | Export produces OKF **0.2** bundles (library default profile `llm-wiki/2`); import accepts 0.1 and 0.2 (library read-side fallbacks, per upstream §13 mandate — same contract desktop Curated Thoughts implements). |
 | G4 | Night Shift heal **under-heals no more**: loop on `HealResult.remaining` (bounded-batch semantics since wiki 5.0.0). |
 | G5 | Ingest partial failures are surfaced, not silently dropped (`IngestResult.failedChunks` / `parseFailures`, wiki 5.5.0). |
@@ -76,6 +76,7 @@ Curated Journal has been frozen at SDK 56 since June 2026. Three drifts have acc
 | react-native-web | ~0.21.0 | unchanged |
 | @shopify/react-native-skia | ^2.6.7 | unchanged (already satisfies bundled range; RN 0.86 peers OK) |
 | @equationalapplications/expo-llm-wiki | ^4.17.0 | **7.7.4 (exact)** |
+| @equationalapplications/core-llm-wiki | undeclared (transitive 4.17.0) | **7.7.4 (exact, declared)** |
 | llama.rn | ^0.12.5 | unchanged |
 | react-native-nitro-unzip | ^0.5.3 | unchanged |
 | react-native-zip-archive | ^8.0.1 | unchanged |
@@ -84,7 +85,7 @@ Curated Journal has been frozen at SDK 56 since June 2026. Three drifts have acc
 | typescript / @types/react | ~6.0.3 / ~19.2.2 | unchanged (do NOT jump to TS 7) |
 | @testing-library/react-native / jest | ^14.0.1 / ^29.7.0 | unchanged |
 
-Application of changes: `npx expo install expo@^57.0.0 --fix` first, then hand-set the wiki exact pin and the reanimated/worklets exact pair, then `npx expo-doctor@latest`.
+Application of changes (two-step): `npx expo install expo@~57.0.24` then `npx expo install --fix`; hand-set the wiki + core-llm-wiki exact pins and the reanimated/worklets exact pair; then `npx expo-doctor@latest`.
 
 ## 5. Code Changes (the complete list)
 
@@ -92,17 +93,20 @@ Application of changes: `npx expo install expo@^57.0.0 --fix` first, then hand-s
 
 Wiki 5.0.0/6.0.0 changed `runHeal`: one call processes at most `HEAL_BATCH_SIZE` candidates and returns `HealResult { remaining, skipped: Array<{id, reason}>, degraded: [...] }`. The current wrapper (`runHeal: (entityId) => Promise<void>`) discards the result, so Night Shift heals one batch and stops.
 
-Change: the machine's heal step loops `while (result.remaining > 0)` with a safety cap (e.g. 200 iterations); optionally aggregate `skipped`/`degraded` counts for the Night Shift summary UI. Typecheck note: `skipped` changed `number → Array<{id, reason}>` — if any display code reads it as a number, update it.
+Change:
+- `MaintenanceApi.runHeal` becomes `(entityId, shouldContinue?: () => boolean) => Promise<HealStepSummary | undefined>` where `HealStepSummary = { batches, skipped, degraded, exhausted }`. The heal step passes a `shouldContinue` callback that reads the machine's `aborted` flag, so **abort takes effect between batches** (abort latency = one batch, not the whole loop).
+- The machine's `runStep` actor (heal case) loops `while (result.remaining > 0)`: it stops when `shouldContinue()` returns false (abort), when `remaining` stops shrinking (`no progress` guard — protects against non-convergent candidates keeping `remaining` positive forever), or at a safety cap of 200 batches (reports `exhausted: true`).
+- The loop result is **surfaced, not discarded**: `exhausted`/`no-progress` stops are logged, and aggregate `skipped`/`degraded` counts are stored on machine context for the Night Shift summary UI. `skipped` shape changed `number → Array<{id, reason}>` — display code, if any, reads the aggregated count, not the raw array.
 
 ### 5.2 Surface ingest failures — `src/app/(tabs)/journal.tsx`
 
-Wiki 5.5.0 widened `IngestResult` with `failedChunks` / `parseFailures`; partial chunk failure no longer throws. The save path currently ignores the result. Change: check the resolved value and show a non-blocking warning (e.g. toast/banner "Saved with N chunk failures") when either is non-empty. `error` remains reserved for total failure.
+Wiki 5.5.0 widened `IngestResult` with `failedChunks` / `parseFailures`; partial chunk failure no longer throws. The save path currently ignores the result. Change: check the resolved value and show a non-blocking warning (e.g. toast/banner "Saved with N chunk failures") when either is non-empty. `error` remains reserved for total failure. The helper is typed against the library's `IngestResult` (not `unknown`) so `tsc` catches shape drift; before wiring, confirm from the 7.7.4 `.d.ts` what `execute` actually returns (if it returns `void` and only stores state, read the result from the hook's state instead).
 
 ### 5.3 OKF 0.2 — zero code change, two touch-ups
 
-- `formatOkfBundle(dump)` defaults to profile `llm-wiki/2` / `okf_version: "0.2"` — export becomes 0.2 automatically. Optionally pass `{ profile: 'llm-wiki/2' }` explicitly in `src/lib/okfExport.ts` for clarity.
+- `formatOkfBundle(dump)` defaults to profile `llm-wiki/2` / `okf_version: "0.2"` — export becomes 0.2 automatically. We deliberately pass `{ profile: 'llm-wiki/2' }` explicitly in `src/lib/okfExport.ts`: pinning the profile means a future library default flip cannot silently change our export format; adopting a future profile should be a reviewed decision.
 - `parseOkfBundle` already accepts v0.1, v0.2, and unknown-profile-0.2 bundles with the spec §13 fallbacks (timestamp→generated, `# Citations`→`sources`). No change in `src/app/import.tsx`.
-- README: update "OKF v0.1" → "OKF v0.2 (imports legacy v0.1 bundles)" (2 spots) and update the AGENTS.md Expo docs pointer v56 → v57.
+- README: update OKF wording to "OKF v0.2 (imports legacy v0.1 bundles)" — grep all occurrences of `v0\.1` (`:13, :26, :157, :171`) and SDK 56 / RN 0.85 mentions (`:4, :9, :84, :120, :158, :204`) and refresh each; update the AGENTS.md Expo docs pointer v56 → v57.
 - New peer dep check: `expo-crypto >= 12` (7.7.4 requirement) — satisfied by ~57.0.3.
 
 ### 5.4 Verified unchanged (no action)
@@ -134,3 +138,7 @@ Wiki 5.5.0 widened `IngestResult` with `failedChunks` / `parseFailures`; partial
 3. Code changes §5.1, §5.2, §5.3.
 4. Test plan §7; iterate until G6 met.
 5. PR open at spec stage now; implementation commits land on the same branch after Kurt's approval.
+
+## 9. Review Trail
+
+- 2026-09-24 Opus review (medium effort, $0.37): direction approved; MAJOR items 1–4 addressed in this revision — heal loop moved into the machine's heal step with abort callback, no-progress guard, and surfaced summary (§5.1); ingest helper typed against `IngestResult` with an explicit `.d.ts` check of `execute`'s return (§5.2); `core-llm-wiki` declared and pinned (G2, §4); install flow made two-step (§4, §8). MINOR items (README spot list, maxBatches clamp, ingest render test, deliberate profile pin rationale, test-count wording) folded into the plan.
