@@ -39,7 +39,7 @@ Expected: `7.7.4` and `57.0.25`. If you see `4.17.0` / `56.x`, run `npm ci` and 
 
 - [ ] **Step 3: Record baseline**
 
-Run: `npx jest 2>&1 | tail -4; npx tsc --noEmit; npm run lint 2>&1 | tail -2`
+Run: `npx jest 2>&1 | tail -4; npx tsc --noEmit; npm run lint 2>&1 | tail -3`
 Expected: `Tests: 109 passed`; one tsc error in `app-tabs.web.tsx(27,38)`; `✖ 23 problems (0 errors, 23 warnings)`.
 
 ---
@@ -746,7 +746,7 @@ Title, phase and detail lines keep passing `currentOperation` unchanged.
 
 - [ ] **Step 3: Verify full gates**
 
-Run: `npx jest 2>&1 | tail -4; npx tsc --noEmit; npm run lint 2>&1 | tail -2`
+Run: `npx jest 2>&1 | tail -4; npx tsc --noEmit; npm run lint 2>&1 | tail -3`
 Expected: jest all green (109 baseline + 7 new = 116 tests); tsc only the baseline `app-tabs.web.tsx(27,38)` error; lint `0 errors`, at most 23 warnings. (The screen trades its old `set-state-in-effect` warning in the deleted effect for one in the START effect — net zero.)
 
 - [ ] **Step 4: Commit**
