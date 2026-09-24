@@ -17,7 +17,10 @@ export async function exportOkfFromDump(dump: MemoryDump): Promise<void> {
   const id = Crypto.randomUUID();
   const exportDir = new Directory(Paths.cache, `export-${id}`);
   exportDir.create({ idempotent: true });
-  const { files } = formatOkfBundle(dump);
+  // Deliberate profile pin (spec §5.3): the library default is already
+  // llm-wiki/2, but pinning it here means a future default flip cannot
+  // silently change our export format.
+  const { files } = formatOkfBundle(dump, { profile: 'llm-wiki/2' });
 
   for (const file of files) {
     const parts = file.path.split('/');
