@@ -10,7 +10,8 @@ async function getNetworkState(): Promise<{
 }> {
   try {
     const Network = require('expo-network') as typeof import('expo-network');
-    return await Network.getNetworkStateAsync();
+    const state = await Network.getNetworkStateAsync();
+    return { isConnected: state.isConnected ?? null, type: state.type ?? null };
   } catch (error) {
     if (__DEV__) {
       console.warn(

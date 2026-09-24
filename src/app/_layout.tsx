@@ -58,12 +58,11 @@ export default function RootLayout() {
   const stack = (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="(tabs)" options={{ href: isReady ? undefined : null }} />
-      <Stack.Screen name="model-hub" options={{ href: isReady ? null : undefined }} />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="model-hub" />
       <Stack.Screen
         name="entry/[factId]"
         options={{
-          href: isReady ? undefined : null,
           presentation: 'card',
           headerShown: true,
           title: 'Note',
@@ -71,12 +70,11 @@ export default function RootLayout() {
       />
       <Stack.Screen
         name="night-shift"
-        options={{ href: isReady ? undefined : null, presentation: 'fullScreenModal' }}
+        options={{ presentation: 'fullScreenModal' }}
       />
       <Stack.Screen
         name="import"
         options={{
-          href: isReady ? undefined : null,
           presentation: 'modal',
           headerShown: true,
           title: 'Import',

@@ -17,7 +17,9 @@ export function installCryptoPolyfill(): void {
   const patched: Crypto = {
     ...(existing ?? ({} as Crypto)),
     getRandomValues: <T extends ArrayBufferView>(array: T): T =>
-      ExpoCrypto.getRandomValues(array),
+      ExpoCrypto.getRandomValues(
+        array as unknown as Int32Array<ArrayBuffer>,
+      ) as unknown as T,
     randomUUID: (): `${string}-${string}-${string}-${string}-${string}` =>
       ExpoCrypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
   };
