@@ -54,6 +54,7 @@ describe('journalWikiMachine', () => {
     });
     await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
     expect(order).toEqual(['librarian', 'heal']);
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
     actor.stop();
   });
 
@@ -96,6 +97,7 @@ describe('journalWikiMachine', () => {
     actor.send({ type: 'ABORT_NIGHT_SHIFT' });
     await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
     expect(healStarted).toBe(false);
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('aborted');
     actor.stop();
   });
 
@@ -114,6 +116,7 @@ describe('journalWikiMachine', () => {
     });
     await waitFor(actorRef, (s) => s.matches('idle'), { timeout: 5000 });
     expect(maintenance.runHeal).toHaveBeenCalledTimes(1);
+    expect(actorRef.getSnapshot().context.nightShiftOutcome).toBe('aborted');
     actorRef.stop();
   });
 
@@ -143,6 +146,8 @@ describe('journalWikiMachine', () => {
     const snapshot = actor.getSnapshot();
     expect(snapshot.context.queue.length).toBe(0);
     expect(snapshot.context.pendingImport).toBeNull();
+    // An import-interrupted run is neither completed nor user-aborted.
+    expect(snapshot.context.nightShiftOutcome).toBe('none');
     const secondImport = createActor(journalWikiMachine, {
       input: { wiki: wiki as never, maintenance },
     }).start();
@@ -184,6 +189,22 @@ describe('journalWikiMachine', () => {
     });
     expect(actor.getSnapshot().context.lastHealSummary).toBeNull();
     await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
+    actor.stop();
+  });
+
+  it('resets the outcome when a new night shift starts after one completes', async () => {
+    const actor = createActor(journalWikiMachine, {
+      input: { wiki: makeWiki() as never, maintenance },
+    }).start();
+    const queue = [{ operation: 'librarian' as const, entityId: 'e1' }];
+    actor.send({ type: 'START_NIGHT_SHIFT', queue });
+    await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
+
+    actor.send({ type: 'START_NIGHT_SHIFT', queue });
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('none');
+    await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
     actor.stop();
   });
 
