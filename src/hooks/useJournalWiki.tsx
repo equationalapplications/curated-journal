@@ -15,6 +15,7 @@ import {
   journalWikiMachine,
   type JournalWikiMachineEvents,
   type NightShiftOperation,
+  type NightShiftOutcome,
 } from '@/machines/journalWikiMachine';
 
 type JournalWikiContextValue = {
@@ -26,6 +27,7 @@ type JournalWikiContextValue = {
   isAdvancing: boolean;
   lastError: Error | null;
   isNightShift: boolean;
+  nightShiftOutcome: NightShiftOutcome;
 };
 
 const JournalWikiContext = createContext<JournalWikiContextValue | null>(null);
@@ -84,6 +86,7 @@ export function JournalWikiProvider({
   const isAdvancing = useSelector(actor, (s) => s.matches({ nightShift: 'advance' }));
   const lastError = useSelector(actor, (s) => s.context.lastError);
   const isNightShift = useSelector(actor, (s) => s.matches('nightShift'));
+  const nightShiftOutcome = useSelector(actor, (s) => s.context.nightShiftOutcome);
 
   const value = useMemo(
     () => ({
@@ -95,8 +98,19 @@ export function JournalWikiProvider({
       isAdvancing,
       lastError,
       isNightShift,
+      nightShiftOutcome,
     }),
-    [currentOperation, isAdvancing, isNightShift, isStepRunning, lastError, queueIndex, queueLength, send],
+    [
+      currentOperation,
+      isAdvancing,
+      isNightShift,
+      isStepRunning,
+      lastError,
+      nightShiftOutcome,
+      queueIndex,
+      queueLength,
+      send,
+    ],
   );
 
   return <JournalWikiContext.Provider value={value}>{children}</JournalWikiContext.Provider>;

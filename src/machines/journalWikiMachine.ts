@@ -15,6 +15,9 @@ export type NightShiftOperation = 'librarian' | 'heal' | 'reembed' | 'prune';
 
 export type QueueItem = { operation: NightShiftOperation; entityId: string };
 
+/** How the last Night Shift run ended. `'none'` while running or after an IMPORT interrupt. */
+export type NightShiftOutcome = 'none' | 'completed' | 'aborted';
+
 export type JournalWikiMachineEvents =
   | { type: 'START_NIGHT_SHIFT'; queue: QueueItem[] }
   | { type: 'ABORT_NIGHT_SHIFT' }
@@ -50,6 +53,7 @@ type Context = {
    */
   nightShiftSignal: { aborted: boolean };
   lastHealSummary: HealStepSummary | null;
+  nightShiftOutcome: NightShiftOutcome;
   status: EntityStatus;
   lastError: Error | null;
   pendingImport: { dump: MemoryDump; merge: boolean } | null;
@@ -96,6 +100,7 @@ export const journalWikiMachine = setup({
         nightShiftSignal: context.nightShiftSignal,
         lastHealSummary: null,
         lastError: null,
+        nightShiftOutcome: 'none' as NightShiftOutcome,
       };
     }),
     abortNightShift: assign({
@@ -106,6 +111,13 @@ export const journalWikiMachine = setup({
         context.nightShiftSignal.aborted = true;
         return context.nightShiftSignal;
       },
+    }),
+    reattachNightShift: assign(({ context }) => {
+      // Same deliberate mutation as abortNightShift: the in-flight step reads
+      // this object by reference between batches, so clearing it here lets
+      // the current run continue instead of draining out as aborted.
+      context.nightShiftSignal.aborted = false;
+      return { aborted: false, nightShiftSignal: context.nightShiftSignal };
     }),
   },
   actors: {
@@ -152,6 +164,7 @@ export const journalWikiMachine = setup({
     aborted: false,
     nightShiftSignal: { aborted: false },
     lastHealSummary: null,
+    nightShiftOutcome: 'none' as NightShiftOutcome,
     status: { ingesting: false, librarian: false, heal: false },
     lastError: null,
     pendingImport: null,
@@ -189,6 +202,9 @@ export const journalWikiMachine = setup({
     nightShift: {
       initial: 'step',
       on: {
+        // Re-opening Night Shift mid-run reattaches rather than restarting:
+        // targetless, so the invoked runStep keeps running.
+        START_NIGHT_SHIFT: { actions: 'reattachNightShift' },
         ABORT_NIGHT_SHIFT: { actions: 'abortNightShift' },
         STATUS: { actions: assign({ status: ({ event }) => event.status }) },
         IMPORT: {
@@ -237,7 +253,14 @@ export const journalWikiMachine = setup({
               guard: ({ context }) =>
                 context.aborted || context.queueIndex + 1 >= context.queue.length,
               target: '#journalWiki.idle',
-              actions: assign({ queue: [], queueIndex: 0, aborted: false }),
+              actions: assign({
+                queue: [],
+                queueIndex: 0,
+                aborted: false,
+                // Property callbacks read the pre-transition context, so this
+                // sees `aborted` before the line above clears it.
+                nightShiftOutcome: ({ context }) => (context.aborted ? 'aborted' : 'completed'),
+              }),
             },
             {
               target: 'step',
