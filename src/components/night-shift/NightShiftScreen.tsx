@@ -108,7 +108,7 @@ export function NightShiftScreen() {
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   }, []);
 
-  const progressPct = Math.min(100, Math.round((finished ? 1 : progress) * 100));
+  const progressPct = finished ? 100 : Math.min(99, Math.round(progress * 100));
 
   return (
     <Screen style={styles.screen}>
