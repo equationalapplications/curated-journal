@@ -112,6 +112,13 @@ export const journalWikiMachine = setup({
         return context.nightShiftSignal;
       },
     }),
+    reattachNightShift: assign(({ context }) => {
+      // Same deliberate mutation as abortNightShift: the in-flight step reads
+      // this object by reference between batches, so clearing it here lets
+      // the current run continue instead of draining out as aborted.
+      context.nightShiftSignal.aborted = false;
+      return { aborted: false, nightShiftSignal: context.nightShiftSignal };
+    }),
   },
   actors: {
     runStep: fromPromise(
@@ -195,6 +202,9 @@ export const journalWikiMachine = setup({
     nightShift: {
       initial: 'step',
       on: {
+        // Re-opening Night Shift mid-run reattaches rather than restarting:
+        // targetless, so the invoked runStep keeps running.
+        START_NIGHT_SHIFT: { actions: 'reattachNightShift' },
         ABORT_NIGHT_SHIFT: { actions: 'abortNightShift' },
         STATUS: { actions: assign({ status: ({ event }) => event.status }) },
         IMPORT: {

@@ -101,6 +101,40 @@ describe('journalWikiMachine', () => {
     actor.stop();
   });
 
+  it('reattaches to the running shift when START_NIGHT_SHIFT follows an abort', async () => {
+    let finishLibrarian: () => void = () => {};
+    const librarianDone = new Promise<void>((resolve) => {
+      finishLibrarian = resolve;
+    });
+    maintenance.runLibrarian.mockImplementation(() => librarianDone);
+    const queue = [
+      { operation: 'librarian' as const, entityId: 'e1' },
+      { operation: 'heal' as const, entityId: 'e1' },
+    ];
+    const actor = createActor(journalWikiMachine, {
+      input: { wiki: makeWiki() as never, maintenance },
+    }).start();
+
+    actor.send({ type: 'START_NIGHT_SHIFT', queue });
+    actor.send({ type: 'ABORT_NIGHT_SHIFT' });
+    // User re-opens Night Shift while the librarian step is still in flight.
+    actor.send({ type: 'START_NIGHT_SHIFT', queue });
+
+    const reattached = actor.getSnapshot();
+    expect(reattached.matches({ nightShift: 'step' })).toBe(true);
+    expect(reattached.context.aborted).toBe(false);
+    expect(reattached.context.nightShiftSignal.aborted).toBe(false);
+
+    finishLibrarian();
+    await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
+    // The in-flight step was not restarted (a restart would hit the library's
+    // per-entity librarian lock and throw WikiBusyError).
+    expect(maintenance.runLibrarian).toHaveBeenCalledTimes(1);
+    expect(maintenance.runHeal).toHaveBeenCalledTimes(1);
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
+    actor.stop();
+  });
+
   it('stops the heal loop between batches when ABORT_NIGHT_SHIFT is sent mid-heal', async () => {
     let actorRef: ReturnType<typeof createActor<typeof journalWikiMachine>> | null = null;
     maintenance.runHeal.mockImplementation(async () => {
