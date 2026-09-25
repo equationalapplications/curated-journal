@@ -34,29 +34,42 @@ export function NightShiftScreen() {
   const router = useRouter();
   const { entityId } = useJournal();
   const status = useEntityStatus(entityId);
-  const { send, queueIndex, queueLength, currentOperation, isStepRunning, isAdvancing, isNightShift } =
-    useJournalWiki();
+  const {
+    send,
+    queueIndex,
+    queueLength,
+    currentOperation,
+    isStepRunning,
+    isAdvancing,
+    isNightShift,
+    nightShiftOutcome,
+  } = useJournalWiki();
   const { progress, llm } = useNightShiftProgress(
     queueIndex,
     queueLength,
     isStepRunning,
     isNightShift,
   );
-  const [hasBeenNightShift, setHasBeenNightShift] = useState(false);
+  const [hasStartedNightShift, setHasStartedNightShift] = useState(false);
   const prevOperationRef = useRef(currentOperation);
   const pulse = useSharedValue(1);
-  const finished = hasBeenNightShift && !isNightShift && queueLength === 0;
+  // hasStartedNightShift guards the first render, before START resets a
+  // 'completed' outcome left over from a previous visit.
+  const nightShiftFinished = nightShiftOutcome === 'completed';
+  const finished = hasStartedNightShift && nightShiftFinished && !isNightShift;
   const stepLabel = nightShiftStepLabel({
     queueIndex,
     queueLength,
     isNightShift,
     isAdvancing,
-    hasStarted: hasBeenNightShift,
+    hasStarted: hasStartedNightShift,
+    nightShiftFinished,
   });
 
   useEffect(() => {
     void activateKeepAwakeAsync('night-shift');
     setNightShiftActive(true);
+    setHasStartedNightShift(true);
     send({
       type: 'START_NIGHT_SHIFT',
       queue: [
@@ -69,12 +82,6 @@ export function NightShiftScreen() {
       setNightShiftActive(false);
     };
   }, [entityId, send]);
-
-  useEffect(() => {
-    if (isNightShift) {
-      setHasBeenNightShift(true);
-    }
-  }, [isNightShift]);
 
   useEffect(() => {
     if (
