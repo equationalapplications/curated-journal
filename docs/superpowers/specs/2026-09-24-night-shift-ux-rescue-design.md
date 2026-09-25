@@ -1,7 +1,7 @@
 # Night Shift UX Rescue — Completion Outcome, Re-entry, Progress Creep
 
 Date: 2026-09-24
-Status: Draft (awaiting approval)
+Status: Implemented (2026-09-24, PR #TBD on `feature/night-shift-ux-rescue`)
 Parent spec: [SDK 57 / wiki 7.7.4 / OKF 0.2 upgrade](./2026-09-24-sdk57-llmwiki7-okf02-upgrade.md)
 Base: `feature/curated-journal-demo` @ `65aad5b` (PR #9 merged)
 Source material: `stash@{0}` "night-shift-ux-pre-sdk57" (uncommitted work written against the pre-SDK-57 tree, `e5ea5a6`)
