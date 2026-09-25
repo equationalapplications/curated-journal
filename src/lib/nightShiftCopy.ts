@@ -20,12 +20,25 @@ export function nightShiftOperationTitle(operation: NightShiftOperation | null):
   return OPERATION_TITLES[operation];
 }
 
+function healPhaseLabel(llm: NightShiftLlmProgress): string {
+  if (llm.isGenerating) {
+    return 'Running on-device AI — healing broken links and duplicates…';
+  }
+  if (llm.tokensGenerated > 0) {
+    return 'Applying heal results — updating your graph…';
+  }
+  return 'Preparing heal pass — reviewing the graph…';
+}
+
 export function nightShiftPhaseLabel(
   operation: NightShiftOperation | null,
   status: EntityStatus,
   llm: NightShiftLlmProgress = idleLlm,
 ): string {
   if (operation === 'librarian') {
+    // The library can run its own heal during the librarian step; say so in
+    // the phase text only — title and step counter follow the machine queue.
+    if (status.heal) return healPhaseLabel(llm);
     if (llm.isGenerating) {
       return 'Running on-device AI — synthesizing insights and new connections…';
     }
@@ -35,15 +48,7 @@ export function nightShiftPhaseLabel(
     return 'Preparing librarian pass — loading your notes…';
   }
 
-  if (operation === 'heal') {
-    if (llm.isGenerating) {
-      return 'Running on-device AI — healing broken links and duplicates…';
-    }
-    if (llm.tokensGenerated > 0) {
-      return 'Applying heal results — updating your graph…';
-    }
-    return 'Preparing heal pass — reviewing the graph…';
-  }
+  if (operation === 'heal') return healPhaseLabel(llm);
 
   if (operation === 'reembed') return 'Rebuilding search embeddings…';
   if (operation === 'prune') return 'Pruning old events and soft-deleted entries…';
@@ -77,16 +82,18 @@ export function nightShiftStepLabel({
   isNightShift,
   isAdvancing,
   hasStarted,
+  nightShiftFinished = false,
 }: {
   queueIndex: number;
   queueLength: number;
   isNightShift: boolean;
   isAdvancing: boolean;
   hasStarted: boolean;
+  nightShiftFinished?: boolean;
 }): string {
   const total = queueLength > 0 ? queueLength : NIGHT_SHIFT_STEP_COUNT;
 
-  if (hasStarted && !isNightShift && queueLength === 0) {
+  if (hasStarted && nightShiftFinished && !isNightShift && queueLength === 0) {
     return 'Night Shift complete';
   }
 
