@@ -56,6 +56,22 @@ describe('computeNightShiftProgress', () => {
     expect(computeNightShiftProgress(0, 1, true, idleLlm, 10_000)).toBeLessThanOrEqual(0.25);
   });
 
+  it('does not move backward when generation starts after long pre-LLM work', () => {
+    const latePrep = computeNightShiftProgress(0, 1, true, idleLlm, 10_000);
+    const generationStart = computeNightShiftProgress(0, 1, true, {
+      tokensGenerated: 0,
+      maxTokens: 512,
+      isGenerating: true,
+    });
+    expect(generationStart).toBeGreaterThanOrEqual(latePrep);
+  });
+
+  it('continues from where generation stopped when applying results', () => {
+    const generating = computeNightShiftProgress(0, 1, true, { ...postLlm, isGenerating: true });
+    const applying = computeNightShiftProgress(0, 1, true, postLlm, 0);
+    expect(applying).toBeCloseTo(generating);
+  });
+
   it('creeps forward while results are applied without reaching the next step', () => {
     const early = computeNightShiftProgress(0, 2, true, postLlm, 0);
     const later = computeNightShiftProgress(0, 2, true, postLlm, 60);

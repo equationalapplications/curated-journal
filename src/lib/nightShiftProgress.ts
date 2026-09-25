@@ -1,9 +1,13 @@
 import type { NightShiftLlmProgress } from '@/lib/llamaProvider';
 
-/** Share of a maintenance step spent outside the LLM call. */
-const STEP_PREP = 0.1;
-const STEP_LLM = 0.75;
-const STEP_POST = 0.15;
+/**
+ * Share of a maintenance step per phase. Phases are laid end to end so each
+ * starts where the previous one can reach, keeping the bar from moving
+ * backward at a phase boundary.
+ */
+const STEP_PREP_START = 0.1;
+const STEP_PREP = 0.25;
+const STEP_LLM = 0.6;
 
 /** Time constants (seconds) for creep while a step runs without token progress. */
 const PREP_CREEP_SECONDS = 15;
@@ -15,20 +19,19 @@ function easeOut(seconds: number, timeConstant: number): number {
 }
 
 function inStepProgress(llm: NightShiftLlmProgress, elapsedSeconds: number): number {
-  if (llm.isGenerating) {
-    const llmFraction = Math.min(1, llm.tokensGenerated / llm.maxTokens);
-    return STEP_PREP + STEP_LLM * llmFraction;
-  }
+  const llmEnd = STEP_PREP + STEP_LLM * Math.min(1, llm.tokensGenerated / llm.maxTokens);
+
+  if (llm.isGenerating) return llmEnd;
 
   if (llm.tokensGenerated > 0) {
-    // Applying results: ease from 70% toward 100% of the post-LLM share.
-    return (
-      STEP_PREP + STEP_LLM + STEP_POST * (0.7 + 0.3 * easeOut(elapsedSeconds, POST_CREEP_SECONDS))
-    );
+    // Applying results: ease from where generation stopped toward the end of the step.
+    return llmEnd + (1 - llmEnd) * easeOut(elapsedSeconds, POST_CREEP_SECONDS);
   }
 
-  // Preparing (loading notes, building the prompt): ease toward 20% of the LLM share.
-  return STEP_PREP + STEP_LLM * 0.2 * easeOut(elapsedSeconds, PREP_CREEP_SECONDS);
+  // Preparing (loading notes, building the prompt): ease toward the start of generation.
+  return (
+    STEP_PREP_START + (STEP_PREP - STEP_PREP_START) * easeOut(elapsedSeconds, PREP_CREEP_SECONDS)
+  );
 }
 
 /** Estimated overall Night Shift completion in the range [0, 1]. */

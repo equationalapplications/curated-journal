@@ -140,13 +140,14 @@ then hits `idle` and starts a fresh run as today. No extra handling is needed.
 
 Port the stash's creep, without the status heuristic:
 
-- `inStepProgress(llm, elapsedSeconds = 0)`:
-  - generating: unchanged (`STEP_PREP + STEP_LLM * tokenFraction`);
-  - post-LLM: `STEP_PREP + STEP_LLM + STEP_POST * (0.7 + 0.3 * (1 - e^(-t/30)))` — approaches
-    but never reaches 1;
-  - pre-LLM: `STEP_PREP + STEP_LLM * 0.2 * (1 - e^(-t/15))` — approaches but never reaches
-    `0.25` of the step. (The stash also clamped this at `STEP_PREP + STEP_LLM * 0.25` = 0.2875,
-    which the curve can never reach; the clamp is dropped as dead code.)
+- `inStepProgress(llm, elapsedSeconds = 0)` — phases laid end to end so the bar never moves
+  backward at a phase boundary (the stash's curves let pre-LLM creep reach 0.25 while generation
+  restarted at 0.10, and jumped post-LLM to a fixed 0.955):
+  - pre-LLM: `0.10 + 0.15 * (1 - e^(-t/15))` — approaches but never reaches `0.25`, where
+    generation starts;
+  - generating: `0.25 + 0.6 * tokenFraction` (`llmEnd`);
+  - post-LLM: `llmEnd + (1 - llmEnd) * (1 - e^(-t/30))` — continues from where generation
+    stopped; approaches but never reaches 1.
 - `computeNightShiftProgress(queueIndex, queueLength, isStepRunning, llm, elapsedSecondsWhileStepRunning = 0)`.
 - `useNightShiftProgress` keeps its current signature and derives `elapsedSeconds` from a 1 s
   interval that runs while `isStepRunning && !llm.isGenerating`. The count restarts when
@@ -179,7 +180,8 @@ Remove `effectiveQueueIndex` and the `EntityStatus` import from both files.
 
 `__tests__/nightShiftProgress.test.ts`
 - Keep: creep increases with elapsed time (pre-LLM and post-LLM); pre-LLM creep stays below
-  `0.25` of the step; post-LLM creep stays below the end of the step.
+  `0.25` of the step; post-LLM creep stays below the end of the step; no backward jump from
+  late pre-LLM to generation start; post-LLM starts where generation stopped.
 - Drop the heal-status-as-step-2 test.
 
 Gate: `npx jest`, `npx tsc --noEmit`, `npm run lint`.
