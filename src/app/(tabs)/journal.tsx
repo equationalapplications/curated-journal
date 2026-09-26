@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import * as Crypto from 'expo-crypto';
 import { useFocusEffect } from 'expo-router';
 import { useWikiIngest } from '@equationalapplications/expo-llm-wiki';
 import { countIngestFailures } from '@/lib/ingestReport';
@@ -40,7 +41,11 @@ export default function JournalScreen() {
       const markdown = `# ${title}\n\n${body}`;
       const result = await ingest(entityId, {
         sourceRef: `journal://${Date.now()}`,
-        sourceHash: `${Date.now()}`,
+        sourceHash: await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          markdown,
+          { encoding: Crypto.CryptoEncoding.HEX },
+        ),
         documentChunk: markdown,
       });
       const failures = countIngestFailures(result);
