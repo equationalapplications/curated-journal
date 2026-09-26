@@ -23,17 +23,21 @@ updates:
           - "minor"
           - "patch"
     open-pull-requests-limit: 5
-    # Expo SDK family: version bumps move ONLY through `npx expo install
-    # --fix` + `npx expo-doctor@latest`, never bare Dependabot PRs. Listed
+    # Expo SDK family + Jest majors: version bumps move ONLY through
+    # `npx expo install --fix` + `npx expo-doctor@latest` (Expo family) or
+    # the jest-expo toolchain train (jest majors), never bare Dependabot
+    # PRs. Listed
     # EXPLICITLY (not via react-native-*) so that third-party RN libraries
     # that parse untrusted input — react-native-markdown-display,
     # react-native-zip-archive, react-native-nitro-unzip — keep getting
     # Dependabot security PRs.
     #
     # CAVEAT (by design): Dependabot applies `ignore` to SECURITY updates
-    # too, so CVE-fix PRs for the packages below are suppressed. Expo-family
-    # vulnerability triage runs manually: `npm audit` + expo-doctor, bump
-    # via expo install, jest/tsc gates before push.
+    # too, so CVE-fix PRs for the packages below are suppressed (for the
+    # jest entries: majors only — a jest CVE fixed only in a new major
+    # means no PR appears). Vulnerability triage runs manually:
+    # `npm audit` + expo-doctor, bump via expo install, jest/tsc gates
+    # before push.
     ignore:
       - dependency-name: "expo"
       - dependency-name: "expo-*"
@@ -50,6 +54,16 @@ updates:
       - dependency-name: "@types/react"
       - dependency-name: "@shopify/react-native-skia"
       - dependency-name: "jest-expo"
+      # jest / @types/jest: majors ride the jest-expo (Expo SDK) train only.
+      # jest-expo@~57.0.5 is built on Jest 29 internals (babel-jest ^29,
+      # @jest/globals ^29), so a bare jest 30 bump creates a mixed runner/
+      # environment tree that even green tests can't validate — see PR #16.
+      - dependency-name: "jest"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "@types/jest"
+        update-types:
+          - "version-update:semver-major"
       - dependency-name: "eslint-config-expo"
       - dependency-name: "llama.rn"
         update-types:
