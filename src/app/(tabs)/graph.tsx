@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useWiki, useOntologyManifest } from '@equationalapplications/expo-llm-wiki';
-import { SkiaGraphCanvas } from '@/components/graph/SkiaGraphCanvas';
+import { GraphCanvas } from '@/components/graph/GraphCanvas';
 import { GraphLegend } from '@/components/graph/GraphLegend';
 import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
 import { ThemedText } from '@/components/themed-text';
@@ -54,7 +54,7 @@ export default function GraphScreen() {
         </ThemedText>
       ) : null}
       <GraphLegend manifest={manifest} />
-      <SkiaGraphCanvas
+      <GraphCanvas
         nodes={layoutNodes}
         links={graph.edges.map((e) => ({ source: e.sourceId, target: e.targetId }))}
         size={size}

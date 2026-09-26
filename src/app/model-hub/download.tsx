@@ -41,7 +41,8 @@ export default function ModelHubDownloadScreen() {
   const samples = useRef<{ t: number; bytes: number }[]>([]);
 
   useEffect(() => {
-    void activateKeepAwakeAsync('model-download');
+    // Best-effort: browsers may deny the Wake Lock (e.g. hidden tab).
+    activateKeepAwakeAsync('model-download').catch(() => {});
     return () => {
       void deactivateKeepAwake('model-download');
     };

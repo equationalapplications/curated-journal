@@ -1,8 +1,8 @@
 # Model Hub — On-Device Jetsam Soak Matrix
 
 Status: **not yet run**. Required before shipping per spec §9.2 / §9.3 acceptance criteria
-("Deep Thinker completes 3 consecutive Night Shift soaks on floor-tier physical device
-without Jetsam kill"). Simulators do not enforce iOS Jetsam — this matrix can only be
+("Smarter & Slower on a newer iPhone and Fast & Light on a Pixel 6 each complete 3 consecutive
+Night Shift soaks without Jetsam or low-memory kills"). Simulators do not enforce iOS Jetsam — this matrix can only be
 filled in on physical hardware.
 
 ## Seed data

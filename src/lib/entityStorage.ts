@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '@/lib/secureStore';
 import {
   ENTITY_ID_KEY,
   MODEL_PATH_KEY,

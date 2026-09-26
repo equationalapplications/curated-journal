@@ -29,9 +29,9 @@ describe('modelDownloadState', () => {
   it('upserts and reads back the singleton row', async () => {
     const db = makeDb();
     const store = createModelDownloadStateStore(db as never);
-    await store.set({ modelId: 'deep-thinker', status: 'downloading', pauseState: null });
+    await store.set({ modelId: 'smarter-slower', status: 'downloading', pauseState: null });
     const result = await store.get();
-    expect(result).toEqual({ modelId: 'deep-thinker', status: 'downloading', pauseState: null });
+    expect(result).toEqual({ modelId: 'smarter-slower', status: 'downloading', pauseState: null });
   });
 
   it('round-trips a pauseState object through JSON', async () => {

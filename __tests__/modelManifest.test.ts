@@ -3,7 +3,7 @@ import { MODEL_CATALOG, getCuratedModel, type CuratedModelId } from '@/catalog/m
 describe('modelManifest', () => {
   it('has exactly two catalog entries with the spec-mandated ids', () => {
     const ids = MODEL_CATALOG.map((m) => m.id);
-    expect(ids).toEqual(['fast-light', 'deep-thinker']);
+    expect(ids).toEqual(['fast-light', 'smarter-slower']);
   });
 
   it('every entry has a positive sizeBytes matching its sizeLabel order of magnitude', () => {
@@ -20,8 +20,8 @@ describe('modelManifest', () => {
   });
 
   it('getCuratedModel returns the matching entry', () => {
-    const model = getCuratedModel('deep-thinker');
-    expect(model.displayName).toBe('Deep Thinker');
+    const model = getCuratedModel('smarter-slower');
+    expect(model.displayName).toBe('Smarter & Slower');
   });
 
   it('getCuratedModel throws on an unknown id', () => {

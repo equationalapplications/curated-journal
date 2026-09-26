@@ -23,7 +23,7 @@
       "package": "com.equationalapplicationsllc.curatedjournal"
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -52,7 +52,8 @@
       "expo-sqlite",
       "expo-sharing",
       "expo-secure-store",
-      "expo-build-properties"
+      "expo-build-properties",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

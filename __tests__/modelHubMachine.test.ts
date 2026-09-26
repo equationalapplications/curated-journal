@@ -135,7 +135,7 @@ describe('modelHubMachine', () => {
     const actor = createActor(modelHubMachine, { input: { api } }).start();
     actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
     await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
-    expect(api.deletePartialFile).toHaveBeenCalledWith('phi-3-mini-4k-instruct-q4.gguf');
+    expect(api.deletePartialFile).toHaveBeenCalledWith('qwen3-4b-instruct-2507-q4_0.gguf');
     expect(actor.getSnapshot().context.error?.code).toBe('verify');
     actor.stop();
   });

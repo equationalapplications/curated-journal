@@ -105,7 +105,7 @@ https://huggingface.co/{org}/{repo}/resolve/main/{filename}.gguf
 Hugging Face LFS supports HTTP Range requests; Expo `DownloadTask` handles Range headers for pause/resume.
 
 ```typescript
-export type CuratedModelId = 'fast-light' | 'deep-thinker';
+export type CuratedModelId = 'fast-light' | 'smarter-slower';
 
 export type CuratedModel = {
   id: CuratedModelId;
@@ -125,25 +125,44 @@ export type CuratedModel = {
 };
 ```
 
-#### Initial catalog entries
+#### Catalog entries
 
-| ID | Display name | Base model | Quant | Approx size | Device hint |
-|----|--------------|------------|-------|-------------|-------------|
-| `fast-light` | Fast & Light | Phi-3-mini-4k-instruct | Q4_K_M | ~2.3 GB | `all` |
-| `deep-thinker` | Deep Thinker | Qwen2.5-3B-Instruct | Q4_K_M | ~2.0 GB | `all` |
+> **Revised 2026-09-25.** Replaced Phi-3-mini / Qwen2.5-3B with newer Qwen models sized for two reference devices that stay plugged in and run only this app: a **Pixel 6** (8 GB, CPU-only inference) and a **newer iPhone** (8 GB+, Metal). `deep-thinker` was renamed because the model runs with thinking disabled.
 
-**Taglines (example copy):**
+| ID | Display name | Base model | Quant | Size | Device hint |
+|----|--------------|------------|-------|------|-------------|
+| `fast-light` | Fast & Light | Qwen3-4B-Instruct-2507 (unsloth GGUF) | Q4_0 | 2.38 GB | `all` |
+| `smarter-slower` | Smarter & Slower | Qwen3.5-4B (unsloth GGUF) | Q4_K_M | 2.74 GB | `recommended-high-ram` |
 
-- **Fast & Light:** *"Best for everyday journaling. Fast responses, gentle on battery."*
-- **Deep Thinker:** *"Richer synthesis and emergent ontology. Works on most modern phones and tablets."*
+Both use `contextSize: 8192`. Both are Apache-2.0 licensed, and Qwen publishes no official GGUF for either.
 
-#### Jetsam rationale (Deep Thinker model choice)
+**Taglines:**
 
-Llama-3-8B Q4_K_M (~4.7 GB file) is **excluded from the initial phone catalog**. Even with `mmap`, context caching and librarian JSON generation spike working set; iOS often caps a single process around 3–4 GB on 8 GB devices. A 4.7 GB weight plus inference overhead is a Jetsam trap during Night Shift.
+- **Fast & Light:** *"Quick, dependable answers for everyday journaling. Sized for phones like the Pixel 6."*
+- **Smarter & Slower:** *"Richer synthesis and emergent ontology. Best on newer iPhones and flagship phones."*
 
-**Resolution:** Deep Thinker uses **Qwen2.5-3B-Instruct Q4_K_M** (~2 GB) — materially better emergent ontology than Phi-3-mini without phone-tier Jetsam risk.
+#### core-llm-wiki requirements (model selection criteria)
 
-**Future (tablet tier):** Optional iPad-only tier (e.g. Llama-3-8B **Q3_K_M** ~3 GB, or M-series iPad only) with `deviceHint: 'recommended-high-ram'` and hard tablet detection via `expo-device`.
+- **Raw JSON only.** `parseJsonResponse` starts at the first `{`, so any preamble or reasoning text can break parsing. Librarian, heal and ingest output nested schemas; in emergent mode they also include inline edges and `ontology_updates`. That favours models of about 4B parameters or more.
+- **Thinking disabled.** `llamaProvider` passes `jinja: true, enable_thinking: false` with Qwen's non-thinking sampling (temperature 0.7, top_p 0.8, top_k 20). Qwen3.5 thinks by default; Qwen3-4B-Instruct-2507 never thinks.
+- **Output budget.** Fact bodies can be up to 800 characters, so `LLM_MAX_PREDICT_TOKENS` is 2048 (512 truncated multi-fact JSON). It is also exposed as `maxOutputTokens` so heal and backfill size their batches correctly.
+- **Supported architecture.** The llama.cpp build bundled in `llama.rn` 0.12.9 must support the model (`qwen3` and `qwen35` are supported).
+
+#### Quant choice
+
+- **Fast & Light uses Q4_0.** Android runs CPU-only (`nGpuLayers` 0), and llama.cpp repacks Q4_0 weights at load time for faster ARM CPU inference.
+- **Smarter & Slower uses Q4_K_M.** iOS offloads to Metal. Qwen3.5 uses full attention in only 8 of its 32 layers, which keeps the KV cache small at 8k context (about 0.25 GB).
+
+#### Jetsam rationale / reserved `deep-thinker` tier
+
+Any file over 3 GB is still **excluded from the phone catalog** (NG5). Even with `mmap`, context caching and librarian JSON generation spike the working set, and iOS often caps a single process at around 3–4 GB on 8 GB devices.
+
+**Reserved:** the ID and name `deep-thinker` / **Deep Thinker** are held for a future reasoning-enabled tier, e.g. **Qwen3.5-9B** (Q3_K_M 4.67 GB, Q4_K_M 5.68 GB). That tier needs:
+- a high-RAM gate via `expo-device`;
+- the iOS increased-memory-limit entitlement;
+- a parser path that strips reasoning before the JSON is parsed.
+
+If it ships without reasoning enabled, drop the "Deep Thinker" name.
 
 #### Device warnings (soft, platform-agnostic)
 
@@ -517,7 +536,7 @@ Document results in `docs/qa/model-hub-device-matrix.md` (manual artifact).
 - [ ] Custom User-Agent sent on all HF requests.
 - [ ] Change-model flow deletes old GGUF **before** new download starts.
 - [ ] Post-download smoke test runs before `setModelPath`.
-- [ ] Deep Thinker (Qwen2.5-3B) completes 3 consecutive Night Shift soaks on floor-tier physical device without Jetsam kill.
+- [ ] Smarter & Slower (Qwen3.5-4B) completes 3 consecutive Night Shift soaks on a newer iPhone, and Fast & Light (Qwen3-4B-2507) on a Pixel 6, without Jetsam or low-memory kills.
 - [ ] No Llama-8B or > 3 GB catalog entry on phone tier in this release.
 - [ ] Mock LLM not mounted in production `RootLayout`.
 
@@ -544,7 +563,7 @@ Document results in `docs/qa/model-hub-device-matrix.md` (manual artifact).
 | First launch | Required download; no skip | Predictable UX; no demo/mock in production. |
 | Device gating | Soft warning; platform-agnostic copy | User choice; avoid false negatives on capable older devices. |
 | Resume API | Expo SDK 56 `DownloadTask` + SQLite `DownloadPauseState` | Modern File API; native Range handling; testable persistence. |
-| Deep Thinker model | Qwen2.5-3B Q4_K_M, not Llama-8B | Jetsam safety on phones during Night Shift. |
+| Catalog models (rev. 2026-09-25) | Qwen3-4B-2507 Q4_0 + Qwen3.5-4B Q4_K_M; `deep-thinker` reserved for a future Qwen3.5-9B reasoning tier | Reliable raw JSON for core-llm-wiki, under 3 GB for Jetsam safety. |
 | Integrity check | Exact `sizeBytes` match | Pragmatic for this release; no 4 GB SHA-256 on CPU. |
 | HF rate limits | Custom `User-Agent: CuratedJournal/{version} (Expo; {os})` | Netiquette; reduces anonymous throttling. |
 | Change model | Delete old file before new download | Prevents 2× disk requirement mid-switch. |
