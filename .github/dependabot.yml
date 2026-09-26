@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Supply-chain age gate (mirrors expo-llm-wiki #152 / CT #103 policy):
+    # version updates wait 14 days after registry publish before Dependabot opens a PR.
+    # Security updates are NOT delayed by cooldown. Verified valid for the npm
+    # ecosystem per GitHub docs (Dependabot options reference) — 2026-09-26.
+    cooldown:
+      default-days: 14
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    allow:
+      - dependency-type: "all"
+    ignore:
+      # Expo SDK family must move only with `npx expo-doctor@latest` verification
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "react-native"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
