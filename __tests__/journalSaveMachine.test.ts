@@ -108,6 +108,33 @@ describe('journalSaveMachine', () => {
     }
   });
 
+  it('CANCEL during ingesting returns to idle (in-flight actor stopped by state exit)', async () => {
+    jest.useFakeTimers();
+    try {
+      const actor = createActor(journalSaveMachine, {
+        input: makeInput({
+          ingest: jest.fn(async () => new Promise<never>(() => {})),
+          saveTimeoutMs: 60_000,
+        }),
+      });
+      actor.start();
+
+      actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+      await jest.advanceTimersByTimeAsync(50);
+      expect(actor.getSnapshot().value).toBe('ingesting');
+
+      actor.send({ type: 'CANCEL' });
+      expect(actor.getSnapshot().value).toBe('idle');
+      expect(actor.getSnapshot().context.lastError).toBeNull();
+
+      // The abandoned actor's timeout must not resurrect a failed state.
+      await jest.advanceTimersByTimeAsync(120_000);
+      expect(actor.getSnapshot().value).toBe('idle');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('DISMISS from failed returns to idle', async () => {
     const actor = createActor(journalSaveMachine, {
       input: makeInput({ ingest: jest.fn(async () => Promise.reject(new Error('x'))) }),

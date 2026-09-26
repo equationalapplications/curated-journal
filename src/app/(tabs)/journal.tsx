@@ -81,7 +81,12 @@ export default function JournalScreen() {
     return (
       <JournalEntryEditor
         onSave={handleSave}
-        onCancel={() => setComposing(false)}
+        onCancel={() => {
+          if (saveInProgress) {
+            send({ type: 'CANCEL' });
+          }
+          setComposing(false);
+        }}
         saving={saveInProgress}
       />
     );

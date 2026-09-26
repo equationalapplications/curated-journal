@@ -24,7 +24,9 @@ import type { IngestResult } from '@/lib/ingestReport';
 export type JournalSaveMachineEvents =
   | { type: 'START_SAVE'; title: string; body: string }
   | { type: 'RETRY' }
-  | { type: 'DISMISS' };
+  | { type: 'DISMISS' }
+  /** Abort an in-flight save. Leaving the state stops the invoked actor, so its timeout can never fire afterwards. */
+  | { type: 'CANCEL' };
 
 export type JournalSaveMachineInput = {
   entityId: string;
@@ -122,6 +124,17 @@ export const journalSaveMachine = setup({
       },
     },
     hashing: {
+      on: {
+        CANCEL: 'idle',
+        START_SAVE: {
+          target: 'hashing',
+          actions: assign({
+            input: ({ event }) => ({ title: event.title, body: event.body }),
+            lastError: null,
+            lastResult: null,
+          }),
+        },
+      },
       invoke: {
         src: 'hashEntry',
         input: ({ context }) => {
@@ -142,6 +155,9 @@ export const journalSaveMachine = setup({
       },
     },
     ingesting: {
+      on: {
+        CANCEL: 'idle',
+      },
       invoke: {
         src: 'runIngest',
         input: ({ context }) => context,
