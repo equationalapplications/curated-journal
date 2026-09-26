@@ -1,7 +1,7 @@
 # Expo Updates — OTA Update Channel for Curated Journal
 
 **Date:** 2026-09-26
-**Status:** Draft
+**Status:** Implemented (2026-09-26, same PR #22 — implementation commits after `138252e`)
 **Branch:** `feat/expo-updates-ota`
 **Priority:** Medium (quality-of-life for release cadence; unblocks fast fixes between APK releases)
 
