@@ -18,14 +18,23 @@ function makeInput(overrides?: Partial<JournalSaveMachineInput>): JournalSaveMac
   };
 }
 
+
+// Per-test live binding: each START_SAVE carries the SAME input object the
+// actor was built with, mirroring the screen (event deps == live engine).
+let inputRef: JournalSaveMachineInput;
+
+function startActor(overrides?: Partial<JournalSaveMachineInput>) {
+  inputRef = makeInput(overrides);
+  const actor = createActor(journalSaveMachine, { input: inputRef });
+  actor.start();
+  return actor;
+}
+
 describe('journalSaveMachine', () => {
   it('idle -> hashing -> ingesting -> saved on success', async () => {
-    const actor = createActor(journalSaveMachine, {
-      input: makeInput(),
-    });
-    actor.start();
+    const actor = startActor();
 
-    actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+    actor.send({ type: 'START_SAVE', title: 'T', body: 'B', entityId: 'e1', ingest: inputRef.ingest });
     expect(actor.getSnapshot().value).toBe('hashing');
 
     await new Promise((r) => setTimeout(r, 0));
@@ -46,12 +55,9 @@ describe('journalSaveMachine', () => {
 
   it('moves to failed with lastError when ingest rejects', async () => {
     const boom = new Error('ingest exploded');
-    const actor = createActor(journalSaveMachine, {
-      input: makeInput({ ingest: jest.fn(async () => Promise.reject(boom)) }),
-    });
-    actor.start();
+    const actor = startActor({ ingest: jest.fn(async () => Promise.reject(boom)) });
 
-    actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+    actor.send({ type: 'START_SAVE', title: 'T', body: 'B', entityId: 'e1', ingest: inputRef.ingest });
     await new Promise((r) => setTimeout(r, 20));
 
     const snap = actor.getSnapshot();
@@ -69,12 +75,9 @@ describe('journalSaveMachine', () => {
         ingestedChunks: 1,
         failedChunks: 0,
       });
-    const actor = createActor(journalSaveMachine, {
-      input: makeInput({ ingest: ingest as never }),
-    });
-    actor.start();
+    const actor = startActor({ ingest: ingest as never });
 
-    actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+    actor.send({ type: 'START_SAVE', title: 'T', body: 'B', entityId: 'e1', ingest: inputRef.ingest });
     await new Promise((r) => setTimeout(r, 20));
     expect(actor.getSnapshot().value).toBe('failed');
 
@@ -87,15 +90,12 @@ describe('journalSaveMachine', () => {
   it('times out a hung ingest into failed after saveTimeoutMs', async () => {
     jest.useFakeTimers();
     try {
-      const actor = createActor(journalSaveMachine, {
-        input: makeInput({
-          ingest: jest.fn(async () => new Promise<never>(() => {})),
-          saveTimeoutMs: 1_000,
-        }),
+      const actor = startActor({
+        ingest: jest.fn(async () => new Promise<never>(() => {})),
+        saveTimeoutMs: 1_000,
       });
-      actor.start();
 
-      actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+      actor.send({ type: 'START_SAVE', title: 'T', body: 'B', entityId: 'e1', ingest: inputRef.ingest });
       await jest.advanceTimersByTimeAsync(50);
       expect(actor.getSnapshot().value).toBe('ingesting');
 
@@ -111,15 +111,12 @@ describe('journalSaveMachine', () => {
   it('CANCEL during ingesting returns to idle (in-flight actor stopped by state exit)', async () => {
     jest.useFakeTimers();
     try {
-      const actor = createActor(journalSaveMachine, {
-        input: makeInput({
-          ingest: jest.fn(async () => new Promise<never>(() => {})),
-          saveTimeoutMs: 60_000,
-        }),
+      const actor = startActor({
+        ingest: jest.fn(async () => new Promise<never>(() => {})),
+        saveTimeoutMs: 60_000,
       });
-      actor.start();
 
-      actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+      actor.send({ type: 'START_SAVE', title: 'T', body: 'B', entityId: 'e1', ingest: inputRef.ingest });
       await jest.advanceTimersByTimeAsync(50);
       expect(actor.getSnapshot().value).toBe('ingesting');
 
@@ -136,12 +133,9 @@ describe('journalSaveMachine', () => {
   });
 
   it('DISMISS from failed returns to idle', async () => {
-    const actor = createActor(journalSaveMachine, {
-      input: makeInput({ ingest: jest.fn(async () => Promise.reject(new Error('x'))) }),
-    });
-    actor.start();
+    const actor = startActor({ ingest: jest.fn(async () => Promise.reject(new Error('x'))) });
 
-    actor.send({ type: 'START_SAVE', title: 'T', body: 'B' });
+    actor.send({ type: 'START_SAVE', title: 'T', body: 'B', entityId: 'e1', ingest: inputRef.ingest });
     await new Promise((r) => setTimeout(r, 20));
     expect(actor.getSnapshot().value).toBe('failed');
 
@@ -150,14 +144,13 @@ describe('journalSaveMachine', () => {
   });
 
   it('a new START_SAVE from saved restarts the flow', async () => {
-    const actor = createActor(journalSaveMachine, { input: makeInput() });
-    actor.start();
+    const actor = startActor();
 
-    actor.send({ type: 'START_SAVE', title: 'A', body: 'one' });
+    actor.send({ type: 'START_SAVE', title: 'A', body: 'one', entityId: 'e1', ingest: inputRef.ingest });
     await new Promise((r) => setTimeout(r, 20));
     expect(actor.getSnapshot().value).toBe('saved');
 
-    actor.send({ type: 'START_SAVE', title: 'B', body: 'two' });
+    actor.send({ type: 'START_SAVE', title: 'B', body: 'two', entityId: 'e1', ingest: inputRef.ingest });
     expect(actor.getSnapshot().value).toBe('hashing');
   });
 });

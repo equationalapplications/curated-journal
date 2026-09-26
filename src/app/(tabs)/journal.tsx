@@ -22,11 +22,9 @@ export default function JournalScreen() {
   const [composing, setComposing] = useState(false);
   const { isWide } = useSplitPaneLayout();
 
-  const saveInput = useMemo(
-    () => ({ entityId, ingest, saveTimeoutMs: 120_000 }),
-    [entityId, ingest],
-  );
-  const [saveState, send] = useMachine(journalSaveMachine, { input: saveInput });
+  const [saveState, send] = useMachine(journalSaveMachine, {
+    input: { entityId, ingest, saveTimeoutMs: 120_000 },
+  });
   const saveInProgress = saveState.matches('hashing') || saveState.matches('ingesting');
 
   useFocusEffect(
@@ -46,9 +44,9 @@ export default function JournalScreen() {
 
   const handleSave = useCallback(
     ({ title, body }: { title: string; body: string }) => {
-      send({ type: 'START_SAVE', title, body });
+      send({ type: 'START_SAVE', title, body, entityId, ingest });
     },
-    [send],
+    [send, entityId, ingest],
   );
 
   useEffect(() => {
