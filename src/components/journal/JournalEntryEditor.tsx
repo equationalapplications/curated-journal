@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, StyleSheet, TextInput, View } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
+import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
   onSave: (input: { title: string; body: string }) => Promise<void>;
@@ -11,16 +12,24 @@ export function JournalEntryEditor({ onSave, onCancel }: Props) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
+  const theme = useTheme();
 
   return (
     <ThemedView style={styles.container}>
-      <TextInput placeholder="Title" value={title} onChangeText={setTitle} style={styles.input} />
+      <TextInput
+        placeholder="Title"
+        value={title}
+        onChangeText={setTitle}
+        style={[styles.input, { color: theme.text }]}
+        placeholderTextColor={theme.textSecondary}
+      />
       <TextInput
         placeholder="Write in markdown…"
         value={body}
         onChangeText={setBody}
         multiline
-        style={[styles.input, styles.body]}
+        style={[styles.input, styles.body, { color: theme.text }]}
+        placeholderTextColor={theme.textSecondary}
       />
       <View style={styles.actions}>
         <Button title="Cancel" onPress={onCancel} />
