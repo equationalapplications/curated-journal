@@ -48,10 +48,7 @@
           }
         }
       ],
-      "expo-sqlite",
       "expo-sharing",
-      "expo-secure-store",
-      "expo-build-properties",
       "expo-asset"
     ],
     "experiments": {
