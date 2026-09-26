@@ -1,5 +1,5 @@
 import '@/lib/installCryptoPolyfill';
-import { Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,6 +16,7 @@ import { CitationNavigationProvider } from '@/contexts/CitationNavigationContext
 import { LlmProvider } from '@/contexts/LlmContext';
 import { ModelHubCompletionProvider } from '@/contexts/ModelHubCompletionContext';
 import { JournalWikiProvider } from '@/hooks/useJournalWiki';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 type Phase = 'loading' | 'needsModelHub' | 'ready';
 
@@ -24,6 +25,7 @@ export default function RootLayout() {
   const [wiki, setWiki] = useState<WikiMemory | null>(null);
   const [entityId, setEntityId] = useState<string | null>(null);
   const [llmProvider, setLlmProvider] = useState<LLMProvider | null>(null);
+  const colorScheme = useColorScheme();
 
   const bootstrap = useCallback(async () => {
     const modelPath = await getModelPath();
@@ -84,32 +86,34 @@ export default function RootLayout() {
   );
 
   return (
-    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      {phase === 'loading' ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator />
-        </View>
-      ) : (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <AppReadyProvider ready={isReady}>
-            <ModelHubCompletionProvider onComplete={bootstrap}>
-              {isReady ? (
-                <WikiProvider wiki={wiki}>
-                  <LlmProvider provider={llmProvider}>
-                    <JournalWikiProvider wiki={wiki} entityId={entityId}>
-                      <JournalProvider entityId={entityId}>
-                        <CitationNavigationProvider>{stack}</CitationNavigationProvider>
-                      </JournalProvider>
-                    </JournalWikiProvider>
-                  </LlmProvider>
-                </WikiProvider>
-              ) : (
-                stack
-              )}
-            </ModelHubCompletionProvider>
-          </AppReadyProvider>
-        </GestureHandlerRootView>
-      )}
-    </SafeAreaProvider>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        {phase === 'loading' ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator />
+          </View>
+        ) : (
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <AppReadyProvider ready={isReady}>
+              <ModelHubCompletionProvider onComplete={bootstrap}>
+                {isReady ? (
+                  <WikiProvider wiki={wiki}>
+                    <LlmProvider provider={llmProvider}>
+                      <JournalWikiProvider wiki={wiki} entityId={entityId}>
+                        <JournalProvider entityId={entityId}>
+                          <CitationNavigationProvider>{stack}</CitationNavigationProvider>
+                        </JournalProvider>
+                      </JournalWikiProvider>
+                    </LlmProvider>
+                  </WikiProvider>
+                ) : (
+                  stack
+                )}
+              </ModelHubCompletionProvider>
+            </AppReadyProvider>
+          </GestureHandlerRootView>
+        )}
+      </SafeAreaProvider>
+    </ThemeProvider>
   );
 }
