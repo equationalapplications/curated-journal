@@ -1,4 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
+// SAF lives in the legacy entry point in SDK 57 (the main index does not
+// re-export it despite the docs comment saying otherwise).
+import { StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { formatOkfBundle, type MemoryDump } from '@equationalapplications/expo-llm-wiki';
@@ -13,7 +16,10 @@ function ensureDirectory(root: Directory, relativePath: string): Directory {
   }, root);
 }
 
-export async function exportOkfFromDump(dump: MemoryDump): Promise<void> {
+export async function exportOkfFromDump(
+  dump: MemoryDump,
+  options: { share?: boolean } = {},
+): Promise<string> {
   const id = Crypto.randomUUID();
   const exportDir = new Directory(Paths.cache, `export-${id}`);
   exportDir.create({ idempotent: true });
@@ -34,12 +40,36 @@ export async function exportOkfFromDump(dump: MemoryDump): Promise<void> {
 
     const zipFile = new File(Paths.cache, `export-${id}.zip`);
     await zip(exportDir.uri, zipFile.uri);
-    if (await Sharing.isAvailableAsync()) {
+    if (options.share !== false && (await Sharing.isAvailableAsync())) {
       await Sharing.shareAsync(zipFile.uri, { mimeType: 'application/zip' });
     }
+    return zipFile.uri;
   } finally {
     // The temp dir is cleaned up even when zip/share throws (CodeRabbit
     // resource-leak finding on PR #27).
     exportDir.delete();
+  }
+}
+
+/**
+ * Save a finished zip into a folder THE USER PICKS on-device (Android SAF /
+ * iOS document picker). Primary export path per Kurt: "the first option
+ * should be to export it to the device file system." Falls back to the OS
+ * share sheet when the user cancels the picker or SAF is unavailable.
+ */
+export async function saveOkfToDevice(zipUri: string, fileName: string): Promise<void> {
+  const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (perms.granted) {
+    const destUri = await StorageAccessFramework.createFileAsync(
+      perms.directoryUri,
+      fileName,
+      'application/zip',
+    );
+    const file = new File(zipUri);
+    await StorageAccessFramework.writeAsStringAsync(destUri, await file.base64());
+    return;
+  }
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
   }
 }

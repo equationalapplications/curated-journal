@@ -3,7 +3,7 @@ import { Alert, Button, StyleSheet, View } from 'react-native';
 import { File } from 'expo-file-system';
 import { useWikiExport } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
-import { exportOkfFromDump } from '@/lib/okfExport';
+import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
 import { getModelPath, clearModelPath } from '@/lib/entityStorage';
 import { useJournal } from '@/contexts/JournalContext';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
@@ -48,11 +48,12 @@ export default function SettingsScreen() {
       />
       <Button title="Import OKF" onPress={() => router.push('/import')} />
       <Button
-        title="Export OKF"
+        title="Export OKF to device"
         onPress={async () => {
           try {
             const dump = await exportDump([entityId]);
-            await exportOkfFromDump(dump);
+            const zipUri = await exportOkfFromDump(dump, { share: false });
+            await saveOkfToDevice(zipUri, 'curated-journal-export.zip');
           } catch (error) {
             Alert.alert(
               'Export failed',
@@ -61,6 +62,17 @@ export default function SettingsScreen() {
           }
         }}
       />
+      <Button title="Share OKF export…" onPress={async () => {
+        try {
+          const dump = await exportDump([entityId]);
+          await exportOkfFromDump(dump);
+        } catch (error) {
+          Alert.alert(
+            'Export failed',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }} />
       <Button title="Change AI model" onPress={changeModel} />
     </View>
   );

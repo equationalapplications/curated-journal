@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, StyleSheet, View } from 'react-native';
+import { Alert, Button, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -26,36 +26,43 @@ export default function ImportScreen() {
     const id = Crypto.randomUUID();
     const zipDest = new File(Paths.cache, `import-${id}.zip`);
     const source = new File(picked.assets[0].uri);
-    source.copy(zipDest);
+    // MUST await: unzip raced this copy and opened a nonexistent file
+    // ("Could not open ZIP file", nitro-unzip IOException on device).
+    await source.copy(zipDest, { overwrite: true });
     const extractDir = new Directory(Paths.cache, `import-${id}`);
     extractDir.create({ idempotent: true });
-    setStatus('Extracting…');
-    const unzip = getUnzip();
-    const task = unzip.extract(zipDest.uri, extractDir.uri);
-    const result = await task.await();
-    if (result.totalBytes > MAX_ZIP_UNCOMPRESSED_BYTES) {
-      throw new Error('Archive exceeds maximum uncompressed size');
+    try {
+      setStatus('Extracting…');
+      const unzip = getUnzip();
+      const task = unzip.extract(zipDest.uri, extractDir.uri);
+      const result = await task.await();
+      if (result.totalBytes > MAX_ZIP_UNCOMPRESSED_BYTES) {
+        throw new Error('Archive exceeds maximum uncompressed size');
+      }
+      setStatus('Reading markdown…');
+      const files = await walkMarkdownFiles(extractDir.uri, {
+        listEntries: async (dir) => {
+          const d = new Directory(dir);
+          return d.list().map((entry) => ({
+            name: entry.name,
+            isDirectory: entry instanceof Directory,
+          }));
+        },
+        readText: async (path) => {
+          const file = new File(path);
+          return await file.text();
+        },
+      });
+      const dump = parseOkfBundle(entityId, files, { defaultSchema: 'fact' });
+      setStatus('Importing…');
+      await chunkedImportDump(wiki, dump, { merge: true, onProgress: setProgress });
+      await setManifest(entityId, { node_types: [], edge_types: [] }, { mode: 'emergent' });
+      setStatus('Done');
+      router.back();
+    } finally {
+      zipDest.delete();
+      extractDir.delete();
     }
-    setStatus('Reading markdown…');
-    const files = await walkMarkdownFiles(extractDir.uri, {
-      listEntries: async (dir) => {
-        const d = new Directory(dir);
-        return d.list().map((entry) => ({
-          name: entry.name,
-          isDirectory: entry instanceof Directory,
-        }));
-      },
-      readText: async (path) => {
-        const file = new File(path);
-        return await file.text();
-      },
-    });
-    const dump = parseOkfBundle(entityId, files, { defaultSchema: 'fact' });
-    setStatus('Importing…');
-    await chunkedImportDump(wiki, dump, { merge: true, onProgress: setProgress });
-    await setManifest(entityId, { node_types: [], edge_types: [] }, { mode: 'emergent' });
-    setStatus('Done');
-    router.back();
   };
 
   return (
@@ -66,7 +73,20 @@ export default function ImportScreen() {
       </ThemedText>
       <ThemedText>{status}</ThemedText>
       <ThemedText>{Math.round(progress * 100)}%</ThemedText>
-      <Button title="Pick OKF zip" onPress={() => void runImport()} />
+      <Button
+        title="Pick OKF zip"
+        onPress={async () => {
+          try {
+            await runImport();
+          } catch (error) {
+            setStatus('');
+            Alert.alert(
+              'Import failed',
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }}
+      />
     </View>
   );
 }
