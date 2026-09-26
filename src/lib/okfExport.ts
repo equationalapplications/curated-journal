@@ -52,13 +52,23 @@ export async function exportOkfFromDump(
 }
 
 /**
- * Save a finished zip into a folder THE USER PICKS on-device (Android SAF /
- * iOS document picker). Primary export path per Kurt: "the first option
- * should be to export it to the device file system." Falls back to the OS
- * share sheet when the user cancels the picker or SAF is unavailable.
+ * Save a finished zip into a folder THE USER PICKS on-device. Primary export
+ * path per Kurt: "the first option should be to export it to the device file
+ * system."
+ *
+ * SDK 57 grounded choices (docs + package source, Sep 2026):
+ * - `File.pickDirectoryAsync` is NOT public in 57.0.7 (internal types only).
+ * - The legacy SAF namespace (`expo-file-system/legacy`) is the supported
+ *   write-to-picked-folder API; `requestDirectoryPermissionsAsync` takes an
+ *   optional seed URI and `getUriForDirectoryInRoot('Download')` builds the
+ *   correct TREE-form URI. Seeding matters: without it the SAF dialog
+ *   reopens at the last-used provider (usually Drive), whose account-scoped
+ *   trees reject `createFileAsync` ("isn't writable" — device repro).
+ * Falls back to the OS share sheet when the user cancels the picker.
  */
 export async function saveOkfToDevice(zipUri: string, fileName: string): Promise<void> {
-  const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+  const downloadsRoot = StorageAccessFramework.getUriForDirectoryInRoot('Download');
+  const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync(downloadsRoot);
   if (perms.granted) {
     const destUri = await StorageAccessFramework.createFileAsync(
       perms.directoryUri,

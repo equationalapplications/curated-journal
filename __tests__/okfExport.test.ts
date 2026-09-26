@@ -53,6 +53,10 @@ jest.mock('expo-file-system', () => {
 jest.mock('expo-file-system/legacy', () => ({
   StorageAccessFramework: {
     requestDirectoryPermissionsAsync: jest.fn(),
+    getUriForDirectoryInRoot: jest.fn(
+      (folder: string) =>
+        `content://com.android.externalstorage.documents/tree/primary:${folder}/document/primary:${folder}`,
+    ),
     createFileAsync: jest.fn(async () => 'content://saf/created'),
     writeAsStringAsync: jest.fn(async () => {}),
   },
