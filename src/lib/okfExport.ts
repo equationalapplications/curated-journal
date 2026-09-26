@@ -17,24 +17,29 @@ export async function exportOkfFromDump(dump: MemoryDump): Promise<void> {
   const id = Crypto.randomUUID();
   const exportDir = new Directory(Paths.cache, `export-${id}`);
   exportDir.create({ idempotent: true });
-  // Deliberate profile pin (spec §5.3): the library default is already
-  // llm-wiki/2, but pinning it here means a future default flip cannot
-  // silently change our export format.
-  const { files } = formatOkfBundle(dump, { profile: 'llm-wiki/2' });
+  try {
+    // Deliberate profile pin (spec §5.3): the library default is already
+    // llm-wiki/2, but pinning it here means a future default flip cannot
+    // silently change our export format.
+    const { files } = formatOkfBundle(dump, { profile: 'llm-wiki/2' });
 
-  for (const file of files) {
-    const parts = file.path.split('/');
-    const fileName = parts.pop()!;
-    const parent = parts.length ? ensureDirectory(exportDir, parts.join('/')) : exportDir;
-    const out = new File(parent, fileName);
-    out.create({ overwrite: true });
-    out.write(file.content);
-  }
+    for (const file of files) {
+      const parts = file.path.split('/');
+      const fileName = parts.pop()!;
+      const parent = parts.length ? ensureDirectory(exportDir, parts.join('/')) : exportDir;
+      const out = new File(parent, fileName);
+      out.create({ overwrite: true });
+      out.write(file.content);
+    }
 
-  const zipPath = `${Paths.cache}export-${id}.zip`;
-  await zip(exportDir.uri, zipPath);
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(zipPath, { mimeType: 'application/zip' });
+    const zipFile = new File(Paths.cache, `export-${id}.zip`);
+    await zip(exportDir.uri, zipFile.uri);
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(zipFile.uri, { mimeType: 'application/zip' });
+    }
+  } finally {
+    // The temp dir is cleaned up even when zip/share throws (CodeRabbit
+    // resource-leak finding on PR #27).
+    exportDir.delete();
   }
-  exportDir.delete();
 }
