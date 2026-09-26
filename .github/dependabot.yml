@@ -1,0 +1,56 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Supply-chain age gate (mirrors expo-llm-wiki #152 / CT #103 policy):
+    # version updates are held 14 days after release; security updates are
+    # NEVER delayed by cooldown (GitHub applies cooldown to version updates
+    # only). First-party (@equationalapplications/*) releases bypass the
+    # gate entirely — never age-gated.
+    cooldown:
+      default-days: 14
+      exclude:
+        - "@equationalapplications/*"
+    # Grouped minor/patch keeps the PR count low; majors open individually
+    # and get their own compat review. llama.rn is excluded from the group:
+    # pre-1.0 "minor" releases (0.x) are breaking by convention and it is a
+    # native module, so its bumps always get a dedicated compat PR.
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+    # Expo SDK family: version bumps move ONLY through `npx expo install
+    # --fix` + `npx expo-doctor@latest`, never bare Dependabot PRs. Listed
+    # EXPLICITLY (not via react-native-*) so that third-party RN libraries
+    # that parse untrusted input — react-native-markdown-display,
+    # react-native-zip-archive, react-native-nitro-unzip — keep getting
+    # Dependabot security PRs.
+    #
+    # CAVEAT (by design): Dependabot applies `ignore` to SECURITY updates
+    # too, so CVE-fix PRs for the packages below are suppressed. Expo-family
+    # vulnerability triage runs manually: `npm audit` + expo-doctor, bump
+    # via expo install, jest/tsc gates before push.
+    ignore:
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-gesture-handler"
+      - dependency-name: "react-native-reanimated"
+      - dependency-name: "react-native-safe-area-context"
+      - dependency-name: "react-native-screens"
+      - dependency-name: "react-native-web"
+      - dependency-name: "react-native-worklets"
+      - dependency-name: "@types/react"
+      - dependency-name: "@shopify/react-native-skia"
+      - dependency-name: "jest-expo"
+      - dependency-name: "eslint-config-expo"
+      - dependency-name: "llama.rn"
+        update-types:
+          - "version-update:semver-minor"
