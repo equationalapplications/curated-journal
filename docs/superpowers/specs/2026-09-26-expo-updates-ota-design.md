@@ -110,10 +110,14 @@ the v1.1.0 lesson: never hand-patch generated `android/`).
      `expo-channel-name: production` + `runtimeVersion` in the generated
      `AndroidManifest.xml` → local Gradle build (heavy-build wrapper) → APK install. This
      binary has runtime `1.1.0` etc. and channel `production`.
-   - OTA fix: `eas update --branch production -m "message"` **from the release tag (or a
-     commit whose `expo.version` equals the installed binaries' version)** — never from a
-     tree with a bumped-but-unreleased `version`, which would publish to a runtime no
-     installed binary matches (silent zero-device publish). Before/after publishing, verify
+   - OTA fix: `eas update --branch production --environment production -m "message"`
+     **from the release tag (or a commit whose `expo.version` equals the installed
+     binaries' version)** — never from a tree with a bumped-but-unreleased `version`, which
+     would publish to a runtime no installed binary matches (silent zero-device publish).
+     The `--environment` flag is REQUIRED on SDK 55+ projects (eas-cli enforces it; it
+     selects server-side EAS environment variables for the publish). Note the flag exists
+     only on `eas update` — the §5 rollback subcommands have no `--environment` option and
+     work without it. Before/after publishing, verify
      the update landed on the expected runtime via `eas update:list --branch production`.
      Reaches all installed 1.1.0 binaries on their next two launches (check → download →
      apply on restart).
@@ -139,8 +143,9 @@ production` (republish a known-good prior update group) or, if the running updat
 catastrophically broken, `eas update:roll-back-to-embedded` sends clients back to the
 binary's embedded bundle; `eas channel:pause production` halts new downloads fleet-wide
 while a fix is prepared. All three are manual server-side commands — no app code or new
-binary required. Until the first post-release OTA exists, the embedded bundle is the last
-good state by definition.
+binary required, and none of them takes the `--environment` flag (that flag exists only
+on `eas update`; verified against installed eas-cli `--help`). Until the first
+post-release OTA exists, the embedded bundle is the last good state by definition.
 
 ## 6. Testing / Verification
 
@@ -206,3 +211,8 @@ good state by definition.
   `channel:pause` all present). No new Critical/Important issues. Two non-blocking notes
   (configure-command attribution; §9 verdict pre-declaration) were fixed in this same
   revision.
+- Gemini external feedback (relayed by Kurt via CodeRabbit thread, 2026-09-26): claimed the
+  SDK 55+ `--environment` flag was missing from publish AND rollback commands. Verified
+  against installed eas-cli before editing: mandatory on `eas update` (§4.7 fixed — flag
+  added), but the §5 rollback subcommands have no such flag, so Gemini's fix #2 was
+  rejected as written; §5 now documents the asymmetry explicitly.
