@@ -50,8 +50,15 @@ export default function SettingsScreen() {
       <Button
         title="Export OKF"
         onPress={async () => {
-          const dump = await exportDump([entityId]);
-          await exportOkfFromDump(dump);
+          try {
+            const dump = await exportDump([entityId]);
+            await exportOkfFromDump(dump);
+          } catch (error) {
+            Alert.alert(
+              'Export failed',
+              error instanceof Error ? error.message : String(error),
+            );
+          }
         }}
       />
       <Button title="Change AI model" onPress={changeModel} />

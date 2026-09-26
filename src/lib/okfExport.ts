@@ -31,10 +31,10 @@ export async function exportOkfFromDump(dump: MemoryDump): Promise<void> {
     out.write(file.content);
   }
 
-  const zipPath = `${Paths.cache}export-${id}.zip`;
-  await zip(exportDir.uri, zipPath);
+  const zipFile = new File(Paths.cache, `export-${id}.zip`);
+  await zip(exportDir.uri, zipFile.uri);
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(zipPath, { mimeType: 'application/zip' });
+    await Sharing.shareAsync(zipFile.uri, { mimeType: 'application/zip' });
   }
   exportDir.delete();
 }
