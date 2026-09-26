@@ -5,22 +5,41 @@ updates:
     schedule:
       interval: "weekly"
     # Supply-chain age gate (mirrors expo-llm-wiki #152 / CT #103 policy):
-    # version updates wait 14 days after registry publish before Dependabot opens a PR.
-    # Security updates are NOT delayed by cooldown. Verified valid for the npm
-    # ecosystem per GitHub docs (Dependabot options reference) — 2026-09-26.
+    # version updates are held 14 days after release; security updates are
+    # NEVER delayed by cooldown (GitHub applies cooldown to version updates
+    # only). First-party packages bypass the gate so Kurt's releases land
+    # immediately.
     cooldown:
       default-days: 14
+      exclude:
+        - "@equationalapplications/*"
+    # Grouped minor/patch keeps the PR count low; majors open individually
+    # and get their own compat review.
     groups:
       minor-and-patch:
         update-types:
           - "minor"
           - "patch"
-    allow:
-      - dependency-type: "all"
+    open-pull-requests-limit: 5
+    # Expo SDK family: version bumps move ONLY through `npx expo install
+    # --fix` + `npx expo-doctor@latest`, never bare Dependabot PRs. Globs
+    # below cover the scoped (@expo/*), nested (react-native-*), tooling
+    # (jest-expo, eslint-config-expo) and type (@types/react) members so
+    # no grouped bump can desync an SDK-matched package.
+    #
+    # CAVEAT (by design): Dependabot applies `ignore` to SECURITY updates
+    # too, so CVE-fix PRs for these packages are suppressed. Expo-family
+    # vulnerability triage runs manually: `npm audit` + expo-doctor, bump
+    # via expo install, jest/tsc gates before push.
     ignore:
-      # Expo SDK family must move only with `npx expo-doctor@latest` verification
       - dependency-name: "expo"
       - dependency-name: "expo-*"
-      - dependency-name: "react-native"
+      - dependency-name: "@expo/*"
       - dependency-name: "react"
       - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@types/react"
+      - dependency-name: "@shopify/react-native-skia"
+      - dependency-name: "jest-expo"
+      - dependency-name: "eslint-config-expo"
