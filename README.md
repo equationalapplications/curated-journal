@@ -144,6 +144,25 @@ npx expo start --dev-client
 
 In Settings, pick a local `.gguf` via the document picker. Until a model is loaded, the app uses a deterministic mock LLM for chat and maintenance demos. **Night Shift** requires a loaded model and a charging power state.
 
+### OTA updates (EAS Update)
+
+JS-level fixes and assets can be published over-the-air without a native rebuild. Full design: `docs/superpowers/specs/2026-09-26-expo-updates-ota-design.md`.
+
+- Release builds check for updates on launch and apply them on the next restart (expo-updates defaults, `ON_LOAD` / `fallbackToCacheTimeout: 0`).
+- Runtime compatibility is keyed to `expo.version` (`runtimeVersion.policy: appVersion`) — a published bundle only reaches binaries whose version matches.
+- Release APKs are built **locally** (Gradle wrapper + heavy-build procedure), so the update channel is embedded from `expo.updates.requestHeaders` at prebuild — the `eas.json` `production` profile's `channel` field is only consumed by `eas build`.
+- The server-side `production` channel is created once with `eas channel:create production`.
+
+**Publishing an OTA fix (manual, Kurt-run):**
+
+```bash
+# from the release tag / a commit whose expo.version matches installed binaries
+eas update --branch production --environment production -m "message"
+eas update:list --branch production   # verify it landed on the expected runtime
+```
+
+**Rollback (manual):** `eas update:republish --branch production` (revert to a known-good update group), `eas update:roll-back-to-embedded` (clients fall back to the binary's embedded bundle), or `eas channel:pause production` (halt downloads fleet-wide). None of these take `--environment`.
+
 ---
 
 ## Helpful links
