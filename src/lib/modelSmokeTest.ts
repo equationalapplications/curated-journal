@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { initLlama } from 'llama.rn';
+import { initLlama } from '@/lib/llamaRuntime';
 import { File } from 'expo-file-system';
 import type { LlamaModelConfig } from '@/catalog/modelManifest';
 
@@ -24,6 +24,8 @@ export async function runModelSmokeTest(input: {
             { role: 'user', content: 'Go' },
           ],
           n_predict: 10,
+          jinja: true,
+          enable_thinking: false,
         },
         () => undefined,
       );

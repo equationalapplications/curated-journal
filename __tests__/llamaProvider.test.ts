@@ -1,6 +1,7 @@
 import { initLlama } from 'llama.rn';
 import {
   createLlamaProvider,
+  LLM_MAX_PREDICT_TOKENS,
   releaseContext,
   setNightShiftActive,
   subscribeNightShiftLlmProgress,
@@ -32,6 +33,22 @@ describe('createLlamaProvider', () => {
     const provider = createLlamaProvider({ modelPath: '/m2.gguf' });
     await provider.generateText({ systemPrompt: 's', userPrompt: 'u' });
     expect(initLlama).toHaveBeenCalledWith(expect.objectContaining({ use_mlock: true }));
+  });
+
+  it('disables thinking so core-llm-wiki receives raw JSON', async () => {
+    const completion = jest.fn(async () => ({ text: '{}' }));
+    jest.mocked(initLlama).mockResolvedValueOnce({ completion, release: jest.fn() } as never);
+    const provider = createLlamaProvider({ modelPath: '/m4.gguf' });
+    await provider.generateText({ systemPrompt: 's', userPrompt: 'u' });
+    expect(completion).toHaveBeenCalledWith(
+      expect.objectContaining({ jinja: true, enable_thinking: false, n_predict: LLM_MAX_PREDICT_TOKENS }),
+      expect.any(Function),
+    );
+  });
+
+  it('advertises its output budget to the wiki as maxOutputTokens', () => {
+    const provider = createLlamaProvider({ modelPath: '/m5.gguf' });
+    expect(provider.maxOutputTokens).toBe(LLM_MAX_PREDICT_TOKENS);
   });
 
   it('streams token progress while night shift is active', async () => {
@@ -81,7 +98,7 @@ describe('createLlamaProvider', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0]?.[0]).toEqual({
       tokensGenerated: 0,
-      maxTokens: 512,
+      maxTokens: LLM_MAX_PREDICT_TOKENS,
       isGenerating: false,
     });
 

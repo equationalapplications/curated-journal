@@ -44,10 +44,10 @@ describe('entityStorage', () => {
   });
 
   it('round-trips model id', async () => {
-    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce('deep-thinker');
-    await expect(getModelId()).resolves.toBe('deep-thinker');
-    await setModelId('deep-thinker');
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(MODEL_ID_KEY, 'deep-thinker');
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce('smarter-slower');
+    await expect(getModelId()).resolves.toBe('smarter-slower');
+    await setModelId('smarter-slower');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(MODEL_ID_KEY, 'smarter-slower');
   });
 
   it('round-trips display name', async () => {

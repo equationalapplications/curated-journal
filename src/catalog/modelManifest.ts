@@ -1,4 +1,6 @@
-export type CuratedModelId = 'fast-light' | 'deep-thinker';
+// 'deep-thinker' is reserved for a future reasoning-enabled tier (e.g. Qwen3.5-9B);
+// see the model-hub spec §4.4.
+export type CuratedModelId = 'fast-light' | 'smarter-slower';
 
 export type LlamaModelConfig = {
   contextSize: number;
@@ -29,28 +31,32 @@ export const MODEL_CATALOG: CuratedModel[] = [
   {
     id: 'fast-light',
     displayName: 'Fast & Light',
-    tagline: 'Best for everyday journaling. Fast responses, gentle on battery.',
-    sizeLabel: '~2.3 GB',
-    // HF commit a64113399c2f6b8ad3e11c394733a2ddadaa7f33
-    sizeBytes: 2393231072,
+    tagline: 'Quick, dependable answers for everyday journaling. Sized for phones like the Pixel 6.',
+    sizeLabel: '~2.4 GB',
+    // HF commit a06e946bb6b655725eafa393f4a9745d460374c9
+    // Q4_0 rather than Q4_K_M: llama.cpp repacks Q4_0 for faster ARM CPU inference,
+    // and Android runs CPU-only here (nGpuLayers defaults to 0).
+    sizeBytes: 2375773280,
     hfUrl:
-      'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf',
-    filename: 'phi-3-mini-4k-instruct-q4.gguf',
-    llamaConfig: { contextSize: 4096, useMlock: true },
+      'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_0.gguf',
+    filename: 'qwen3-4b-instruct-2507-q4_0.gguf',
+    llamaConfig: { contextSize: 8192, useMlock: true },
     deviceHint: 'all',
   },
   {
-    id: 'deep-thinker',
-    displayName: 'Deep Thinker',
-    tagline: 'Richer synthesis and emergent ontology. Works on most modern phones and tablets.',
-    sizeLabel: '~2.0 GB',
-    // HF commit 7dabda4d13d513e3e842b20f0d435c732f172cbe
-    sizeBytes: 2104932768,
-    hfUrl:
-      'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf',
-    filename: 'qwen2.5-3b-instruct-q4_k_m.gguf',
-    llamaConfig: { contextSize: 4096, useMlock: false },
-    deviceHint: 'all',
+    id: 'smarter-slower',
+    displayName: 'Smarter & Slower',
+    tagline: 'Richer synthesis and emergent ontology. Best on newer iPhones and flagship phones.',
+    sizeLabel: '~2.7 GB',
+    // HF commit e87f176479d0855a907a41277aca2f8ee7a09523
+    // Runs with thinking disabled (see llamaProvider); a reasoning tier would be 'deep-thinker'.
+    sizeBytes: 2740937888,
+    hfUrl: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
+    filename: 'qwen3.5-4b-q4_k_m.gguf',
+    llamaConfig: { contextSize: 8192, useMlock: false },
+    deviceHint: 'recommended-high-ram',
+    deviceWarning:
+      'This model works best on newer phones and tablets with 8 GB or more RAM. It may be slow or unstable on older devices.',
   },
 ];
 

@@ -1,8 +1,11 @@
 import { AppState, Platform } from 'react-native';
 import type { LLMProvider } from '@equationalapplications/core-llm-wiki';
-import { initLlama, type LlamaContext } from 'llama.rn';
+import type { LlamaContext } from 'llama.rn';
+import { initLlama } from '@/lib/llamaRuntime';
 
-export const LLM_MAX_PREDICT_TOKENS = 512;
+// core-llm-wiki facts carry bodies up to 800 chars; 512 tokens truncated multi-fact
+// librarian/heal JSON. Also passed to the wiki as maxOutputTokens to size batches.
+export const LLM_MAX_PREDICT_TOKENS = 2048;
 
 export type NightShiftLlmProgress = {
   tokensGenerated: number;
@@ -95,6 +98,7 @@ export function createLlamaProvider(config: {
   }
 
   return {
+    maxOutputTokens: LLM_MAX_PREDICT_TOKENS,
     generateText: async ({ systemPrompt, userPrompt }) => {
       const ctx = await ensureContext();
       let tokenCount = 0;
@@ -112,7 +116,13 @@ export function createLlamaProvider(config: {
               { role: 'user', content: userPrompt },
             ],
             n_predict: LLM_MAX_PREDICT_TOKENS,
+            // Qwen's recommended non-thinking sampling. Thinking must stay off:
+            // core-llm-wiki parses from the first '{', so reasoning text breaks it.
+            jinja: true,
+            enable_thinking: false,
             temperature: 0.7,
+            top_p: 0.8,
+            top_k: 20,
           },
           () => {
             if (!nightShiftActive) return;
