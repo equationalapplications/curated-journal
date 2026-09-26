@@ -50,6 +50,16 @@ updates:
       - dependency-name: "@types/react"
       - dependency-name: "@shopify/react-native-skia"
       - dependency-name: "jest-expo"
+      # jest / @types/jest: majors ride the jest-expo (Expo SDK) train only.
+      # jest-expo@~57.0.5 is built on Jest 29 internals (babel-jest ^29,
+      # @jest/globals ^29), so a bare jest 30 bump creates a mixed runner/
+      # environment tree that even green tests can't validate — see PR #16.
+      - dependency-name: "jest"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "@types/jest"
+        update-types:
+          - "version-update:semver-major"
       - dependency-name: "eslint-config-expo"
       - dependency-name: "llama.rn"
         update-types:
