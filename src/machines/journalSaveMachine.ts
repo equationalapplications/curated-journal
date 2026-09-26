@@ -22,7 +22,14 @@ import type { IngestResult } from '@/lib/ingestReport';
  */
 
 export type JournalSaveMachineEvents =
-  | { type: 'START_SAVE'; title: string; body: string }
+  | {
+      type: 'START_SAVE';
+      title: string;
+      body: string;
+      /** Live engine binding — carried per-event so a Fast-Refreshed provider never strands a save on a dead closure. */
+      entityId: string;
+      ingest: JournalSaveMachineInput['ingest'];
+    }
   | { type: 'RETRY' }
   | { type: 'DISMISS' }
   /** Abort an in-flight save. Leaving the state stops the invoked actor, so its timeout can never fire afterwards. */
@@ -40,6 +47,9 @@ export type JournalSaveMachineInput = {
 };
 
 type SaveInput = { title: string; body: string };
+
+type StartSaveEvent = Extract<JournalSaveMachineEvents, { type: 'START_SAVE' }>;
+type Evt<T> = { event: T };
 
 type Context = {
   entityId: string;
@@ -116,7 +126,9 @@ export const journalSaveMachine = setup({
         START_SAVE: {
           target: 'hashing',
           actions: assign({
-            input: ({ event }) => ({ title: event.title, body: event.body }),
+            input: ({ event }: Evt<StartSaveEvent>) => ({ title: event.title, body: event.body }),
+            entityId: ({ event }: Evt<StartSaveEvent>) => event.entityId,
+            ingest: ({ event }: Evt<StartSaveEvent>) => event.ingest,
             lastError: null,
             lastResult: null,
           }),
@@ -129,7 +141,9 @@ export const journalSaveMachine = setup({
         START_SAVE: {
           target: 'hashing',
           actions: assign({
-            input: ({ event }) => ({ title: event.title, body: event.body }),
+            input: ({ event }: Evt<StartSaveEvent>) => ({ title: event.title, body: event.body }),
+            entityId: ({ event }: Evt<StartSaveEvent>) => event.entityId,
+            ingest: ({ event }: Evt<StartSaveEvent>) => event.ingest,
             lastError: null,
             lastResult: null,
           }),
@@ -176,7 +190,9 @@ export const journalSaveMachine = setup({
         START_SAVE: {
           target: 'hashing',
           actions: assign({
-            input: ({ event }) => ({ title: event.title, body: event.body }),
+            input: ({ event }: Evt<StartSaveEvent>) => ({ title: event.title, body: event.body }),
+            entityId: ({ event }: Evt<StartSaveEvent>) => event.entityId,
+            ingest: ({ event }: Evt<StartSaveEvent>) => event.ingest,
             lastError: null,
             lastResult: null,
           }),
@@ -193,7 +209,7 @@ export const journalSaveMachine = setup({
         START_SAVE: {
           target: 'hashing',
           actions: assign({
-            input: ({ event }) => ({ title: event.title, body: event.body }),
+            input: ({ event }: Evt<StartSaveEvent>) => ({ title: event.title, body: event.body }),
             lastError: null,
             lastResult: null,
           }),
