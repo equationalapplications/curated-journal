@@ -67,7 +67,8 @@ export function NightShiftScreen() {
   });
 
   useEffect(() => {
-    void activateKeepAwakeAsync('night-shift');
+    // Best-effort: browsers may deny the Wake Lock (e.g. hidden tab).
+    activateKeepAwakeAsync('night-shift').catch(() => {});
     setNightShiftActive(true);
     setHasStartedNightShift(true);
     send({
