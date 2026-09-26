@@ -37,8 +37,10 @@ describe('useNightShiftGates', () => {
     it('starts with a model even when the browser reports no battery state', async () => {
       setPlatformOS('web');
       BATTERY.getPowerStateAsync.mockResolvedValue({
+        batteryLevel: 0.5,
         batteryState: Battery.BatteryState.UNKNOWN,
-      } as Battery.BatteryState);
+        lowPowerMode: false,
+      });
       STORE.mockResolvedValue('/docs/model.gguf');
 
       const { result } = await renderHook(() => useNightShiftGates());
@@ -51,8 +53,10 @@ describe('useNightShiftGates', () => {
   describe('native (charging gate preserved)', () => {
     it('starts when charging and a model is present', async () => {
       BATTERY.getPowerStateAsync.mockResolvedValue({
+        batteryLevel: 0.5,
         batteryState: Battery.BatteryState.CHARGING,
-      } as Battery.BatteryState);
+        lowPowerMode: false,
+      });
       STORE.mockResolvedValue('/docs/model.gguf');
 
       const { result } = await renderHook(() => useNightShiftGates());
@@ -62,8 +66,10 @@ describe('useNightShiftGates', () => {
 
     it('stays blocked when the battery state is unknown', async () => {
       BATTERY.getPowerStateAsync.mockResolvedValue({
+        batteryLevel: 0.5,
         batteryState: Battery.BatteryState.UNKNOWN,
-      } as Battery.BatteryState);
+        lowPowerMode: false,
+      });
       STORE.mockResolvedValue('/docs/model.gguf');
 
       const { result } = await renderHook(() => useNightShiftGates());
