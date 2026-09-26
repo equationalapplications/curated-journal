@@ -7,7 +7,7 @@
     "@equationalapplications/expo-llm-wiki": "7.7.4",
     "@expo/ui": "~57.0.20",
     "@shopify/react-native-skia": "2.6.2",
-    "@xstate/react": "^5.0.5",
+    "@xstate/react": "^6.1.0",
     "d3-force": "^3.0.0",
     "expo": "~57.0.25",
     "expo-application": "~57.0.3",
