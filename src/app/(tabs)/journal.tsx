@@ -87,18 +87,31 @@ export default function JournalScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.toggle}>
-        <Pressable onPress={() => setPaneMode('notes')} style={paneMode === 'notes' && styles.activeTab}>
-          <ThemedText type="smallBold">Notes</ThemedText>
-        </Pressable>
-        <Pressable onPress={() => setPaneMode('chat')} style={paneMode === 'chat' && styles.activeTab}>
-          <ThemedText type="smallBold">Chat</ThemedText>
-        </Pressable>
+      <View style={styles.toggle} accessibilityRole="tablist">
+        <PaneTab
+          label="Notes"
+          selected={paneMode === 'notes'}
+          onPress={() => {
+            // Re-selecting Notes while reading a note returns to the list.
+            setSelectedFactId(null);
+            setPaneMode('notes');
+          }}
+        />
+        <PaneTab label="Chat" selected={paneMode === 'chat'} onPress={() => setPaneMode('chat')} />
       </View>
       {items.length === 0 && paneMode === 'notes' ? <TutorialCard /> : null}
       {paneMode === 'notes' ? (
         selectedFactId ? (
-          <JournalPane facts={data?.facts} />
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="All notes"
+              onPress={() => setSelectedFactId(null)}
+              style={styles.back}>
+              <ThemedText type="link">‹ All notes</ThemedText>
+            </Pressable>
+            <JournalPane facts={data?.facts} />
+          </>
         ) : (
           <JournalList
             items={items}
@@ -111,6 +124,30 @@ export default function JournalScreen() {
         <SynthesisPane />
       )}
     </View>
+  );
+}
+
+function PaneTab({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}>
+      <ThemedView type={selected ? 'backgroundSelected' : 'background'} style={styles.paneTab}>
+        <ThemedText type="smallBold" themeColor={selected ? 'text' : 'textSecondary'}>
+          {label}
+        </ThemedText>
+      </ThemedView>
+    </Pressable>
   );
 }
 
@@ -133,6 +170,7 @@ const styles = StyleSheet.create({
   readPane: { flex: 0.35, borderLeftWidth: StyleSheet.hairlineWidth },
   chatPane: { flex: 0.35, borderLeftWidth: StyleSheet.hairlineWidth },
   toggle: { flexDirection: 'row', gap: 8, padding: 12 },
-  activeTab: { opacity: 0.6 },
+  paneTab: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12 },
+  back: { paddingHorizontal: 12, paddingTop: 4 },
   tutorial: { margin: 12, padding: 12, borderRadius: 8, gap: 6 },
 });
