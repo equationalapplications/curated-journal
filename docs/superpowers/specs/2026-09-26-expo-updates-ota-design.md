@@ -24,8 +24,10 @@ Verified current state [V — read directly from repo @ `4dde074`]:
   docs.expo.dev/versions/v57.0.0/sdk/updates).
 - `eas.json` defines a single `development` profile (`developmentClient: true`,
   internal-distribution APK). No production/preview profiles exist.
-- `eas-cli` is authenticated on this machine as `equationalapplicationsllc`; the project is
-  linked (`extra.eas.projectId: 7bfd46bc-09d3-40d0-a3af-1ea0ea77304b` in `app.json`).
+- `eas-cli` is authenticated **on this machine** as `equationalapplicationsllc` (machine-local
+  environment state, not project state; configure/publish steps run from Kurt's authenticated
+  shell). The project is linked (`extra.eas.projectId: 7bfd46bc-09d3-40d0-a3af-1ea0ea77304b`
+  in `app.json`).
 - Vault policy: EAS is the sanctioned platform for what local builds cannot do
   (`agents/services/cloud/expo.md`); v1.1.0's APK was deliberately built locally to keep the
   EAS build budget untouched. EAS **Update** (JS bundle publishing) is a different, much
@@ -36,7 +38,7 @@ Verified current state [V — read directly from repo @ `4dde074`]:
 | ID | Goal |
 |----|------|
 | G1 | JS-level fixes and asset updates can be published OTA with `eas update`, without a native rebuild. |
-| G2 | Release-build binaries automatically check for and apply updates on launch (default `ON_LOAD` behavior; update applies on next restart — expo-updates default, safe). |
+| G2 | Release-build binaries automatically check for updates on launch and apply an update on the next restart (default `ON_LOAD`; expo-updates default, safe). |
 | G3 | Update/runtime compatibility is enforced by a `runtimeVersion` policy so an OTA bundle can never be served to an incompatible native binary. |
 | G4 | Development builds are unaffected: dev-client continues loading from the Metro dev server (expo-updates is inactive in dev mode by default). |
 | G5 | `npx tsc --noEmit`, `npm run lint`, and `npx jest` stay green in CI (no behavior change in the tested JS surface). |
@@ -61,9 +63,10 @@ the v1.1.0 lesson: never hand-patch generated `android/`).
    recommended version, pinned to the `~57.0.x` range like every other expo package).
 2. **App config:** run `npx eas update:configure`, which writes into `app.json`:
    - `"updates": { "url": "https://u.expo.dev/7bfd46bc-…" }` (project-linked URL)
-   - `"runtimeVersion": { "policy": "appVersion" }`
-   And adds channel mapping for build profiles in `eas.json`.
-3. **Runtime version policy — `appVersion`** (deliberate choice):
+   And adds channel mapping for build profiles in `eas.json`. The `runtimeVersion` policy
+   is authored in app config directly (next item), not written by that command.
+3. **Runtime version policy — `appVersion`** (deliberate choice; authored as
+   `"runtimeVersion": { "policy": "appVersion" }` in `app.json`):
    - Runtime version = the `expo.version` string (currently `"1.1.0"`).
    - Fits this repo's flow: `version` is bumped for every release (1.0.0 → 1.1.0 in the CI
      PR), and each release carries native changes, so a new runtime per release is exactly
@@ -73,26 +76,48 @@ the v1.1.0 lesson: never hand-patch generated `android/`).
      collapse distinct builds to one runtime, and the format couples two version systems for
      no benefit here.
    - Rejected `fingerprint`: strongest guarantee (hashes the whole native project), but it
-     requires the fingerprint toolchain at every publish and is opaque for debugging; the
-     app-version discipline already in place gives the same safety with less machinery.
-     Revisit if we ever ship an OTA bundle against a binary whose `version` string did not
-     change but whose native code did (that must not happen; the release checklist bumps
-     `version` on every native release).
+     requires the fingerprint toolchain at every publish and is opaque for debugging. The
+     app-version policy is a **procedural guardrail**, not equivalent safety: it is only as
+     good as the release checklist rule that `version` is bumped on every native release.
+     Accepted residual risk: an OTA published from a tree whose `version` didn't move after
+     native changes would be served to incompatible binaries. Mitigated by the publish rule
+     in §4.6 (publish from the release tag; verify resolved runtime before/after publish).
+     Revisit the policy if that rule ever becomes hard to follow.
 4. **Check behavior:** keep the defaults — `checkAutomatically: ON_LOAD`,
    `fallbackToCacheTimeout: 0`. Launch never blocks on the network; the app starts on the
    embedded/last-good update and a new update applies on the next restart. This is the
    brick-safe default (anti-bricking measures stay enabled).
-5. **eas.json:** add a `production` profile (`distribution: internal`, `buildType: apk`,
-   `channel: production`) so the next local release APK embeds the `production` channel.
-   The existing `development` profile keeps the dev-client setup (its channel is
-   `development`; irrelevant in practice since dev builds load from Metro).
-6. **Publishing workflow (documented in README, executed manually):**
-   - Native release: bump `version` → `npx expo prebuild --clean` → local Gradle build
-     (heavy-build wrapper) → APK install. This binary has runtime `1.1.0` etc.
-   - OTA fix: `eas update --branch production -m "message"` from a commit whose JS is
-     compatible with the current native runtime. Reaches all installed 1.1.0 binaries on
-     their next two launches (check → download → apply on restart).
-7. **JS API:** none added in this PR. The library's default launch behavior covers G2; a
+5. **Channel embedding for local builds (critical design point).** A binary only receives
+   updates from a branch when it embeds a matching **channel** at build time. When building
+   with EAS Build, `eas-cli` injects the channel from the eas.json build profile into the
+   native manifest. This repo builds release APKs **locally** via the Gradle wrapper
+   (heavy-build wrapper), which never reads eas.json — so the channel must be embedded
+   **manually**, per the Expo docs for using EAS Update without EAS Build
+   (docs.expo.dev/eas-update/standalone-service):
+   - app config: `expo.updates.requestHeaders: { "expo-channel-name": "production" }`
+     (embedded into native manifests at prebuild as `EXUpdatesRequestHeaders`);
+   - server side: `eas channel:create production` (one-time), linked to the `production`
+     branch.
+   Without both, a published OTA "succeeds" and reaches zero devices, silently. The
+   dev-client setup is unaffected (dev builds load from Metro); the `development` profile
+   would carry `channel: development` only after `eas update:configure`, which is likewise
+   irrelevant in practice.
+6. **eas.json:** add a `production` profile (`distribution: internal`, `buildType: apk`,
+   `channel: production`) for documentation and any future `eas build` use; the operative
+   channel embedding for local builds is the §4.5 request header, not this profile.
+7. **Publishing workflow (documented in README, executed manually):**
+   - Native release: bump `version` → `npx expo prebuild --clean` → verify
+     `expo-channel-name: production` + `runtimeVersion` in the generated
+     `AndroidManifest.xml` → local Gradle build (heavy-build wrapper) → APK install. This
+     binary has runtime `1.1.0` etc. and channel `production`.
+   - OTA fix: `eas update --branch production -m "message"` **from the release tag (or a
+     commit whose `expo.version` equals the installed binaries' version)** — never from a
+     tree with a bumped-but-unreleased `version`, which would publish to a runtime no
+     installed binary matches (silent zero-device publish). Before/after publishing, verify
+     the update landed on the expected runtime via `eas update:list --branch production`.
+     Reaches all installed 1.1.0 binaries on their next two launches (check → download →
+     apply on restart).
+8. **JS API:** none added in this PR. The library's default launch behavior covers G2; a
    manual `Updates.checkForUpdateAsync()` flow is NG1 territory.
 
 ## 5. Data Flow / Behavior
@@ -109,6 +134,14 @@ Error handling is the library's built-in behavior: failed/invalid updates fall b
 embedded or last-known-good update; `ON_ERROR_RECOVERY` semantics apply on the next launch
 after a crash-inducing update. No app code participates.
 
+**Rollback story (I2):** a bad OTA is reverted with `eas update:republish --branch
+production` (republish a known-good prior update group) or, if the running update is
+catastrophically broken, `eas update:roll-back-to-embedded` sends clients back to the
+binary's embedded bundle; `eas channel:pause production` halts new downloads fleet-wide
+while a fix is prepared. All three are manual server-side commands — no app code or new
+binary required. Until the first post-release OTA exists, the embedded bundle is the last
+good state by definition.
+
 ## 6. Testing / Verification
 
 - CI gates stay green: `tsc --noEmit`, `eslint`, `jest` (config-only change + one dependency;
@@ -117,25 +150,59 @@ after a crash-inducing update. No app code participates.
 - Config verification: `npx expo config --type public` shows `updates.url` +
   `runtimeVersion` policy resolved; `npx expo prebuild --clean` produces native manifests
   containing `expo.modules.updates.EXPO_UPDATE_URL` / `EXUpdatesRuntimeVersion` /
-  `EXUpdatesCheckOnLaunch` meta-data (spot-checked in generated `android/app/src/main/AndroidManifest.xml`,
-  which is then discarded — CNG).
+  `EXUpdatesCheckOnLaunch` meta-data **and the `EXUpdatesRequestHeaders` block carrying
+  `expo-channel-name: production`** (spot-checked in generated
+  `android/app/src/main/AndroidManifest.xml`, which is then discarded — CNG).
 - Live OTA verification (follow-up task, needs a device with the next release APK):
   publish a trivial update, confirm it lands on device. Documented as an open follow-up;
   not a merge blocker since a locally built release APK with the new config doesn't exist yet.
 
 ## 7. Out of Scope / Open Questions
 
-- **Open question (non-blocking):** whether the next release APK should be built before or
-  after this merges. Either order works — the config only matters at the next prebuild.
+- **Open question (blocking before the next native release, not before merge):** whether
+  the next release APK should be built before or after this merges. Either order works for
+  the merge itself — the config only matters at the next prebuild — but the release build
+  MUST come after this config lands on main (it needs the channel header + `updates.url`).
+- **Open question (Kurt decision, non-blocking):** confirm `production` as the channel /
+  branch name and that manual `eas update` publishing is the desired operating procedure
+  (vault: OTA manual per Kurt — assumed yes).
 - **Follow-up:** versionCode automation (vault open item) before any store-class release;
   becomes more relevant if we later switch to the `nativeVersion` policy.
 - **Follow-up:** optional in-app "update downloaded, restart?" snackbar (NG1).
-- **Follow-up:** live on-device OTA smoke test (§6).
+- **Follow-up:** live on-device OTA smoke test (§6), including one rollback drill
+  (`eas update:republish`) once real updates exist.
 
 ## 8. References
 
 - Expo SDK 57 Updates docs: https://docs.expo.dev/versions/v57.0.0/sdk/updates (read; the
   repo AGENTS.md requires versioned-docs reading before code).
 - EAS Update getting started: https://docs.expo.dev/eas-update/getting-started
+- EAS Update without EAS Build (manual channel config):
+  https://docs.expo.dev/eas-update/standalone-service (read; basis for §4.5)
+- Rollbacks: https://docs.expo.dev/eas-update/rollbacks (`republish`,
+  `roll-back-to-embedded`, `channel:pause` — basis for §5 rollback story)
 - Vault: `agents/services/cloud/expo.md` (EAS = build/OTA platform; OTA manual per Kurt);
   `agents/software/curated-journal/curated-journal.md` (v1.1.0 state, heavy-build lesson).
+
+## 9. Review Record
+
+- Self-review (Tessera, session default model): pass — findings folded in before commit.
+- Independent GLM 5.3 review (per `tessera-glm53-review-procedure.md`, 2026-09-26): verdict
+  **Changes requested** → all findings accepted and applied in this revision:
+  - C1 (critical): local Gradle builds never consume eas.json channels → §4.5 manual
+    channel embedding (request header + `eas channel:create`), §6 manifest verification.
+  - I1: publish-from-bumped-main runtime mismatch window → §4.7 publish-from-tag rule +
+    `eas update:list` verification.
+  - I2: no rollback story → §5 rollback paragraph.
+  - M1: G2 apply-on-launch wording → fixed. M2: dev channel described as existing → fixed
+    (§4.5). M3: appVersion "same safety" overstated → fixed (§4.3 residual-risk framing).
+  - M4: eas-cli auth machine-local → fixed (§1).
+  - Reviewer's misclassified open question (build order) corrected: blocking for the next
+    release build, not for merge (§7).
+- GLM 5.3 re-review of the revision (2026-09-26, round 2): **Approved** — all seven round-1
+  findings verified RESOLVED (reviewer cross-checked the channel/rollback mechanisms
+  against installed eas-cli sources: `syncProjectConfiguration` reads `expo-channel-name`
+  from the generated manifest; `update:republish` / `roll-back-to-embedded` /
+  `channel:pause` all present). No new Critical/Important issues. Two non-blocking notes
+  (configure-command attribution; §9 verdict pre-declaration) were fixed in this same
+  revision.
