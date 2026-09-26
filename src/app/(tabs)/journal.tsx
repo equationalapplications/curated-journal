@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
-import * as Crypto from 'expo-crypto';
 import { useFocusEffect } from 'expo-router';
+import { useMachine } from '@xstate/react';
 import { useWikiIngest } from '@equationalapplications/expo-llm-wiki';
 import { countIngestFailures } from '@/lib/ingestReport';
+import { journalSaveMachine } from '@/machines/journalSaveMachine';
 import { JournalList, type JournalListItem } from '@/components/journal/JournalList';
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
 import { JournalPane } from '@/components/journal/JournalPane';
@@ -21,6 +22,13 @@ export default function JournalScreen() {
   const [composing, setComposing] = useState(false);
   const { isWide } = useSplitPaneLayout();
 
+  const saveInput = useMemo(
+    () => ({ entityId, ingest, saveTimeoutMs: 120_000 }),
+    [entityId, ingest],
+  );
+  const [saveState, send] = useMachine(journalSaveMachine, { input: saveInput });
+  const saveInProgress = saveState.matches('hashing') || saveState.matches('ingesting');
+
   useFocusEffect(
     useCallback(() => {
       void refetch();
@@ -37,19 +45,18 @@ export default function JournalScreen() {
   }, [data]);
 
   const handleSave = useCallback(
-    async ({ title, body }: { title: string; body: string }) => {
-      const markdown = `# ${title}\n\n${body}`;
-      const result = await ingest(entityId, {
-        sourceRef: `journal://${Date.now()}`,
-        sourceHash: await Crypto.digestStringAsync(
-          Crypto.CryptoDigestAlgorithm.SHA256,
-          markdown,
-          { encoding: Crypto.CryptoEncoding.HEX },
-        ),
-        documentChunk: markdown,
-      });
-      const failures = countIngestFailures(result);
-      if (failures > 0) {
+    ({ title, body }: { title: string; body: string }) => {
+      send({ type: 'START_SAVE', title, body });
+    },
+    [send],
+  );
+
+  useEffect(() => {
+    const { value, context } = saveState;
+    if (value === 'saved') {
+      const result = context.lastResult;
+      if (result && countIngestFailures(result) > 0) {
+        const failures = countIngestFailures(result);
         Alert.alert(
           'Saved with warnings',
           `${failures} chunk${failures === 1 ? '' : 's'} failed to process. ` +
@@ -58,12 +65,26 @@ export default function JournalScreen() {
       }
       setComposing(false);
       refetch();
-    },
-    [entityId, ingest, refetch],
-  );
+      send({ type: 'DISMISS' });
+    } else if (value === 'failed' && context.lastError) {
+      Alert.alert('Save failed', context.lastError.message, [
+        { text: 'Cancel', style: 'cancel', onPress: () => {
+          send({ type: 'DISMISS' });
+          setComposing(false);
+        } },
+        { text: 'Try again', onPress: () => send({ type: 'RETRY' }) },
+      ]);
+    }
+  }, [saveState, send, refetch]);
 
   if (composing) {
-    return <JournalEntryEditor onSave={handleSave} onCancel={() => setComposing(false)} />;
+    return (
+      <JournalEntryEditor
+        onSave={handleSave}
+        onCancel={() => setComposing(false)}
+        saving={saveInProgress}
+      />
+    );
   }
 
   if (isWide) {

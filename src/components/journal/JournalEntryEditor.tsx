@@ -4,14 +4,15 @@ import { ThemedView } from '@/components/themed-view';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
-  onSave: (input: { title: string; body: string }) => Promise<void>;
+  onSave: (input: { title: string; body: string }) => void | Promise<void>;
   onCancel: () => void;
+  /** Machine-owned save-in-flight flag (hashing|ingesting) — derives the Save button label. */
+  saving?: boolean;
 };
 
-export function JournalEntryEditor({ onSave, onCancel }: Props) {
+export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [saving, setSaving] = useState(false);
   const theme = useTheme();
 
   return (
@@ -33,17 +34,7 @@ export function JournalEntryEditor({ onSave, onCancel }: Props) {
       />
       <View style={styles.actions}>
         <Button title="Cancel" onPress={onCancel} />
-        <Button
-          title={saving ? 'Saving…' : 'Save'}
-          onPress={async () => {
-            setSaving(true);
-            try {
-              await onSave({ title, body });
-            } finally {
-              setSaving(false);
-            }
-          }}
-        />
+        <Button title={saving ? 'Saving…' : 'Save'} onPress={() => onSave({ title, body })} />
       </View>
     </ThemedView>
   );
