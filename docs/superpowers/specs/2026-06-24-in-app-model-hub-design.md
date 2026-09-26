@@ -105,7 +105,7 @@ https://huggingface.co/{org}/{repo}/resolve/main/{filename}.gguf
 Hugging Face LFS supports HTTP Range requests; Expo `DownloadTask` handles Range headers for pause/resume.
 
 ```typescript
-export type CuratedModelId = 'fast-light' | 'deep-thinker';
+export type CuratedModelId = 'fast-light' | 'smarter-slower';
 
 export type CuratedModel = {
   id: CuratedModelId;
