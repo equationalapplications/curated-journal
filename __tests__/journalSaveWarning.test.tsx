@@ -10,7 +10,8 @@ const mockExecute = jest.fn(async (): Promise<IngestResult> => ({
 }));
 
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
-  useWikiIngest: () => ({ execute: mockExecute, lastResult: null, isPending: false, error: null }),
+  // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
+  useWiki: () => ({ ingestDocument: mockExecute }),
 }));
 
 jest.mock('expo-router', () => ({
