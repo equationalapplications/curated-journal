@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ThemedView } from '@/components/themed-view';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -17,25 +18,27 @@ export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) 
 
   return (
     <ThemedView style={styles.container}>
-      <TextInput
-        placeholder="Title"
-        value={title}
-        onChangeText={setTitle}
-        style={[styles.input, { color: theme.text }]}
-        placeholderTextColor={theme.textSecondary}
-      />
-      <TextInput
-        placeholder="Write in markdown…"
-        value={body}
-        onChangeText={setBody}
-        multiline
-        style={[styles.input, styles.body, { color: theme.text }]}
-        placeholderTextColor={theme.textSecondary}
-      />
-      <View style={styles.actions}>
-        <Button title="Cancel" onPress={onCancel} />
-        <Button title={saving ? 'Saving…' : 'Save'} onPress={() => onSave({ title, body })} />
-      </View>
+      <KeyboardAwareScrollView testID="editor-kbd-aware" bottomOffset={16}>
+        <TextInput
+          placeholder="Title"
+          value={title}
+          onChangeText={setTitle}
+          style={[styles.input, { color: theme.text }]}
+          placeholderTextColor={theme.textSecondary}
+        />
+        <TextInput
+          placeholder="Write in markdown…"
+          value={body}
+          onChangeText={setBody}
+          multiline
+          style={[styles.input, styles.body, { color: theme.text }]}
+          placeholderTextColor={theme.textSecondary}
+        />
+        <View style={styles.actions}>
+          <Button title="Cancel" onPress={onCancel} />
+          <Button title={saving ? 'Saving…' : 'Save'} onPress={() => onSave({ title, body })} />
+        </View>
+      </KeyboardAwareScrollView>
     </ThemedView>
   );
 }
