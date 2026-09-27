@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ThemedText } from '@/components/themed-text';
@@ -40,7 +40,24 @@ export default function ModelHubDownloadScreen() {
   const theme = useTheme();
   const [name, setName] = useState(displayName ?? '');
   const [tipIndex, setTipIndex] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const samples = useRef<{ t: number; bytes: number }[]>([]);
+
+  // SDK 57 edge-to-edge: lift the name input above the keyboard ourselves
+  // (KeyboardAvoidingView is unreliable here; KeyboardAwareScrollView needs
+  // the whole screen as a scroll view, which fights the fixed progress UI).
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) =>
+      setKeyboardHeight(e.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () =>
+      setKeyboardHeight(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     // Best-effort: browsers may deny the Wake Lock (e.g. hidden tab).
@@ -78,7 +95,7 @@ export default function ModelHubDownloadScreen() {
 
   return (
     <Screen>
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
       <ThemedText type="title">Downloading your AI</ThemedText>
       {model ? <ThemedText type="subtitle">{model.displayName}</ThemedText> : null}
       {model ? (

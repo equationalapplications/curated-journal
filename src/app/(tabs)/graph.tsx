@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useWiki, useOntologyManifest } from '@equationalapplications/expo-llm-wiki';
+import { useMachine } from '@xstate/react';
+import { useOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { GraphCanvas } from '@/components/graph/GraphCanvas';
 import { GraphLegend } from '@/components/graph/GraphLegend';
 import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
@@ -8,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { buildGraphFromDump } from '@/lib/graphData';
 import { runGraphSimulation } from '@/lib/graphSimulation';
 import { useJournal } from '@/contexts/JournalContext';
+import { graphLoadMachine } from '@/machines/graphLoadMachine';
 
 export default function GraphScreen() {
   const { entityId } = useJournal();
@@ -16,19 +18,23 @@ export default function GraphScreen() {
   const { width, height } = useWindowDimensions();
   const size = Math.min(width, height - 120);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [graph, setGraph] = useState<ReturnType<typeof buildGraphFromDump> | null>(null);
-
-  useEffect(() => {
-    void (async () => {
-      const dump = await wiki.exportDump([entityId]);
-      setGraph(buildGraphFromDump(dump, entityId));
-    })();
-  }, [entityId, wiki]);
+  const [actorRef, send] = useMachine(graphLoadMachine, {
+    input: {
+      load: async () => buildGraphFromDump(await wiki.exportDump([entityId]), entityId),
+    },
+  });
+  const state = actorRef;
+  const graph = state.context.graph as
+    | ReturnType<typeof buildGraphFromDump>
+    | null;
 
   const layoutNodes = useMemo(() => {
     if (!graph) return [];
     const simNodes = graph.nodes.map((n) => ({ id: n.id }));
-    const links = graph.edges.map((e) => ({ source: e.sourceId, target: e.targetId }));
+    const links = graph.edges.map((e) => ({
+      source: e.sourceId,
+      target: e.targetId,
+    }));
     const positioned = runGraphSimulation(simNodes, links, size);
     return positioned.map((p) => {
       const meta = graph.nodes.find((n) => n.id === p.id);
@@ -37,6 +43,18 @@ export default function GraphScreen() {
   }, [graph, size]);
 
   const selected = layoutNodes.find((n) => n.id === selectedId);
+
+  if (state.matches('failed')) {
+    return (
+      <View style={styles.container}>
+        <ThemedText>Couldn&apos;t load the graph.</ThemedText>
+        <ThemedText type="small">{state.context.error?.message}</ThemedText>
+        <ThemedText type="link" onPress={() => send({ type: 'RETRY' })}>
+          Retry
+        </ThemedText>
+      </View>
+    );
+  }
 
   if (!graph) {
     return (
