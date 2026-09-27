@@ -51,6 +51,7 @@ jest.mock('expo-file-system', () => {
 });
 
 jest.mock('expo-file-system/legacy', () => ({
+  EncodingType: { Base64: 'base64' },
   StorageAccessFramework: {
     requestDirectoryPermissionsAsync: jest.fn(),
     getUriForDirectoryInRoot: jest.fn(
@@ -108,6 +109,10 @@ describe('saveOkfToDevice (SAF-first export)', () => {
     expect(saf.writeAsStringAsync).toHaveBeenCalledWith(
       'content://saf/created',
       'UEsDBA==',
+      // Regression guard: without Base64 the default UTF-8 encoding writes
+      // the base64 TEXT literally → corrupt zip → "Could not open ZIP file"
+      // on import (device repro Sep 26).
+      { encoding: 'base64' },
     );
   });
 
