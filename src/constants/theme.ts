@@ -94,25 +94,7 @@ const dark: typeof light = {
   backdropPalette: 'rgba(0,0,0,0.28)',
 };
 
-/**
- * Legacy Expo-template names, kept as aliases onto the design roles so older
- * call sites keep working. New code should use the role names above.
- */
-function withLegacy<T extends typeof light>(t: T) {
-  return {
-    ...t,
-    text: t.onSurface,
-    textSecondary: t.onSurfaceVar,
-    background: t.bg,
-    backgroundElement: t.elev1,
-    backgroundSelected: t.primaryContainer,
-  };
-}
-
-export const Colors = {
-  light: withLegacy(light),
-  dark: withLegacy(dark),
-} as const;
+export const Colors = { light, dark } as const;
 
 export type Theme = (typeof Colors)['light'];
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
@@ -178,17 +160,6 @@ export const Space = {
   4: 16,
   5: 24,
   6: 32,
-} as const;
-
-/** Legacy Expo-template spacing; prefer `Space`. */
-export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
 } as const;
 
 /** Nothing larger than `lg` outside pills. */

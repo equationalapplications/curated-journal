@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Button,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import {
   KeyboardAwareScrollView,
 } from 'react-native-keyboard-controller';
@@ -16,6 +10,9 @@ import {
 } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/states';
 import { CitationText } from '@/components/synthesis/CitationText';
 import { buildChatPrompt } from '@/lib/buildChatPrompt';
 import {
@@ -26,6 +23,7 @@ import { extractCitationIds } from '@/lib/citationParser';
 import { useJournal } from '@/contexts/JournalContext';
 import { useLlm } from '@/contexts/LlmContext';
 import { useTheme } from '@/hooks/use-theme';
+import { Radius, Space } from '@/constants/theme';
 import { createChatStore, type ChatMessage } from '@/services/chatMessages';
 
 const SYSTEM_PROMPT =
@@ -106,14 +104,25 @@ export function SynthesisPane() {
       <KeyboardAwareScrollView
         testID="kbd-aware"
         contentContainerStyle={styles.list}
-        bottomOffset={20}>
+        bottomOffset={20}
+        keyboardShouldPersistTaps="handled">
+        {messages.length === 0 ? (
+          <EmptyState
+            icon={{ ios: 'bubble.left.and.bubble.right', android: 'chat', web: 'chat' }}
+            title="Ask about your notes"
+            hint="Answers are grounded in your journal and cite the note they came from."
+            style={styles.empty}
+          />
+        ) : null}
         {messages.map((item) => (
           <View
             key={item.id}
             style={[
               styles.bubble,
-              item.role === 'user' && styles.userBubble,
-              { backgroundColor: theme.backgroundElement },
+              // Turns are content, not controls: separated by surface alone.
+              // An `outlineVar` border would make them read as text fields.
+              item.role === 'user' ? styles.userBubble : styles.assistantBubble,
+              { backgroundColor: item.role === 'user' ? theme.elev2 : theme.elev1 },
             ]}>
             {item.role === 'assistant' ? (
               <CitationText content={item.content} />
@@ -123,18 +132,17 @@ export function SynthesisPane() {
           </View>
         ))}
         <View style={styles.composer}>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.outlineVar }]}
+          <Input
+            style={styles.input}
             placeholder="Ask about your notes…"
-            placeholderTextColor={theme.outline}
             value={query}
             onChangeText={setQuery}
             editable={!sending}
           />
           {sending ? (
-            <ActivityIndicator />
+            <ActivityIndicator color={theme.primary} />
           ) : (
-            <Button title="Send" onPress={() => void handleSend()} />
+            <Button label="Send" variant="primary" onPress={() => void handleSend()} />
           )}
         </View>
       </KeyboardAwareScrollView>
@@ -144,16 +152,20 @@ export function SynthesisPane() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  flex: { flex: 1 },
-  list: { padding: 12, gap: 8 },
-  bubble: { padding: 10, borderRadius: 8, marginBottom: 8 },
-  userBubble: { alignSelf: 'flex-end', opacity: 0.9 },
-  composer: { flexDirection: 'row', gap: 8, padding: 12, alignItems: 'center' },
-  input: {
-    flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  list: { padding: Space[4], gap: Space[2], flexGrow: 1 },
+  empty: { flex: 1, minHeight: 260 },
+  bubble: {
+    padding: Space[3],
+    borderRadius: Radius.sm,
+    maxWidth: '92%',
   },
+  assistantBubble: { alignSelf: 'flex-start' },
+  userBubble: { alignSelf: 'flex-end' },
+  composer: {
+    flexDirection: 'row',
+    gap: Space[2],
+    alignItems: 'center',
+    marginTop: 'auto',
+  },
+  input: { flex: 1 },
 });

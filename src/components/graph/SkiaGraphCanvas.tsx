@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Canvas, Circle, Line } from '@shopify/react-native-skia';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { SimLink, SimNode } from '@/lib/graphSimulation';
 import { hashColor } from '@/lib/graphData';
+import { tint } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme } from '@/hooks/use-theme';
+import { TouchTarget } from '@/constants/theme';
 
 type Props = {
   nodes: Array<SimNode & { title: string; okfType?: string }>;
@@ -13,6 +17,10 @@ type Props = {
 
 export function SkiaGraphCanvas({ nodes, links, size, onSelectNode }: Props) {
   const positions = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const theme = useTheme();
+  const dark = useColorScheme() === 'dark';
+  // An edge is chrome: a hairline `outline` tint, not a hardcoded grey.
+  const edgeColor = tint(theme.outline, 45);
 
   return (
     <View style={styles.wrap}>
@@ -26,7 +34,7 @@ export function SkiaGraphCanvas({ nodes, links, size, onSelectNode }: Props) {
               key={`${link.source}-${link.target}-${index}`}
               p1={{ x: source.x, y: source.y }}
               p2={{ x: target.x, y: target.y }}
-              color="#888"
+              color={edgeColor}
               strokeWidth={1}
             />
           );
@@ -37,20 +45,23 @@ export function SkiaGraphCanvas({ nodes, links, size, onSelectNode }: Props) {
             cx={node.x ?? size / 2}
             cy={node.y ?? size / 2}
             r={10}
-            color={hashColor(node.okfType ?? node.id)}
+            color={hashColor(node.okfType ?? node.id, dark)}
           />
         ))}
       </Canvas>
       {nodes.map((node) => (
         <Pressable
           key={`tap-${node.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={node.title}
           style={[
             styles.hit,
             {
-              left: (node.x ?? 0) - 14,
-              top: (node.y ?? 0) - 14,
-              width: 28,
-              height: 28,
+              // Hit area is padded to 48dp; the 10px dot stays compact.
+              left: (node.x ?? 0) - TouchTarget / 2,
+              top: (node.y ?? 0) - TouchTarget / 2,
+              width: TouchTarget,
+              height: TouchTarget,
             },
           ]}
           onPress={() => onSelectNode(node.id)}
@@ -61,6 +72,6 @@ export function SkiaGraphCanvas({ nodes, links, size, onSelectNode }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1 },
+  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hit: { position: 'absolute' },
 });

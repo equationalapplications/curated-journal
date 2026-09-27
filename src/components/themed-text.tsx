@@ -10,6 +10,8 @@ export type ThemedTextProps = TextProps & {
     | 'heading'
     | 'small'
     | 'smallBold'
+    /** 500-weight secondary — the weight DESIGN.md gives buttons and selected rows. */
+    | 'strong'
     | 'subtitle'
     | 'label'
     | 'meta'
@@ -48,6 +50,7 @@ const styles = StyleSheet.create({
   heading: Type.heading,
   subtitle: Type.heading,
   small: Type.secondary,
+  strong: { ...Type.secondary, fontWeight: '500' },
   smallBold: { ...Type.secondary, fontWeight: '600' },
   label: Type.label,
   meta: Type.meta,

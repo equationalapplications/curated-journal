@@ -2,6 +2,7 @@ import '@/lib/installCryptoPolyfill';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
@@ -75,11 +76,22 @@ export default function RootLayout() {
     };
   }, [colorScheme]);
   const bg = navTheme.colors.background;
+  const t = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const isReady = phase === 'ready' && wiki != null && entityId != null && llmProvider != null;
 
   const stack = (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        // Navigator chrome is app chrome: quiet `bg` with a `separator`
+        // hairline, no elevation (DESIGN.md 1.1).
+        headerStyle: { backgroundColor: t.bg },
+        headerShadowVisible: false,
+        headerTintColor: t.onSurface,
+        headerTitleStyle: { fontSize: 17, fontWeight: '600', color: t.onSurface },
+        contentStyle: { backgroundColor: t.bg },
+      }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="model-hub" />
@@ -108,6 +120,9 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={navTheme}>
+      {/* Without this the system keeps whatever the splash screen set, which in
+          light theme is white icons on cream. `auto` follows the OS scheme. */}
+      <StatusBar style="auto" />
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <KeyboardProvider>
         {phase === 'loading' ? (
