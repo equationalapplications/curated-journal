@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WikiProvider } from '@equationalapplications/expo-llm-wiki';
 import type { LLMProvider, WikiMemory } from '@equationalapplications/core-llm-wiki';
@@ -88,6 +89,7 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <KeyboardProvider>
         {phase === 'loading' ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator />
@@ -113,6 +115,7 @@ export default function RootLayout() {
             </AppReadyProvider>
           </GestureHandlerRootView>
         )}
+        </KeyboardProvider>
       </SafeAreaProvider>
     </ThemeProvider>
   );

@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Button,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import {
+  KeyboardAwareScrollView,
+} from 'react-native-keyboard-controller';
 import * as SQLite from 'expo-sqlite';
 import {
   formatGraphContext,
@@ -102,33 +102,26 @@ export function SynthesisPane() {
   }, [chatStore, entityId, llm, query, sending, wiki]);
 
   return (
-    <ThemedView style={styles.container}>
-      {/* SDK 57 edge-to-edge on Android 15+: adjustResize no longer resizes
-      the window, so the composer needs in-app avoidance (same as iOS). */}
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        testID="kbd-avoider">
-        <FlatList
-          data={messages}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.bubble,
-                item.role === 'user' && styles.userBubble,
-                { backgroundColor: theme.backgroundElement },
-              ]}>
-              {item.role === 'assistant' ? (
-                <CitationText content={item.content} />
-              ) : (
-                <ThemedText>{item.content}</ThemedText>
-              )}
-            </View>
-          )}
-        />
+    <ThemedView style={styles.container} testID="synthesis-pane">
+      <KeyboardAwareScrollView
+        testID="kbd-aware"
+        contentContainerStyle={styles.list}
+        bottomOffset={20}>
+        {messages.map((item) => (
+          <View
+            key={item.id}
+            style={[
+              styles.bubble,
+              item.role === 'user' && styles.userBubble,
+              { backgroundColor: theme.backgroundElement },
+            ]}>
+            {item.role === 'assistant' ? (
+              <CitationText content={item.content} />
+            ) : (
+              <ThemedText>{item.content}</ThemedText>
+            )}
+          </View>
+        ))}
         <View style={styles.composer}>
           <TextInput
             style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
@@ -144,7 +137,7 @@ export function SynthesisPane() {
             <Button title="Send" onPress={() => void handleSend()} />
           )}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </ThemedView>
   );
 }
