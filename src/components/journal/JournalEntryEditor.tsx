@@ -24,7 +24,7 @@ export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) 
           value={title}
           onChangeText={setTitle}
           style={[styles.input, { color: theme.text }]}
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.outline}
         />
         <TextInput
           placeholder="Write in markdown…"
@@ -32,7 +32,7 @@ export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) 
           onChangeText={setBody}
           multiline
           style={[styles.input, styles.body, { color: theme.text }]}
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.outline}
         />
         <View style={styles.actions}>
           <Button title="Cancel" onPress={onCancel} />

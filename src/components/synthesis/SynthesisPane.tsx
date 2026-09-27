@@ -124,9 +124,9 @@ export function SynthesisPane() {
         ))}
         <View style={styles.composer}>
           <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
+            style={[styles.input, { color: theme.text, borderColor: theme.outlineVar }]}
             placeholder="Ask about your notes…"
-            placeholderTextColor={theme.textSecondary}
+            placeholderTextColor={theme.outline}
             value={query}
             onChangeText={setQuery}
             editable={!sending}

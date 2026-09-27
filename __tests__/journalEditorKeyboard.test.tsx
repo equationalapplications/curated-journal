@@ -6,14 +6,6 @@ jest.mock('@/hooks/use-color-scheme', () => ({
   useColorScheme: () => mockColorScheme(),
 }));
 
-jest.mock('@/constants/theme', () => ({
-  Fonts: { mono: 'monospace' },
-  Colors: {
-    light: { text: '#000000', textSecondary: '#60646C' },
-    dark: { text: '#ffffff', textSecondary: '#B0B4BA' },
-  },
-}));
-
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
 
 const noopSave = async () => {};

@@ -1,11 +1,30 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps } from 'react-native';
 
-import { Fonts, ThemeColor } from '@/constants/theme';
+import { Fonts, ThemeColor, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  type?:
+    | 'default'
+    | 'title'
+    | 'heading'
+    | 'small'
+    | 'smallBold'
+    | 'subtitle'
+    | 'label'
+    | 'meta'
+    | 'link'
+    | 'linkPrimary'
+    | 'code';
   themeColor?: ThemeColor;
+};
+
+// Default colour per type: section labels are muted, meta is tertiary,
+// link-style text is the accent. `themeColor` overrides.
+const DEFAULT_COLOR: Partial<Record<NonNullable<ThemedTextProps['type']>, ThemeColor>> = {
+  label: 'onSurfaceVar',
+  meta: 'outline',
+  linkPrimary: 'primary',
 };
 
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
@@ -14,15 +33,8 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
   return (
     <Text
       style={[
-        { color: theme[themeColor ?? 'text'] },
-        type === 'default' && styles.default,
-        type === 'title' && styles.title,
-        type === 'small' && styles.small,
-        type === 'smallBold' && styles.smallBold,
-        type === 'subtitle' && styles.subtitle,
-        type === 'link' && styles.link,
-        type === 'linkPrimary' && styles.linkPrimary,
-        type === 'code' && styles.code,
+        { color: theme[themeColor ?? DEFAULT_COLOR[type] ?? 'onSurface'] },
+        styles[type],
         style,
       ]}
       {...rest}
@@ -31,43 +43,18 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 }
 
 const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
-  },
-  subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
-  },
-  link: {
-    lineHeight: 30,
-    fontSize: 14,
-  },
-  linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
-    color: '#3c87f7',
-  },
+  default: Type.body,
+  title: Type.title,
+  heading: Type.heading,
+  subtitle: Type.heading,
+  small: Type.secondary,
+  smallBold: { ...Type.secondary, fontWeight: '600' },
+  label: Type.label,
+  meta: Type.meta,
+  link: { ...Type.secondary, lineHeight: 30 },
+  linkPrimary: { ...Type.secondary, lineHeight: 30, fontWeight: '500' },
   code: {
     fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
-    fontSize: 12,
+    fontSize: 13,
   },
 });

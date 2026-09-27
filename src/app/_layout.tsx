@@ -1,6 +1,6 @@
 import '@/lib/installCryptoPolyfill';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -18,6 +18,7 @@ import { LlmProvider } from '@/contexts/LlmContext';
 import { ModelHubCompletionProvider } from '@/contexts/ModelHubCompletionContext';
 import { JournalWikiProvider } from '@/hooks/useJournalWiki';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 type Phase = 'loading' | 'needsModelHub' | 'ready';
 
@@ -56,6 +57,25 @@ export default function RootLayout() {
     void bootstrap();
   }, [bootstrap]);
 
+  const navTheme = useMemo(() => {
+    const dark = colorScheme === 'dark';
+    const base = dark ? DarkTheme : DefaultTheme;
+    const t = Colors[dark ? 'dark' : 'light'];
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: t.primary,
+        background: t.bg,
+        card: t.bg,
+        text: t.onSurface,
+        border: t.separator,
+        notification: t.error,
+      },
+    };
+  }, [colorScheme]);
+  const bg = navTheme.colors.background;
+
   const isReady = phase === 'ready' && wiki != null && entityId != null && llmProvider != null;
 
   const stack = (
@@ -87,15 +107,15 @@ export default function RootLayout() {
   );
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navTheme}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <KeyboardProvider>
         {phase === 'loading' ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }}>
+            <ActivityIndicator color={navTheme.colors.primary} />
           </View>
         ) : (
-          <GestureHandlerRootView style={{ flex: 1 }}>
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: bg }}>
             <AppReadyProvider ready={isReady}>
               <ModelHubCompletionProvider onComplete={bootstrap}>
                 {isReady ? (

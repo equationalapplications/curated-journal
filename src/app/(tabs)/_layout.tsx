@@ -1,7 +1,8 @@
-import type { ColorValue } from 'react-native';
+import { StyleSheet, type ColorValue } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useAppReady } from '@/contexts/AppReadyContext';
+import { useTheme } from '@/hooks/use-theme';
 
 function TabIcon({
   name,
@@ -17,12 +18,30 @@ function TabIcon({
 
 export default function TabsLayout() {
   const isReady = useAppReady();
+  const theme = useTheme();
   if (!isReady) {
     return <Redirect href="/model-hub" />;
   }
 
   return (
-    <Tabs screenOptions={{ headerShown: true }}>
+    <Tabs
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: theme.bg },
+        headerShadowVisible: false,
+        headerTitleStyle: { fontSize: 17, fontWeight: '600', color: theme.onSurface },
+        // Bottom tab bar: elev-1 with a separator hairline; active = primary
+        // glyph and label, no filled pill (DESIGN.md Part 3).
+        tabBarStyle: {
+          backgroundColor: theme.elev1,
+          borderTopColor: theme.separator,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          elevation: 0,
+        },
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.onSurfaceVar,
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '500' },
+      }}>
       <Tabs.Screen
         name="journal"
         options={{

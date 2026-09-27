@@ -147,9 +147,9 @@ export default function ModelHubDownloadScreen() {
 
       <View style={styles.composerSlot}>
       <TextInput
-        style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
+        style={[styles.input, { color: theme.text, borderColor: theme.outlineVar }]}
         placeholder="Name your journal (optional)"
-        placeholderTextColor={theme.textSecondary}
+        placeholderTextColor={theme.outline}
         value={name}
         onChangeText={setName}
         onBlur={() => {

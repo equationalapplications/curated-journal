@@ -36,16 +36,8 @@ jest.mock('@/lib/entityStorage', () => ({
   setDisplayName: jest.fn(async () => {}),
 }));
 
-jest.mock('@/constants/theme', () => ({
-  Fonts: { mono: 'monospace' },
-  Spacing: { one: 4, two: 8, three: 12, four: 16 },
-  Colors: {
-    light: { text: '#000000', textSecondary: '#60646C', backgroundElement: '#F0F0F3' },
-    dark: { text: '#ffffff', textSecondary: '#B0B4BA', backgroundElement: '#212225' },
-  },
-}));
-
 import ModelHubDownloadScreen from '@/app/model-hub/download';
+import { Colors } from '@/constants/theme';
 
 describe('model-hub download journal-name input contrast', () => {
   it('colors typed text and placeholder for dark mode', async () => {
@@ -54,8 +46,8 @@ describe('model-hub download journal-name input contrast', () => {
 
     const input = screen.getByPlaceholderText('Name your journal (optional)');
     const flat = StyleSheet.flatten(input.props.style);
-    expect(flat.color).not.toBe('#000000');
-    expect(flat.color).toBeDefined();
+    expect(flat.color).toBe(Colors.dark.onSurface);
+    expect(input.props.placeholderTextColor).toBe(Colors.dark.outline);
   });
 
   it('uses a themed border (not a hardcoded gray)', async () => {
@@ -64,6 +56,6 @@ describe('model-hub download journal-name input contrast', () => {
 
     const input = screen.getByPlaceholderText('Name your journal (optional)');
     const flat = StyleSheet.flatten(input.props.style);
-    expect(flat.borderColor).not.toBe('#8888');
+    expect(flat.borderColor).toBe(Colors.dark.outlineVar);
   });
 });
