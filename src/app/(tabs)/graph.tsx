@@ -23,6 +23,11 @@ export default function GraphScreen() {
       load: async () => buildGraphFromDump(await wiki.exportDump([entityId]), entityId),
     },
   });
+
+  // Kick the load on mount (CodeRabbit #35: machine starts idle).
+  const loadFn = actorRef.context.load;
+  useMemo(() => send({ type: 'LOAD' }), [send, loadFn]);
+
   const state = actorRef;
   const graph = state.context.graph as
     | ReturnType<typeof buildGraphFromDump>

@@ -145,6 +145,7 @@ export default function ModelHubDownloadScreen() {
         <ThemedText type="small">{TIPS[tipIndex]}</ThemedText>
       </ThemedView>
 
+      <View style={styles.composerSlot}>
       <TextInput
         style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
         placeholder="Name your journal (optional)"
@@ -160,6 +161,7 @@ export default function ModelHubDownloadScreen() {
         }}
       />
       </View>
+      </View>
     </Screen>
   );
 }
@@ -171,4 +173,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   tip: { borderRadius: Spacing.three, padding: Spacing.three },
   input: { borderWidth: 1, borderColor: '#8888', borderRadius: Spacing.two, padding: Spacing.two },
+  // Bottom-anchor the name input so the keyboard-height paddingBottom lifts
+  // it (flex-start content alone would just clip under the keyboard).
+  composerSlot: { marginTop: 'auto' },
 });
