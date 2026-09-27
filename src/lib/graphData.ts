@@ -3,6 +3,8 @@ import { GRAPH_NODE_CAP } from '@/lib/constants';
 export type GraphNodeInput = {
   id: string;
   title: string;
+  /** Full note text (markdown); shown when a node is expanded. */
+  body?: string;
   confidence: string;
   updatedAt: number;
   okfType?: string;
@@ -35,6 +37,23 @@ export function capGraphNodes<T extends { confidence: string; updatedAt: number 
   return { nodes: sorted.slice(0, cap), truncated: true };
 }
 
+/** Max characters in an on-canvas node label before it is ellipsized. */
+export const GRAPH_LABEL_MAX = 18;
+
+/**
+ * Brief on-canvas label for a node: the title on one line, cut at a word
+ * boundary where possible and ellipsized. The full title and body live in the
+ * node sheet.
+ */
+export function shortLabel(title: string, max = GRAPH_LABEL_MAX): string {
+  const flat = title.replace(/\s+/g, ' ').trim() || 'Untitled';
+  if (flat.length <= max) return flat;
+  // Look one char past the budget so a word ending exactly at it is kept.
+  const space = flat.slice(0, max).lastIndexOf(' ');
+  const head = space >= Math.floor(max / 2) ? flat.slice(0, space) : flat.slice(0, max - 1);
+  return `${head.replace(/[\s.,;:–—-]+$/, '')}…`;
+}
+
 /**
  * Category colour for a graph node. Content colour, so it keeps its own hue —
  * but lightness is chosen per theme so every hue stays readable as text on
@@ -57,6 +76,7 @@ export function buildGraphFromDump(
   const nodes = bundle.facts.map((f) => ({
     id: f.id,
     title: f.title ?? 'Untitled',
+    body: f.body ?? '',
     confidence: f.confidence ?? 'tentative',
     updatedAt: f.updated_at ?? 0,
     okfType: f.okf_type,

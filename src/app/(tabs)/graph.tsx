@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useMachine } from '@xstate/react';
+import { useRouter } from 'expo-router';
 import { useOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { GraphCanvas } from '@/components/graph/GraphCanvas';
 import { GraphLegend } from '@/components/graph/GraphLegend';
@@ -22,15 +23,19 @@ export default function GraphScreen() {
   const { width, height } = useWindowDimensions();
   const size = Math.min(width, height - 120);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const router = useRouter();
   const [actorRef, send] = useMachine(graphLoadMachine, {
     input: {
       load: async () => buildGraphFromDump(await wiki.exportDump([entityId]), entityId),
     },
   });
 
-  // Kick the load on mount (CodeRabbit #35: machine starts idle).
-  const loadFn = actorRef.context.load;
-  useMemo(() => send({ type: 'LOAD' }), [send, loadFn]);
+  // Kick the load on mount (CodeRabbit #35: machine starts idle). This must be
+  // an effect: a side effect inside useMemo is dropped by the React compiler,
+  // which left the screen on "Loading graph…".
+  useEffect(() => {
+    send({ type: 'LOAD' });
+  }, [send]);
 
   const state = actorRef;
   const graph = state.context.graph as
@@ -47,7 +52,13 @@ export default function GraphScreen() {
     const positioned = runGraphSimulation(simNodes, links, size);
     return positioned.map((p) => {
       const meta = graph.nodes.find((n) => n.id === p.id);
-      return { ...p, title: meta?.title ?? p.id, okfType: meta?.okfType ?? undefined };
+      return {
+        ...p,
+        title: meta?.title ?? p.id,
+        body: meta?.body,
+        confidence: meta?.confidence,
+        okfType: meta?.okfType ?? undefined,
+      };
     });
   }, [graph, size]);
 
@@ -95,9 +106,12 @@ export default function GraphScreen() {
         onSelectNode={setSelectedId}
       />
       <GraphNodeSheet
-        visible={Boolean(selected)}
-        title={selected?.title ?? ''}
+        node={selected ?? null}
         onClose={() => setSelectedId(null)}
+        onOpenNote={(factId) => {
+          setSelectedId(null);
+          router.push({ pathname: '/entry/[factId]', params: { factId } });
+        }}
       />
     </View>
   );
