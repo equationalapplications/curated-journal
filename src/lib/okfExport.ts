@@ -1,7 +1,10 @@
 import { Directory, File, Paths } from 'expo-file-system';
 // SAF lives in the legacy entry point in SDK 57 (the main index does not
 // re-export it despite the docs comment saying otherwise).
-import { StorageAccessFramework } from 'expo-file-system/legacy';
+import {
+  EncodingType,
+  StorageAccessFramework,
+} from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { formatOkfBundle, type MemoryDump } from '@equationalapplications/expo-llm-wiki';
@@ -76,7 +79,14 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
       'application/zip',
     );
     const file = new File(zipUri);
-    await StorageAccessFramework.writeAsStringAsync(destUri, await file.base64());
+    // encoding MUST be Base64: the default is UTF-8, which would write the
+    // base64 TEXT literally and produce a corrupt zip that import cannot
+    // open ("Could not open ZIP file" — device repro, Sep 26).
+    await StorageAccessFramework.writeAsStringAsync(
+      destUri,
+      await file.base64(),
+      { encoding: EncodingType.Base64 },
+    );
     return;
   }
   if (await Sharing.isAvailableAsync()) {
