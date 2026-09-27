@@ -1,5 +1,5 @@
-import { render } from '@testing-library/react-native';
-import { KeyboardAvoidingView, StyleSheet } from 'react-native';
+import { act, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 // Color-scheme mock: default 'light'; individual tests flip it.
 const mockColorScheme = jest.fn().mockReturnValue('light');
@@ -44,6 +44,11 @@ jest.mock('@/contexts/LlmContext', () => ({
   useLlm: () => ({ generateText: jest.fn(async () => '') }),
 }));
 
+jest.mock('react-native-keyboard-controller', () => ({
+  KeyboardProvider: ({ children }: { children: React.ReactNode }) => children,
+  KeyboardAwareScrollView: require('react-native').ScrollView,
+}));
+
 jest.mock('@/hooks/use-theme', () => ({
   useTheme: () =>
     mockColorScheme() === 'dark'
@@ -74,17 +79,15 @@ describe('SynthesisPane (chat) usability', () => {
     expect(flat.borderColor).not.toBe('#000000');
   });
 
-  it('wraps list + composer in a KeyboardAvoidingView (structural)', async () => {
+  it('renders inside the keyboard-controller aware scroll view (SDK 57 edge-to-edge fix)', async () => {
     mockColorScheme.mockReturnValue('dark');
     const screen = await render(<SynthesisPane />);
 
-    // v14 RNTL removed UNSAFE_getByType; the avoider is identified by testID.
-    // The behavior='padding' VALUE is asserted by typing on-device (host props
-    // don't carry it — it's consumed internally by KeyboardAvoidingView).
-    const avoider = screen.getByTestId('kbd-avoider');
-    expect(avoider).toBeTruthy();
-    expect(
-      screen.getByPlaceholderText('Ask about your notes…'),
-    ).toBeTruthy();
+    // The composer lives inside KeyboardAwareScrollView (react-native-keyboard-
+    // controller), which natively lifts the focused input above the keyboard on
+    // Android 15+ edge-to-edge where KeyboardAvoidingView/adjustResize fail.
+    const scroller = screen.getByTestId('kbd-aware');
+    expect(scroller).toBeTruthy();
+    expect(screen.getByPlaceholderText('Ask about your notes…')).toBeTruthy();
   });
 });
