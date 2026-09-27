@@ -10,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import { setDisplayName } from '@/lib/entityStorage';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
+import { useTheme } from '@/hooks/use-theme';
 
 const TIPS = [
   'Night Shift runs the librarian pass while your device is charging.',
@@ -36,6 +37,7 @@ export default function ModelHubDownloadScreen() {
   const router = useRouter();
   const { send, stateValue, modelId, progress, error, pausedReason, displayName } = useModelHub();
   const completeOnboarding = useModelHubCompletion();
+  const theme = useTheme();
   const [name, setName] = useState(displayName ?? '');
   const [tipIndex, setTipIndex] = useState(0);
   const samples = useRef<{ t: number; bytes: number }[]>([]);
@@ -127,7 +129,9 @@ export default function ModelHubDownloadScreen() {
       </ThemedView>
 
       <TextInput
+        style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
         placeholder="Name your journal (optional)"
+        placeholderTextColor={theme.textSecondary}
         value={name}
         onChangeText={setName}
         onBlur={() => {
@@ -137,7 +141,6 @@ export default function ModelHubDownloadScreen() {
             void setDisplayName(trimmed);
           }
         }}
-        style={styles.input}
       />
       </View>
     </Screen>
