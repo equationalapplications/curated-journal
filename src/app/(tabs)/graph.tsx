@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useMachine } from '@xstate/react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { GraphCanvas } from '@/components/graph/GraphCanvas';
 import { GraphLegend } from '@/components/graph/GraphLegend';
@@ -30,12 +30,16 @@ export default function GraphScreen() {
     },
   });
 
-  // Kick the load on mount (CodeRabbit #35: machine starts idle). This must be
-  // an effect: a side effect inside useMemo is dropped by the React compiler,
-  // which left the screen on "Loading graph…".
-  useEffect(() => {
-    send({ type: 'LOAD' });
-  }, [send]);
+  // (Re)load whenever the tab gains focus. Tab screens stay mounted, so a
+  // mount-only load never saw notes saved after the first visit. The old
+  // graph stays on screen while the reload runs (the machine keeps
+  // `context.graph`), and a LOAD while already loading is ignored. Must be an
+  // effect, not useMemo: the React compiler drops side effects in useMemo.
+  useFocusEffect(
+    useCallback(() => {
+      send({ type: 'LOAD' });
+    }, [send]),
+  );
 
   const state = actorRef;
   const graph = state.context.graph as
