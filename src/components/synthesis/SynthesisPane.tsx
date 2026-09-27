@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Button,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   TextInput,
   View,
@@ -23,6 +25,7 @@ import {
 import { extractCitationIds } from '@/lib/citationParser';
 import { useJournal } from '@/contexts/JournalContext';
 import { useLlm } from '@/contexts/LlmContext';
+import { useTheme } from '@/hooks/use-theme';
 import { createChatStore, type ChatMessage } from '@/services/chatMessages';
 
 const SYSTEM_PROMPT =
@@ -32,6 +35,7 @@ export function SynthesisPane() {
   const { entityId } = useJournal();
   const llm = useLlm();
   const wiki = useWiki();
+  const theme = useTheme();
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
@@ -99,40 +103,55 @@ export function SynthesisPane() {
 
   return (
     <ThemedView style={styles.container}>
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={[styles.bubble, item.role === 'user' && styles.userBubble]}>
-            {item.role === 'assistant' ? (
-              <CitationText content={item.content} />
-            ) : (
-              <ThemedText>{item.content}</ThemedText>
-            )}
-          </View>
-        )}
-      />
-      <View style={styles.composer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Ask about your notes…"
-          value={query}
-          onChangeText={setQuery}
-          editable={!sending}
+      {/* SDK 57 edge-to-edge on Android 15+: adjustResize no longer resizes
+      the window, so the composer needs in-app avoidance (same as iOS). */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        testID="kbd-avoider">
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.bubble,
+                item.role === 'user' && styles.userBubble,
+                { backgroundColor: theme.backgroundElement },
+              ]}>
+              {item.role === 'assistant' ? (
+                <CitationText content={item.content} />
+              ) : (
+                <ThemedText>{item.content}</ThemedText>
+              )}
+            </View>
+          )}
         />
-        {sending ? (
-          <ActivityIndicator />
-        ) : (
-          <Button title="Send" onPress={() => void handleSend()} />
-        )}
-      </View>
+        <View style={styles.composer}>
+          <TextInput
+            style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
+            placeholder="Ask about your notes…"
+            placeholderTextColor={theme.textSecondary}
+            value={query}
+            onChangeText={setQuery}
+            editable={!sending}
+          />
+          {sending ? (
+            <ActivityIndicator />
+          ) : (
+            <Button title="Send" onPress={() => void handleSend()} />
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flex: { flex: 1 },
   list: { padding: 12, gap: 8 },
   bubble: { padding: 10, borderRadius: 8, marginBottom: 8 },
   userBubble: { alignSelf: 'flex-end', opacity: 0.9 },
