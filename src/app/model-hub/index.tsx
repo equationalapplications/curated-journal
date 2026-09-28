@@ -1,19 +1,25 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useNavigation, useRouter, type Href } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card, ListGroup, ListRow } from '@/components/ui/card';
 import { ErrorBanner } from '@/components/ui/states';
 import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { Screen } from '@/components/screen';
-import { Space } from '@/constants/theme';
-import { MODEL_CATALOG, type CuratedModel } from '@/catalog/modelManifest';
+import { Space, TouchTarget } from '@/constants/theme';
+import {
+  MODEL_CATALOG,
+  getCuratedModel,
+  type CuratedModel,
+  type CuratedModelId,
+} from '@/catalog/modelManifest';
 import { useModelHub } from '@/hooks/useModelHub';
 
 export default function ModelHubIndexScreen() {
   const router = useRouter();
-  const { send, stateValue, error } = useModelHub();
+  const navigation = useNavigation();
+  const { send, stateValue, error, currentModelId } = useModelHub();
   const [warningFor, setWarningFor] = useState<CuratedModel | null>(null);
   const { confirm, confirmElement } = useConfirmSheet();
 
@@ -35,24 +41,63 @@ export default function ModelHubIndexScreen() {
     }
   }, [stateValue, router, send, confirm]);
 
-  const selectModel = (model: CuratedModel) => {
-    if (model.deviceWarning) {
-      setWarningFor(model);
+  const currentModelName = () => {
+    if (!currentModelId) return 'Your current model';
+    if (currentModelId === 'custom') return 'Your imported model';
+    return getCuratedModel(currentModelId as CuratedModelId)?.displayName ?? 'Your current model';
+  };
+
+  const commitSelection = (model: CuratedModel) => {
+    if (currentModelId) {
+      confirm({
+        title: 'Replace model',
+        message: `${currentModelName()} will be deleted now and cannot be restored. ${
+          model.displayName
+        } will download in its place.`,
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: () => send({ type: 'SELECT_MODEL', modelId: model.id }),
+          },
+        ],
+      });
       return;
     }
     send({ type: 'SELECT_MODEL', modelId: model.id });
   };
 
+  const selectModel = (model: CuratedModel) => {
+    if (model.id === currentModelId) return;
+    if (model.deviceWarning) {
+      setWarningFor(model);
+      return;
+    }
+    commitSelection(model);
+  };
+
   const confirmWarning = () => {
     if (!warningFor) return;
-    send({ type: 'SELECT_MODEL', modelId: warningFor.id });
+    const model = warningFor;
     setWarningFor(null);
+    commitSelection(model);
   };
 
   return (
     <Screen>
       {confirmElement}
       <ScrollView contentContainerStyle={styles.container}>
+        {navigation.canGoBack() ? (
+          <Pressable
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back to Settings"
+            style={styles.backRow}>
+            <ThemedText type="linkPrimary">← Settings</ThemedText>
+          </Pressable>
+        ) : null}
+
         <View style={styles.intro}>
           <ThemedText type="title">Choose Your AI</ThemedText>
           <ThemedText type="small" themeColor="onSurfaceVar">
@@ -80,9 +125,21 @@ export default function ModelHubIndexScreen() {
             <ListRow
               key={model.id}
               divider={index < MODEL_CATALOG.length - 1}
-              onPress={() => selectModel(model)}
-              accessibilityLabel={`Select ${model.displayName}`}>
-              <ThemedText type="strong">{model.displayName}</ThemedText>
+              onPress={model.id === currentModelId ? undefined : () => selectModel(model)}
+              disabled={model.id === currentModelId}
+              accessibilityLabel={
+                model.id === currentModelId
+                  ? `${model.displayName}, current model`
+                  : `Select ${model.displayName}`
+              }>
+              <View style={styles.modelHeader}>
+                <ThemedText type="strong">{model.displayName}</ThemedText>
+                {model.id === currentModelId ? (
+                  <ThemedText type="meta" themeColor="outline">
+                    Current
+                  </ThemedText>
+                ) : null}
+              </View>
               <ThemedText type="small" themeColor="onSurfaceVar">
                 {model.tagline}
               </ThemedText>
@@ -127,7 +184,9 @@ export default function ModelHubIndexScreen() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: Space[4], gap: Space[3] },
+  backRow: { alignSelf: 'flex-start', minHeight: TouchTarget, justifyContent: 'center' },
   intro: { gap: Space[2] },
+  modelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   wifi: { gap: Space[3] },
   warning: { gap: Space[3] },
   warningActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Space[2] },
