@@ -145,10 +145,16 @@ export const graphLayoutMachine = setup({
           },
           {
             target: 'settling',
-            actions: assign({ seed: ({ event }) => event.output?.positions ?? null }),
+            actions: assign({
+              // Warm-start from the cache; with no cache (throwaway scope or
+              // a miss), fall back to the current positions so notes shared
+              // with the previously shown graph keep their place instead of
+              // the whole view spiralling in from scratch.
+              seed: ({ context, event }) => event.output?.positions ?? context.positions,
+            }),
           },
         ],
-        onError: { target: 'settling', actions: assign({ seed: null }) },
+        onError: { target: 'settling', actions: assign({ seed: ({ context }) => context.positions }) },
       },
     },
     settling: {

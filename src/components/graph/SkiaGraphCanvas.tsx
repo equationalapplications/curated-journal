@@ -24,7 +24,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { boundsOf, centerOn, fitCamera, hitTest, zoomAround, type Camera } from '@/lib/graphCamera';
 import { hashColor, shortLabel } from '@/lib/graphData';
 import { LABEL_HEIGHT, LABEL_OFFSET, placeLabels } from '@/lib/graphLabelPlacement';
-import { graphStructureKey, type Pos } from '@/lib/graphLayout';
+import type { Pos } from '@/lib/graphLayout';
 import { tint } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -44,6 +44,10 @@ type Props = {
   focusRequest: { id: string; nonce: number } | null;
   /** Bump to fit the whole graph on screen again. */
   fitRequest: number;
+  /** True while the layout is still finding its positions (start ones are throwaway). */
+  settling: boolean;
+  /** Structure key of the shown graph; a change means a different graph is on screen. */
+  structureKey: string | null;
   onSelectNode: (id: string) => void;
   onBackgroundPress: () => void;
 };
@@ -92,6 +96,8 @@ export function SkiaGraphCanvas({
   highlight,
   focusRequest,
   fitRequest,
+  settling,
+  structureKey,
   onSelectNode,
   onBackgroundPress,
 }: Props) {
@@ -122,11 +128,10 @@ export function SkiaGraphCanvas({
   // Keep the whole graph in view while it settles, until the user takes over.
   // When the shown graph changes (overview ↔ neighbourhood), the old camera
   // position is meaningless for the new graph: re-fit regardless of userMoved.
-  const graphKey = useMemo(() => graphStructureKey(nodes, edges), [nodes, edges]);
-  const prevGraphKey = useRef(graphKey);
+  const prevGraphKey = useRef(structureKey);
   useEffect(() => {
-    const graphChanged = prevGraphKey.current !== graphKey;
-    prevGraphKey.current = graphKey;
+    const graphChanged = prevGraphKey.current !== structureKey;
+    prevGraphKey.current = structureKey;
     if (graphChanged) {
       userMoved.current = false;
       moveCamera(fitCamera(boundsOf(positions.values()), viewport), false);
@@ -135,7 +140,7 @@ export function SkiaGraphCanvas({
     if (userMoved.current || interacting.current) return;
     moveCamera(fitCamera(boundsOf(positions.values()), viewport), false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions, viewport, moveCamera, graphKey]);
+  }, [positions, viewport, moveCamera, structureKey]);
 
   // Explicit "show whole graph" (the FIT button, and CLEAR_FOCUS's re-fit).
   // fitRequest === 0 means nothing has been requested yet.
@@ -150,7 +155,7 @@ export function SkiaGraphCanvas({
   // Centring on a note whose position hasn't arrived yet (the layout machine
   // is still restoring the new graph) must not drop the request: park it and
   // retry when positions change. The nonce guard keeps later positions
-  // updates from re-centring on an already-handled request (Opus M1, r2).
+  // updates from re-centring on an already-handled request.
   const lastNonce = useRef<number | null>(null);
   const pendingFocus = useRef<string | null>(null);
   useEffect(() => {
@@ -161,6 +166,8 @@ export function SkiaGraphCanvas({
     };
     if (focusRequest.nonce !== lastNonce.current) {
       lastNonce.current = focusRequest.nonce;
+      // A stale park from an earlier request must never fire later.
+      pendingFocus.current = null;
       if (positions.has(focusRequest.id)) {
         centre(focusRequest.id);
       } else {
@@ -170,11 +177,12 @@ export function SkiaGraphCanvas({
     }
     const id = pendingFocus.current;
     if (id && positions.has(id)) {
+      if (settling) return; // start positions are throwaway; wait for the fit
       pendingFocus.current = null;
       centre(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusRequest, positions, viewport, moveCamera]);
+  }, [focusRequest, positions, settling, viewport, moveCamera]);
 
   const commit = useCallback((x: number, y: number, scale: number) => {
     userMoved.current = true;
@@ -205,7 +213,7 @@ export function SkiaGraphCanvas({
   // fight the user's fingers for the camera mid-gesture. Gesture callbacks
   // run as worklets on the UI runtime, so the JS-side ref is updated via
   // scheduleOnRN — a direct write from a worklet would only change the UI
-  // runtime's copy (Opus M2, r2).
+  // runtime's copy.
   const interacting = useRef(false);
   const setInteracting = useCallback((v: boolean) => {
     interacting.current = v;

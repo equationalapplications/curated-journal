@@ -43,7 +43,9 @@ export function searchNotes<T extends Pick<GraphNodeInput, 'id' | 'title' | 'bod
 
 /**
  * A graph centred on one note: the note, its direct links, then (if there is
- * room) notes two links away. Used when the note isn't in the capped overview.
+ * room) notes two links away, capped at `maxNodes` overall — a hub with more
+ * direct links than the cap is truncated like any other over-cap graph.
+ * Used when the note isn't in the capped overview.
  */
 export function egoGraph<N extends { id: string }, E extends Edge>(
   id: string,
@@ -51,10 +53,17 @@ export function egoGraph<N extends { id: string }, E extends Edge>(
   edges: readonly E[],
   maxNodes = 60,
 ): { nodes: N[]; edges: E[] } {
-  const keep = neighbourhood(id, edges);
+  const direct = neighbourhood(id, edges);
+  const keep = new Set<string>([id]);
+  // Direct links first (input order ≈ most-connected first from the builder),
+  // then two-hop notes, until the cap. `id` always stays.
+  for (const n of direct) {
+    if (keep.size >= maxNodes) break;
+    keep.add(n);
+  }
   if (keep.size < maxNodes) {
-    for (const n of [...keep]) {
-      if (n === id) continue;
+    for (const n of [...direct]) {
+      if (keep.size >= maxNodes) break;
       for (const m of neighbourhood(n, edges)) {
         if (keep.size >= maxNodes) break;
         keep.add(m);

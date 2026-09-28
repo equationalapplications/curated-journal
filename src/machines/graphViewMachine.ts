@@ -89,7 +89,7 @@ export const graphViewMachine = setup({
         ],
         TAP_NODE: [
           { guard: 'targetInOverview', target: '.focused', actions: 'focusTarget' },
-          { target: '.neighbourhood', actions: 'focusTarget' },
+          { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre'] },
         ],
         CLEAR_FOCUS: { target: '.none', actions: ['clearFocus', 'requestFit'] },
       },
@@ -101,8 +101,12 @@ export const graphViewMachine = setup({
           always: { guard: ({ context }) => !context.overview.has(context.focusId!), target: 'neighbourhood' },
         },
         // Background taps keep the neighbourhood: leaving it is explicit
-        // ("All notes"), since it replaces the whole graph on screen.
+        // ("All notes"), since it replaces the whole graph on screen. A tap
+        // on an overview note inside a neighbourhood is ambiguous: silently
+        // swapping to the whole overview throws away the user's place, so
+        // the neighbourhood is kept and the camera moves to the note.
         neighbourhood: {
+          TAP_NODE: { actions: ['focusTarget', 'requestCentre'] },
           always: { guard: 'focusInOverview', target: 'focused' },
         },
       },

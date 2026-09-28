@@ -211,6 +211,8 @@ export default function GraphScreen() {
             highlight={highlight}
             focusRequest={focusRequest}
             fitRequest={view.context.fitRequest}
+            settling={settling}
+            structureKey={structureKey}
             onSelectNode={onSelectNode}
             onBackgroundPress={onBackgroundPress}
           />

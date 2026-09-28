@@ -101,9 +101,11 @@ describe('graphLayoutMachine', () => {
     // One frame is scheduled mid-settle (the moving clock keeps the run alive).
     expect(f.pending()).toBe(1);
     actor.send({ type: 'STRUCTURE', key: ring(8), scope: 'e1' });
-    // Regression guard (CodeRabbit, PR #42): leaving `settling` must stop the
-    // old run — its scheduled frame is cancelled, so nothing fires until the
-    // new simulation schedules its own.
+    // Leaving `settling` must stop the old run — its scheduled frame is
+    // cancelled, so nothing fires until the new simulation schedules its own.
+    // If it didn't, the old run's ticks would keep firing alongside the new
+    // one and the final pump would settle a 48-node superposition, not the
+    // new 8-node ring.
     expect(f.pending()).toBe(0);
     await waitFor(actor, (s) => s.matches('settling'));
     f.pumpAll();
