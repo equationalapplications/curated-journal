@@ -2,26 +2,28 @@ import type { MemoryBundle, MemoryDump, WikiMemory } from '@equationalapplicatio
 import { IMPORT_CHUNK_SIZE } from '@/lib/constants';
 import { yieldToUI } from '@/lib/yieldToUI';
 
-function countItems(dump: MemoryDump): number {
-  let total = 0;
-  for (const bundle of Object.values(dump.entities)) {
-    total +=
-      bundle.facts.length +
-      (bundle.edges?.length ?? 0) +
-      bundle.events.length +
-      bundle.tasks.length;
-  }
-  return Math.max(total, 1);
-}
+/** Aim for about this many chunks per import, whatever its size. */
+export const TARGET_CHUNKS = 8;
+export const MAX_IMPORT_CHUNK_SIZE = 500;
 
-function sliceItemCount(bundle: MemoryBundle): number {
-  return (
-    bundle.facts.length +
-    (bundle.edges?.length ?? 0) +
-    bundle.events.length +
-    bundle.tasks.length
+/**
+ * Facts per `importDump` call. Each call ends with the wiki rebuilding the
+ * entity's whole search index, so the rebuild cost grows with the journal,
+ * not with the chunk: fixed small chunks made a 1000-note import quadratic
+ * (40 rebuilds; ~129s on an emulator, 19s in Node vs 1s in one call). A
+ * roughly constant number of chunks keeps it linear *up to the cap*: above
+ * ~4000 notes (8 × 500) the chunk count grows as n/500, by design — the cap
+ * bounds each write transaction and keeps every chunk well under the
+ * transaction/latency budget even for very large journals.
+ */
+export function chunkSizeFor(factCount: number): number {
+  return Math.min(
+    MAX_IMPORT_CHUNK_SIZE,
+    Math.max(IMPORT_CHUNK_SIZE, Math.ceil(factCount / TARGET_CHUNKS)),
   );
 }
+
+export type ImportProgress = { factsDone: number; factsTotal: number };
 
 function chunkBundle(bundle: MemoryBundle, chunkSize: number): MemoryBundle[] {
   const edges = bundle.edges ?? [];
@@ -43,22 +45,36 @@ function chunkBundle(bundle: MemoryBundle, chunkSize: number): MemoryBundle[] {
 export async function chunkedImportDump(
   wiki: WikiMemory,
   dump: MemoryDump,
-  opts: { merge: boolean; chunkSize?: number; onProgress: (pct: number) => void },
-): Promise<void> {
-  const chunkSize = opts.chunkSize ?? IMPORT_CHUNK_SIZE;
+  opts: {
+    merge: boolean;
+    /** Fixed facts per chunk; by default sized from the dump (chunkSizeFor). */
+    chunkSize?: number;
+    /**
+     * Fraction of notes imported, 0..1, plus the counts. Counted in facts:
+     * edges, events and tasks ride along with the first chunk and are cheap,
+     * so counting them made the bar jump to ~75% and then crawl.
+     */
+    onProgress: (pct: number, detail: ImportProgress) => void;
+    /** Stops between chunks; chunks already imported stay imported (merge). */
+    signal?: AbortSignal;
+  },
+): Promise<{ completed: boolean }> {
   const entities = Object.entries(dump.entities);
-  let processed = 0;
-  const total = countItems(dump);
+  const factsTotal = entities.reduce((n, [, b]) => n + b.facts.length, 0);
+  let factsDone = 0;
 
   for (const [entityId, bundle] of entities) {
+    const chunkSize = opts.chunkSize ?? chunkSizeFor(bundle.facts.length);
     for (const slice of chunkBundle(bundle, chunkSize)) {
+      if (opts.signal?.aborted) return { completed: false };
       await wiki.importDump(
         { generatedAt: dump.generatedAt, entities: { [entityId]: slice } },
         { merge: opts.merge },
       );
-      processed += sliceItemCount(slice);
-      opts.onProgress(processed / total);
+      factsDone += slice.facts.length;
+      opts.onProgress(factsTotal === 0 ? 1 : factsDone / factsTotal, { factsDone, factsTotal });
       await yieldToUI();
     }
   }
+  return { completed: true };
 }
