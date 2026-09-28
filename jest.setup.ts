@@ -28,3 +28,26 @@ jest.mock('react-native-safe-area-context', () => {
     initialWindowMetrics: { insets: inset, frame: { x: 0, y: 0, width: 320, height: 640 } },
   };
 });
+
+// Pay the one-time React Native module-init cost here, in setup, instead of
+// inside a test. RNTL v14's render() is async, so the first render in a file
+// loads and transforms RN's renderer plus the Modal dependency graph before
+// the tree settles. Measured cold that is ~3s; warm it is ~1ms. Jest's default
+// per-test timeout is 5s, so on a cold cache (first run after an install, or a
+// clean CI worker) with parallel workers competing for CPU, the first render
+// test in a file blows the budget and fails — reproducibly, not flakily.
+// Rendering a throwaway Modal once per file here absorbs the cost outside any
+// test's timeout window. This is what made graphLabels.test.tsx's
+// "GraphNodeSheet > shows the full title, chips and body" fail; it drops from
+// ~3.1s to ~25ms. Delete the very next line and that test goes back to failing.
+{
+  const React = require('react');
+  const { Modal, Text } = require('react-native');
+  require('@testing-library/react-native').render(
+    React.createElement(
+      Modal,
+      { visible: true, transparent: true, animationType: 'slide' },
+      React.createElement(Text, null, 'warmup'),
+    ),
+  );
+}
