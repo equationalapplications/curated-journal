@@ -126,10 +126,10 @@ export function NightShiftScreen() {
             {nightShiftOperationTitle(currentOperation)}
           </ThemedText>
           <ThemedText type="strong" style={styles.phaseText}>
-            {nightShiftPhaseLabel(currentOperation, status, llm)}
+            {nightShiftPhaseLabel(currentOperation, status, llm, finished)}
           </ThemedText>
           <ThemedText type="small" themeColor="onSurfaceVar" style={styles.detailText}>
-            {nightShiftDetailLabel(currentOperation)}
+            {nightShiftDetailLabel(currentOperation, finished)}
           </ThemedText>
           <ThemedText type="small" themeColor="outline" style={styles.stepText}>
             {stepLabel}
@@ -141,14 +141,18 @@ export function NightShiftScreen() {
             </ThemedText>
           </View>
         </View>
-        <Button
-          label="Stop"
-          variant="default"
-          onPress={() => {
-            send({ type: 'ABORT_NIGHT_SHIFT' });
-            router.back();
-          }}
-        />
+        {finished ? (
+          <Button label="Done" variant="primary" onPress={() => router.back()} />
+        ) : (
+          <Button
+            label="Stop"
+            variant="default"
+            onPress={() => {
+              send({ type: 'ABORT_NIGHT_SHIFT' });
+              router.back();
+            }}
+          />
+        )}
       </View>
     </Screen>
   );
