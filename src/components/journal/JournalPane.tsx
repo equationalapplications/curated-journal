@@ -7,16 +7,12 @@ import { EmptyState } from '@/components/ui/states';
 import { useMarkdownStyles } from '@/components/ui/markdown-styles';
 import { useCitationNavigation } from '@/contexts/CitationNavigationContext';
 import { useJournal } from '@/contexts/JournalContext';
+import { noteBody, noteTitle } from '@/lib/noteText';
 import { Space } from '@/constants/theme';
 
 type JournalPaneProps = {
   facts?: MemoryBundle['facts'];
 };
-
-function factTitle(body: string, fallback: string): string {
-  const match = body.match(/^#\s+(.+)$/m);
-  return match?.[1]?.trim() ?? fallback;
-}
 
 export function JournalPane({ facts }: JournalPaneProps) {
   const { selectedFactId } = useJournal();
@@ -48,8 +44,10 @@ export function JournalPane({ facts }: JournalPaneProps) {
     );
   }
 
-  const title = fact.title ?? factTitle(fact.body ?? '', 'Untitled');
-  const body = fact.body ?? '';
+  const title = fact.title ?? noteTitle(fact.body, 'Untitled');
+  // The title is rendered above the body, so its `# ` line has to come off or
+  // the note reads as though it has two titles.
+  const body = noteBody(fact.body, title);
 
   return (
     <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>

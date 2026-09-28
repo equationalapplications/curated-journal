@@ -46,6 +46,9 @@ export default function TabsLayout() {
         name="journal"
         options={{
           title: 'Journal',
+          // Without this the tab's accessible name is the SymbolView glyph
+          // followed by the label, so a screen reader announces the raw glyph.
+          tabBarAccessibilityLabel: 'Journal',
           tabBarIcon: ({ color, size }) => (
             <TabIcon
               name={{ ios: 'book', android: 'book', web: 'book' }}
@@ -59,6 +62,7 @@ export default function TabsLayout() {
         name="graph"
         options={{
           title: 'Graph',
+          tabBarAccessibilityLabel: 'Graph',
           tabBarIcon: ({ color, size }) => (
             <TabIcon
               name={{ ios: 'point.3.connected.trianglepath.dotted', android: 'hub', web: 'hub' }}
@@ -72,6 +76,7 @@ export default function TabsLayout() {
         name="settings"
         options={{
           title: 'Settings',
+          tabBarAccessibilityLabel: 'Settings',
           tabBarIcon: ({ color, size }) => (
             <TabIcon
               name={{ ios: 'gearshape', android: 'settings', web: 'settings' }}

@@ -28,10 +28,16 @@ export function graphStructureKey(
   // Sort before hashing: the same set of notes/edges must produce the same
   // key however the graph happens to be ordered, or every reload with a
   // different cap ordering would miss the cache.
-  const ids = nodes.map((n) => n.id).toSorted();
+  //
+  // `.sort()`, not `.toSorted()`: toSorted is ES2023 and Hermes (Android's JS
+  // engine) has no implementation, so it threw "undefined is not a function"
+  // and took the whole Graph screen down on device. Jest runs on Node, which
+  // does have it, so the unit tests could never have caught this. Both arrays
+  // here are freshly built by .map(), so sorting in place is safe.
+  const ids = nodes.map((n) => n.id).sort();
   const links = edges
     .map((e) => (e.sourceId <= e.targetId ? [e.sourceId, e.targetId] : [e.targetId, e.sourceId]) as [string, string])
-    .toSorted((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
   const structure: GraphStructure = { ids, links };
   return JSON.stringify(structure);
 }

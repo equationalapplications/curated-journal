@@ -4,7 +4,9 @@ import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
 
 jest.mock('react-native-markdown-display', () => {
   const { Text } = require('react-native');
-  return ({ children }: { children: string }) => <Text>{children}</Text>;
+  const MockMarkdown = ({ children }: { children: string }) => <Text>{children}</Text>;
+  MockMarkdown.displayName = 'MockMarkdown';
+  return MockMarkdown;
 });
 
 describe('shortLabel', () => {

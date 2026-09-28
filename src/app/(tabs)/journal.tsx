@@ -14,6 +14,7 @@ import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { useJournal } from '@/contexts/JournalContext';
 import { createJournalIngest } from '@/lib/journalIngest';
+import { notePreview, noteTitle } from '@/lib/noteText';
 import { useJournalMemoryRead } from '@/hooks/useJournalMemoryRead';
 import { useSplitPaneLayout } from '@/hooks/useSplitPaneLayout';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,11 +43,15 @@ export default function JournalScreen() {
 
   const items: JournalListItem[] = useMemo(() => {
     const facts = data?.facts ?? [];
-    return facts.map((f) => ({
-      id: f.id,
-      title: f.title ?? 'Untitled',
-      preview: f.body?.slice(0, 120) ?? '',
-    }));
+    return facts.map((f) => {
+      const title = f.title ?? noteTitle(f.body, 'Untitled');
+      return {
+        id: f.id,
+        title,
+        // The row already shows the title, so the preview starts below it.
+        preview: notePreview(f.body, title),
+      };
+    });
   }, [data]);
 
   const handleSave = useCallback(
