@@ -11,7 +11,7 @@ export type GraphNodeDetail = {
   id: string;
   title: string;
   body?: string;
-  okfType?: string;
+  okfType?: string | null;
   confidence?: string;
 };
 

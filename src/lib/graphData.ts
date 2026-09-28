@@ -72,7 +72,7 @@ export function buildGraphFromDump(
   entityId: string,
 ) {
   const bundle = dump.entities[entityId];
-  if (!bundle) return { nodes: [], edges: [], truncated: false };
+  if (!bundle) return { nodes: [], edges: [], truncated: false, all: { nodes: [], edges: [] } };
   const nodes = bundle.facts.map((f) => ({
     id: f.id,
     title: f.title ?? 'Untitled',
@@ -82,14 +82,22 @@ export function buildGraphFromDump(
     okfType: f.okf_type,
   }));
   const capped = capGraphNodes(nodes);
-  const allowed = new Set(capped.nodes.map((n) => n.id));
-  const edges = (bundle.edges ?? [])
-    .filter((e) => allowed.has(e.source_id) && allowed.has(e.target_id))
+  const live = new Set(nodes.map((n) => n.id));
+  const allEdges = (bundle.edges ?? [])
+    .filter((e) => live.has(e.source_id) && live.has(e.target_id))
     .map((e) => ({
       id: e.id,
       sourceId: e.source_id,
       targetId: e.target_id,
       type: e.edge_type,
     }));
-  return { nodes: capped.nodes, edges, truncated: capped.truncated };
+  const allowed = new Set(capped.nodes.map((n) => n.id));
+  const edges = allEdges.filter((e) => allowed.has(e.sourceId) && allowed.has(e.targetId));
+  return {
+    nodes: capped.nodes,
+    edges,
+    truncated: capped.truncated,
+    /** Every note and link, uncapped: search and neighbourhood views use these. */
+    all: { nodes, edges: allEdges },
+  };
 }
