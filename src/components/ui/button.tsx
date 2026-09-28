@@ -126,6 +126,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: 'transparent',
+    // Explicit, not implied: on Android, removing borderStyle leaves the
+    // native view dashed, so a button enabled after being disabled kept the
+    // disabled treatment's dashes.
+    borderStyle: 'solid',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
