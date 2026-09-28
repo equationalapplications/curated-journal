@@ -26,7 +26,7 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     persistDownloadState: jest.fn(async () => undefined),
     clearDownloadState: jest.fn(async () => undefined),
     setModelPath: jest.fn(async () => undefined),
-    retireCurrentModel: jest.fn(async () => undefined),
+    retireCurrentModel: jest.fn(async () => ({ identityCleared: true })),
     deleteModelFile: jest.fn(async () => undefined),
     ...overrides,
   };
@@ -277,6 +277,45 @@ describe('modelHubMachine', () => {
     actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
     await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
     expect(actor.getSnapshot().context.currentModelId).toBe('fast-light');
+    expect(actor.getSnapshot().context.error?.message).toMatch(/nothing has changed/);
+    actor.stop();
+  });
+
+  it('does not claim nothing changed when the file was retired but its identity was not cleared', async () => {
+    // The file is gone; only the stored path and id outlived it. Telling the
+    // user nothing has changed would be a lie about an irreversible action, and
+    // currentModelId would go on rendering a deleted model as Current.
+    const api = makeApi({ retireCurrentModel: jest.fn(async () => ({ identityCleared: false })) });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    expect(actor.getSnapshot().context.error?.code).toBe('retire');
+    expect(actor.getSnapshot().context.error?.message).not.toMatch(/nothing has changed/);
+    expect(actor.getSnapshot().context.error?.message).toMatch(/was removed/);
+    expect(actor.getSnapshot().context.currentModelId).toBeNull();
+    actor.stop();
+  });
+
+  it('lets a retry finish clearing the identity left stale by a retirement', async () => {
+    // The second attempt finds no file to unlink (already gone) and only has to
+    // clear the key, so it proceeds to the download the user wanted.
+    let attempt = 0;
+    const api = makeApi({
+      retireCurrentModel: jest.fn(async () => {
+        attempt += 1;
+        return { identityCleared: attempt > 1 };
+      }),
+    });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.setModelPath).toHaveBeenCalledWith(expect.objectContaining({ id: 'smarter-slower' }));
     actor.stop();
   });
 

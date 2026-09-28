@@ -72,17 +72,30 @@ export function createModelHubApi(store: Store): ModelHubApi {
       await setModelPath(file.uri);
       await setModelId(model.id);
     },
-    // Deliberately not wrapped in try/catch: a rejection here means the model file
-    // could not be removed, and the machine's retiringCurrent state owns that
-    // failure branch. Idempotence comes from the `exists` guard below, and the
-    // clearModelPath() call must still run when the file was already gone.
+    // Deliberately not wrapped in try/catch around the unlink: a rejection here
+    // means the model file could not be removed, and the machine's
+    // retiringCurrent state owns that failure branch — it can report "nothing
+    // has changed" truthfully, because nothing has. Idempotence comes from the
+    // `exists` guard below, and the clearModelPath() call must still run when
+    // the file was already gone.
+    //
+    // The storage clear is the one failure that must NOT reject. By this point
+    // the file is already deleted, so rejecting would tell the user nothing
+    // changed when in fact their model is gone. Resolve with identityCleared:
+    // false instead, and let the machine say what actually happened.
     retireCurrentModel: async () => {
       const path = await getModelPath();
       if (path) {
         const file = new File(path);
         if (file.exists) file.delete();
       }
-      await clearModelPath();
+      try {
+        await clearModelPath();
+        return { identityCleared: true };
+      } catch (cause) {
+        console.warn('[model-hub] retired the model file but could not clear its identity', cause);
+        return { identityCleared: false };
+      }
     },
     // Best-effort by contract (spec §4.2 B6, §6): this unlinks the outgoing file
     // after an import that has already succeeded and passed its smoke test. An

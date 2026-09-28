@@ -48,9 +48,18 @@ export type ModelHubApi = {
   }) => Promise<void>;
   clearDownloadState: () => Promise<void>;
   setModelPath: (model: CuratedModel) => Promise<void>;
-  retireCurrentModel: () => Promise<void>;
+  retireCurrentModel: () => Promise<RetireOutcome>;
   deleteModelFile: (path: string) => Promise<void>;
 };
+
+/**
+ * Resolving means the outgoing file is gone — the unlink is the commitment
+ * point, so a rejection can only mean the unlink itself failed and the model is
+ * still on disk. `identityCleared` reports the bookkeeping that follows: when
+ * false, the stored path and id still name a file that no longer exists, and
+ * the launch-time reconciliation in `_layout.tsx` is what cleans that up.
+ */
+export type RetireOutcome = { identityCleared: boolean };
 
 export type ModelHubMachineInput = {
   api: ModelHubApi;
@@ -201,11 +210,33 @@ export const modelHubMachine = setup({
       invoke: {
         src: 'retireTask',
         input: ({ context }) => ({ api: context.api }),
-        // The outgoing file is gone once retireTask resolves, so currentModelId
-        // must not survive into the states this can fail into. Left set, it
-        // would render the deleted model as Current and block re-selecting it.
-        onDone: { target: 'confirmingNetwork', actions: assign({ currentModelId: null }) },
+        // currentModelId is cleared in both done branches: the file is gone the
+        // moment this resolves, so leaving it set would render a deleted model
+        // as Current and block re-selecting it.
+        onDone: [
+          {
+            guard: ({ event }) => event.output.identityCleared,
+            target: 'confirmingNetwork',
+            actions: assign({ currentModelId: null }),
+          },
+          {
+            // The model really was removed — only its stored identity outlived
+            // it. Saying "nothing has changed" here would be a lie about an
+            // irreversible action, so the message has to distinguish the two.
+            target: 'selecting',
+            actions: assign({
+              currentModelId: null,
+              error: {
+                code: 'retire' as const,
+                message:
+                  'Your model was removed, but its saved details could not be cleared. Pick a model to finish.',
+              },
+            }),
+          },
+        ],
         onError: {
+          // Reached only when the unlink itself failed, so the model is still
+          // installed and currentModelId is still true.
           target: 'selecting',
           actions: assign({
             error: {
