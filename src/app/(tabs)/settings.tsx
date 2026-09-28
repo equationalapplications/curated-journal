@@ -1,6 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
-import { File } from 'expo-file-system';
 import { useWikiExport } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -8,9 +7,7 @@ import { ListGroup, Row } from '@/components/ui/card';
 import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { Screen } from '@/components/screen';
 import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
-import { getModelPath, clearModelPath } from '@/lib/entityStorage';
 import { useJournal } from '@/contexts/JournalContext';
-import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 import { useNightShiftGates } from '@/hooks/useNightShiftGates';
 import { Space } from '@/constants/theme';
 
@@ -19,28 +16,20 @@ export default function SettingsScreen() {
   const { entityId } = useJournal();
   const { canStart } = useNightShiftGates();
   const { execute: exportDump } = useWikiExport();
-  const rebootstrap = useModelHubCompletion();
   const { confirm, confirmElement } = useConfirmSheet();
 
-  const performChangeModel = async () => {
-    const path = await getModelPath();
-    if (path) {
-      const file = new File(path);
-      if (file.exists) file.delete();
-    }
-    await clearModelPath();
-    await rebootstrap();
-    router.replace('/model-hub' as Href);
+  const performChangeModel = () => {
+    router.push('/model-hub' as Href);
   };
 
   const changeModel = () => {
     confirm({
       title: 'Change AI model',
       message:
-        'This will delete your current model immediately. You will not be able to use the AI until the new download completes.',
+        'You will choose a replacement on the next screen. Your current model stays in place until you pick one.',
       buttons: [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', style: 'destructive', onPress: () => void performChangeModel() },
+        { text: 'Continue', onPress: () => performChangeModel() },
       ],
     });
   };
