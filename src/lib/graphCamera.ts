@@ -87,10 +87,12 @@ export function hitTest(
   cam: Camera,
   tap: Pos,
   radius = 24,
+  allowed?: ReadonlySet<string>,
 ): string | null {
   let best: string | null = null;
   let bestD = radius * radius;
   for (const [id, p] of positions) {
+    if (allowed && !allowed.has(id)) continue;
     const s = worldToScreen(p, cam);
     const d = (s.x - tap.x) ** 2 + (s.y - tap.y) ** 2;
     if (d <= bestD) {

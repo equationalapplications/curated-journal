@@ -14,20 +14,25 @@ export type Pos = { x: number; y: number };
 export type GraphStructure = { ids: string[]; links: [string, string][] };
 
 /**
- * A stable key for a graph's *structure* (node ids and edges, in order).
- * Reloading the graph produces a new object even when nothing changed, and
- * the layout costs seconds at a few hundred nodes on a phone, so the layout is
- * memoized on this key rather than on the graph object. Titles and bodies are
- * not part of it: editing a note must not re-shuffle the graph.
+ * A stable key for a graph's *structure* (node ids and edges, order- and
+ * direction-independent). Reloading the graph produces a new object even when
+ * nothing changed, and the layout costs seconds at a few hundred nodes on a
+ * phone, so the layout is memoized on this key rather than on the graph
+ * object. Titles and bodies are not part of it: editing a note must not
+ * re-shuffle the graph.
  */
 export function graphStructureKey(
   nodes: readonly { id: string }[],
   edges: readonly { sourceId: string; targetId: string }[],
 ): string {
-  const structure: GraphStructure = {
-    ids: nodes.map((n) => n.id),
-    links: edges.map((e) => [e.sourceId, e.targetId]),
-  };
+  // Sort before hashing: the same set of notes/edges must produce the same
+  // key however the graph happens to be ordered, or every reload with a
+  // different cap ordering would miss the cache.
+  const ids = nodes.map((n) => n.id).toSorted();
+  const links = edges
+    .map((e) => (e.sourceId <= e.targetId ? [e.sourceId, e.targetId] : [e.targetId, e.sourceId]) as [string, string])
+    .toSorted((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  const structure: GraphStructure = { ids, links };
   return JSON.stringify(structure);
 }
 

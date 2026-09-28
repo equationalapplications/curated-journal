@@ -24,7 +24,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { boundsOf, centerOn, fitCamera, hitTest, zoomAround, type Camera } from '@/lib/graphCamera';
 import { hashColor, shortLabel } from '@/lib/graphData';
 import { LABEL_HEIGHT, LABEL_OFFSET, placeLabels } from '@/lib/graphLabelPlacement';
-import type { Pos } from '@/lib/graphLayout';
+import { graphStructureKey, type Pos } from '@/lib/graphLayout';
 import { tint } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
@@ -53,10 +53,21 @@ const FONT_SIZE = 12;
 const DIM = 0.22;
 const CAMERA_MS = 250;
 
-const font: SkFont = matchFont({
-  fontFamily: Platform.select({ ios: 'Helvetica', default: 'sans-serif' }),
-  fontSize: FONT_SIZE,
-});
+// Built lazily, NOT at module load: `matchFont` touches the platform font
+// manager, whose web implementation throws (`Skia.FontMgr.System()` is a
+// stub in CanvasKit), which would reject GraphCanvas.web's lazy import and
+// take down the whole graph tab. On web we also surface the failure
+// benignly: `font` stays null, dots and edges still draw, labels don't.
+const platformFontFamily = Platform.select({ ios: 'Helvetica', default: 'sans-serif' });
+function loadFont(): SkFont | null {
+  try {
+    return matchFont({ fontFamily: platformFontFamily, fontSize: FONT_SIZE });
+  } catch (e) {
+    console.warn('[graph] no system font for labels; drawing without them.', e);
+    return null;
+  }
+}
+const font: SkFont | null = loadFont();
 
 /**
  * The graph as a pannable, zoomable Skia canvas.
@@ -109,28 +120,27 @@ export function SkiaGraphCanvas({
   );
 
   // Keep the whole graph in view while it settles, until the user takes over.
+  // Re-fit when the shown graph changes (overview ↔ neighbourhood): the new
+  // positions are a different graph and may start partly off screen.
+  const graphKey = useMemo(() => graphStructureKey(nodes, edges), [nodes, edges]);
   useEffect(() => {
-    if (userMoved.current) return;
+    if (userMoved.current || interacting.current) return;
     moveCamera(fitCamera(boundsOf(positions.values()), viewport), false);
-  }, [positions, viewport, moveCamera]);
-
-  useEffect(() => {
-    if (fitRequest === 0) return;
-    userMoved.current = false;
-    moveCamera(fitCamera(boundsOf(positions.values()), viewport), true);
-    // Only on an explicit request, not on every settle step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitRequest]);
+  }, [positions, viewport, moveCamera, graphKey]);
 
+  // Centring on a note whose position hasn't arrived yet (the layout machine
+  // is still restoring the new graph) must not drop the request: keep it
+  // pending and retry when positions change.
+  const pendingFocus = useRef<string | null>(null);
   useEffect(() => {
-    if (!focusRequest) return;
-    const p = positions.get(focusRequest.id);
-    if (!p) return;
+    const id = pendingFocus.current ?? focusRequest?.id ?? null;
+    if (!id || !positions.has(id)) return;
+    pendingFocus.current = null;
     userMoved.current = true;
-    moveCamera(centerOn({ x: tx.get(), y: ty.get(), scale: sc.get() }, p, viewport), true);
-    // Positions may still be settling; centre once per request.
+    moveCamera(centerOn({ x: tx.get(), y: ty.get(), scale: sc.get() }, positions.get(id)!, viewport), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusRequest]);
+  }, [focusRequest, positions, viewport, moveCamera]);
 
   const commit = useCallback((x: number, y: number, scale: number) => {
     userMoved.current = true;
@@ -147,25 +157,43 @@ export function SkiaGraphCanvas({
 
   const handleTap = useCallback(
     (x: number, y: number) => {
-      const hit = hitTest(positions, { x: tx.get(), y: ty.get(), scale: sc.get() }, { x, y });
+      // Only notes actually on screen are tappable: while restoring, stale
+      // positions from the previous graph are still in `positions`.
+      const onScreen = new Set(nodes.map((n) => n.id));
+      const hit = hitTest(positions, { x: tx.get(), y: ty.get(), scale: sc.get() }, { x, y }, 24, onScreen);
       if (hit) onSelectNode(hit);
       else onBackgroundPress();
     },
-    [positions, onSelectNode, onBackgroundPress, tx, ty, sc],
+    [nodes, positions, onSelectNode, onBackgroundPress, tx, ty, sc],
   );
+
+  // True between a gesture's begin and end: progress publishes must not
+  // fight the user's fingers for the camera mid-gesture (onEnd alone left a
+  // 120ms window where the fit overwrote an in-progress drag).
+  const interacting = useRef(false);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
       .minDistance(4)
       .averageTouches(true)
+      .onBegin(() => {
+        interacting.current = true;
+      })
       .onChange((e) => {
         tx.set(tx.get() + e.changeX);
         ty.set(ty.get() + e.changeY);
       })
       .onEnd(() => {
+        interacting.current = false;
         scheduleOnRN(commit, tx.get(), ty.get(), sc.get());
+      })
+      .onFinalize(() => {
+        interacting.current = false;
       });
     const pinch = Gesture.Pinch()
+      .onBegin(() => {
+        interacting.current = true;
+      })
       .onChange((e) => {
         const next = zoomAround(
           { x: tx.get(), y: ty.get(), scale: sc.get() },
@@ -177,7 +205,11 @@ export function SkiaGraphCanvas({
         sc.set(next.scale);
       })
       .onEnd(() => {
+        interacting.current = false;
         scheduleOnRN(commit, tx.get(), ty.get(), sc.get());
+      })
+      .onFinalize(() => {
+        interacting.current = false;
       });
     // Double-tap zooms in 2x around the finger: the one-handed way to zoom.
     const doubleTap = Gesture.Tap()
@@ -217,29 +249,33 @@ export function SkiaGraphCanvas({
 
   const labels = useMemo(() => new Map(nodes.map((n) => [n.id, shortLabel(n.title)])), [nodes]);
   const labelWidths = useMemo(
-    () => new Map([...labels].map(([id, text]) => [id, font.measureText(text).width])),
+    // No font (web without a system font manager): empty widths, which makes
+    // every label zero-width in placeLabels and drops them from the canvas.
+    () => (font ? new Map([...labels].map(([id, text]) => [id, font.measureText(text).width])) : new Map()),
     [labels],
   );
   const visibleLabels = useMemo(
     () =>
-      placeLabels(
-        nodes.map((n) => ({
-          id: n.id,
-          width: (labelWidths.get(n.id) ?? 0) + 6,
-          priority:
-            n.id === selectedId
-              ? 1e6
-              : highlight?.has(n.id)
-                ? 1e3 + n.degree
-                : highlight
-                  ? n.degree - 1e3
-                  : n.degree,
-        })),
-        positions,
-        committed,
-        viewport,
-      ),
-    [nodes, labelWidths, selectedId, highlight, positions, committed, viewport],
+      font
+        ? placeLabels(
+            nodes.map((n) => ({
+              id: n.id,
+              width: (labelWidths.get(n.id) ?? 0) + 6,
+              priority:
+                n.id === selectedId
+                  ? 1e6
+                  : highlight?.has(n.id)
+                    ? 1e3 + n.degree
+                    : highlight
+                      ? n.degree - 1e3
+                      : n.degree,
+            })),
+            positions,
+            committed,
+            viewport,
+          )
+        : new Set<string>(),
+    [nodes, labelWidths, selectedId, highlight, positions, committed, viewport, font],
   );
 
   const edgeColor = tint(theme.outline, highlight ? 20 : 45);
@@ -318,7 +354,7 @@ export function SkiaGraphCanvas({
                   x={-w / 2}
                   y={LABEL_OFFSET + FONT_SIZE + 0.5}
                   text={text}
-                  font={font}
+                  font={font!}
                   color={highlight?.has(n.id) ? theme.onSurface : theme.onSurfaceVar}
                 />
               </Follow>

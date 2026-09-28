@@ -18,8 +18,12 @@ type Context = {
   focusId: string | null;
   sheetId: string | null;
   query: string;
-  /** Bumped to ask the canvas to centre on `focusId`. */
-  focusRequest: number;
+  /**
+   * The last centre request actually issued, as an object: stable identity
+   * while unchanged, so canvas effects keyed on it fire once per request —
+   * not on every TAP_NODE that merely changes `focusId`.
+   */
+  focusRequest: { id: string; nonce: number } | null;
   /** Bumped to ask the canvas to fit the whole graph. */
   fitRequest: number;
 };
@@ -51,7 +55,12 @@ export const graphViewMachine = setup({
     focusTarget: assign({
       focusId: ({ event }) => (event.type === 'PICK' || event.type === 'TAP_NODE' ? event.id : null),
     }),
-    requestCentre: assign({ focusRequest: ({ context }) => context.focusRequest + 1 }),
+    requestCentre: assign({
+      focusRequest: ({ context, event }) =>
+        event.type === 'PICK' || event.type === 'TAP_NODE'
+          ? { id: event.id, nonce: (context.focusRequest?.nonce ?? 0) + 1 }
+          : context.focusRequest,
+    }),
     requestFit: assign({ fitRequest: ({ context }) => context.fitRequest + 1 }),
     clearFocus: assign({ focusId: null }),
   },
@@ -63,7 +72,7 @@ export const graphViewMachine = setup({
     focusId: null,
     sheetId: null,
     query: '',
-    focusRequest: 0,
+    focusRequest: null,
     fitRequest: 0,
   },
   on: {

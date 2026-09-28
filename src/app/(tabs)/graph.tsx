@@ -99,10 +99,10 @@ export default function GraphScreen() {
   const focused = focusId ? byId.get(focusId) : undefined;
   const sheetNode = sheetId ? byId.get(sheetId) : undefined;
 
-  const focusRequest = useMemo(
-    () => (focusId && view.context.focusRequest > 0 ? { id: focusId, nonce: view.context.focusRequest } : null),
-    [focusId, view.context.focusRequest],
-  );
+  // The machine owns the issued request ({id, nonce}); TAP_NODE without a
+  // requestCentre leaves this object identical, so the canvas doesn't
+  // re-centre on every tap of an already-focused graph.
+  const focusRequest = view.context.focusRequest;
   const onSelectNode = useCallback((id: string) => sendView({ type: 'TAP_NODE', id }), [sendView]);
   const onBackgroundPress = useCallback(() => sendView({ type: 'TAP_BACKGROUND' }), [sendView]);
 

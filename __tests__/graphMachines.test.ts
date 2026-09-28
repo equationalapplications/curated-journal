@@ -15,7 +15,10 @@ function manualFrames() {
     cancel: () => {
       queue = [];
     },
-    now: () => t,
+    // Advances on every call: the layout's step() budget loop needs a moving
+    // clock, or the first frame runs the whole simulation to completion
+    // (Opus M3, PR #42) and "mid-settle" tests never actually are.
+    now: () => (t += 1),
   };
   return {
     frames,
@@ -95,13 +98,13 @@ describe('graphLayoutMachine', () => {
     actor.send({ type: 'STRUCTURE', key: ring(40), scope: 'e1' });
     await waitFor(actor, (s) => s.matches('settling'));
     f.pump(2);
-    // Regression guard (CodeRabbit, PR #42): the STRUCTURE transition must
-    // cancel the old run's scheduled frames — two live simulations would
-    // fight over node positions. If the old actor were still invoking, the
-    // old run's ticks would keep firing alongside the new one and the final
-    // pump would settle a 48-node superposition, not the new 8-node ring.
-    expect(f.pending()).toBe(0);
+    // One frame is scheduled mid-settle (the moving clock keeps the run alive).
+    expect(f.pending()).toBe(1);
     actor.send({ type: 'STRUCTURE', key: ring(8), scope: 'e1' });
+    // Regression guard (CodeRabbit, PR #42): leaving `settling` must stop the
+    // old run — its scheduled frame is cancelled, so nothing fires until the
+    // new simulation schedules its own.
+    expect(f.pending()).toBe(0);
     await waitFor(actor, (s) => s.matches('settling'));
     f.pumpAll();
     expect(actor.getSnapshot().matches('settled')).toBe(true);
@@ -157,7 +160,7 @@ describe('graphViewMachine', () => {
     expect(snap(a).matches({ search: 'typing' })).toBe(true);
     a.send({ type: 'PICK', id: 'b' });
     expect(snap(a).matches({ focus: 'focused', search: 'idle', sheet: 'closed' })).toBe(true);
-    expect(snap(a).context).toMatchObject({ focusId: 'b', query: '', focusRequest: 1 });
+    expect(snap(a).context).toMatchObject({ focusId: 'b', query: '', focusRequest: { id: 'b', nonce: 1 } });
   });
 
   it('a note outside the overview opens its neighbourhood, which background taps keep', () => {
