@@ -1,4 +1,9 @@
-import { nightShiftPhaseLabel, nightShiftStepLabel } from '@/lib/nightShiftCopy';
+import {
+  nightShiftDetailLabel,
+  nightShiftPhaseLabel,
+  nightShiftStepLabel,
+  NIGHT_SHIFT_DONE_PHASE,
+} from '@/lib/nightShiftCopy';
 
 const idleStatus = { ingesting: false, librarian: false, heal: false };
 
@@ -112,5 +117,17 @@ describe('nightShiftStepLabel', () => {
         hasStarted: true,
       }),
     ).toBe('Step 1 / 2');
+  });
+});
+
+describe('finished Night Shift copy', () => {
+  it('does not say "Starting" once the run has finished (operation back to null)', () => {
+    expect(nightShiftPhaseLabel(null, idleStatus, undefined, true)).toBe(NIGHT_SHIFT_DONE_PHASE);
+    expect(nightShiftPhaseLabel(null, idleStatus, undefined, true)).not.toMatch(/Starting/);
+    expect(nightShiftDetailLabel(null, true)).toMatch(/You can close this screen/);
+  });
+
+  it('still says "Starting" before the first pass begins', () => {
+    expect(nightShiftPhaseLabel(null, idleStatus)).toBe('Starting Night Shift…');
   });
 });

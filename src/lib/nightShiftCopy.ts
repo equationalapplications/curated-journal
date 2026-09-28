@@ -30,11 +30,19 @@ function healPhaseLabel(llm: NightShiftLlmProgress): string {
   return 'Preparing heal pass — reviewing the graph…';
 }
 
+export const NIGHT_SHIFT_DONE_PHASE = 'All done';
+export const NIGHT_SHIFT_DONE_DETAIL =
+  'Your notes were organized and the graph is up to date. You can close this screen.';
+
 export function nightShiftPhaseLabel(
   operation: NightShiftOperation | null,
   status: EntityStatus,
   llm: NightShiftLlmProgress = idleLlm,
+  finished = false,
 ): string {
+  // After the last pass the operation resets to null; without this the
+  // null-operation fallback said "Starting Night Shift…" beside "complete".
+  if (finished) return NIGHT_SHIFT_DONE_PHASE;
   if (operation === 'librarian') {
     // The library can run its own heal during the librarian step; say so in
     // the phase text only — title and step counter follow the machine queue.
@@ -59,7 +67,11 @@ export function nightShiftPhaseLabel(
   return 'Starting Night Shift…';
 }
 
-export function nightShiftDetailLabel(operation: NightShiftOperation | null): string {
+export function nightShiftDetailLabel(
+  operation: NightShiftOperation | null,
+  finished = false,
+): string {
+  if (finished) return NIGHT_SHIFT_DONE_DETAIL;
   switch (operation) {
     case 'librarian':
       return 'The librarian reads your imported notes, asks the local model for new inferred facts, tasks, and graph edges, then updates search indexes.';
