@@ -28,7 +28,12 @@ import type {
   DownloadPauseStateRecord,
   ModelDownloadStatus,
 } from '@/services/modelDownloadState';
-import { setModelPath, setModelId } from '@/lib/entityStorage';
+import {
+  setModelPath,
+  setModelId,
+  getModelPath,
+  clearModelPath,
+} from '@/lib/entityStorage';
 import type { CuratedModelId } from '@/catalog/modelManifest';
 
 type Store = ReturnType<typeof createModelDownloadStateStore>;
@@ -67,6 +72,30 @@ export function createModelHubApi(store: Store): ModelHubApi {
       await setModelPath(file.uri);
       await setModelId(model.id);
     },
+    // Deliberately not wrapped in try/catch: a rejection here means the model file
+    // could not be removed, and the machine's retiringCurrent state owns that
+    // failure branch. Idempotence comes from the `exists` guard below, and the
+    // clearModelPath() call must still run when the file was already gone.
+    retireCurrentModel: async () => {
+      const path = await getModelPath();
+      if (path) {
+        const file = new File(path);
+        if (file.exists) file.delete();
+      }
+      await clearModelPath();
+    },
+    // Best-effort by contract (spec §4.2 B6, §6): this unlinks the outgoing file
+    // after an import that has already succeeded and passed its smoke test. An
+    // orphaned .gguf wastes disk but is recoverable; failing that import is not.
+    // So swallow and warn rather than reject.
+    deleteModelFile: async (path) => {
+      try {
+        const file = new File(path);
+        if (file.exists) file.delete();
+      } catch (cause) {
+        console.warn('[model-hub] failed to delete model file', path, cause);
+      }
+    },
   };
 }
 
@@ -74,6 +103,7 @@ type ModelHubContextValue = {
   send: (event: ModelHubMachineEvents) => void;
   stateValue: string;
   modelId: CuratedModelId | null;
+  currentModelId: CuratedModelId | 'custom' | null;
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: string; message: string } | null;
   pausedReason: 'user' | 'background' | null;
@@ -85,13 +115,18 @@ const ModelHubContext = createContext<ModelHubContextValue | null>(null);
 export function ModelHubProvider({
   api,
   restore,
+  currentModelId,
   children,
 }: {
   api: ModelHubApi;
   restore?: ModelHubRestoreState;
+  currentModelId: CuratedModelId | 'custom' | null;
   children: ReactNode;
 }) {
-  const actor = useMemo(() => createActor(modelHubMachine, { input: { api } }).start(), [api]);
+  const actor = useMemo(
+    () => createActor(modelHubMachine, { input: { api, currentModelId } }).start(),
+    [api, currentModelId],
+  );
 
   useEffect(() => {
     return () => {
@@ -123,6 +158,7 @@ export function ModelHubProvider({
   const send = (event: ModelHubMachineEvents) => actor.send(event);
   const stateValue = useSelector(actor, (s) => s.value as string);
   const modelId = useSelector(actor, (s) => s.context.modelId);
+  const currentModelIdFromActor = useSelector(actor, (s) => s.context.currentModelId);
   const progress = useSelector(actor, (s) => s.context.progress);
   const error = useSelector(actor, (s) => s.context.error);
   const pausedReason = useSelector(actor, (s) => s.context.pausedReason);
@@ -132,6 +168,7 @@ export function ModelHubProvider({
     send,
     stateValue,
     modelId,
+    currentModelId: currentModelIdFromActor,
     progress,
     error,
     pausedReason,

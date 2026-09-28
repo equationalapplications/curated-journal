@@ -5,6 +5,7 @@ import * as SQLite from 'expo-sqlite';
 import { createModelDownloadStateStore } from '@/services/modelDownloadState';
 import { createModelHubApi, ModelHubProvider, type ModelHubRestoreState } from '@/hooks/useModelHub';
 import { useTheme } from '@/hooks/use-theme';
+import { getModelId } from '@/lib/entityStorage';
 import type { ModelHubApi } from '@/machines/modelHubMachine';
 import type { CuratedModelId } from '@/catalog/modelManifest';
 
@@ -13,6 +14,7 @@ export default function ModelHubStackLayout() {
   const theme = useTheme();
   const [api, setApi] = useState<ModelHubApi | null>(null);
   const [restore, setRestore] = useState<ModelHubRestoreState | undefined>(undefined);
+  const [currentModelId, setCurrentModelId] = useState<CuratedModelId | 'custom' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,6 +23,9 @@ export default function ModelHubStackLayout() {
       const store = createModelDownloadStateStore(db);
       const downloadState = await store.get();
       if (cancelled) return;
+      const storedModelId = await getModelId();
+      if (cancelled) return;
+      setCurrentModelId((storedModelId as CuratedModelId | 'custom' | null) ?? null);
       setApi(createModelHubApi(store));
       if (downloadState && (downloadState.status === 'downloading' || downloadState.status === 'paused')) {
         if (downloadState.modelId) {
@@ -47,7 +52,7 @@ export default function ModelHubStackLayout() {
   }
 
   return (
-    <ModelHubProvider api={api} restore={restore}>
+    <ModelHubProvider api={api} restore={restore} currentModelId={currentModelId}>
       <Stack
         screenOptions={{
           headerShown: false,
