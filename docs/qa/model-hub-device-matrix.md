@@ -16,6 +16,9 @@ npm run seed:night-shift
 Import on device: **Settings → Import OKF** → `fixtures/night-shift-seed.zip`  
 See `fixtures/night-shift-seed/README.md` for transfer options (AirDrop, `adb push`, etc.).
 
+For scale testing (e.g. the graph at 100 or 1000 notes), `N=1000 npm run seed:night-shift`
+writes `fixtures/seed-1000.zip` (gitignored) with the same shape.
+
 ## Reference device matrix
 
 | Tier | Example | Result | Notes |
