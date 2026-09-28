@@ -95,6 +95,12 @@ describe('graphLayoutMachine', () => {
     actor.send({ type: 'STRUCTURE', key: ring(40), scope: 'e1' });
     await waitFor(actor, (s) => s.matches('settling'));
     f.pump(2);
+    // Regression guard (CodeRabbit, PR #42): the STRUCTURE transition must
+    // cancel the old run's scheduled frames — two live simulations would
+    // fight over node positions. If the old actor were still invoking, the
+    // old run's ticks would keep firing alongside the new one and the final
+    // pump would settle a 48-node superposition, not the new 8-node ring.
+    expect(f.pending()).toBe(0);
     actor.send({ type: 'STRUCTURE', key: ring(8), scope: 'e1' });
     await waitFor(actor, (s) => s.matches('settling'));
     f.pumpAll();
