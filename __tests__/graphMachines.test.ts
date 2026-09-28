@@ -176,6 +176,17 @@ describe('graphViewMachine', () => {
     expect(snap(a).context.fitRequest).toBe(1);
   });
 
+  it('a tap on an overview note inside a pinned neighbourhood keeps the view and centres', () => {
+    const a = start();
+    a.send({ type: 'PICK', id: 'z' }); // z is not in the overview: pinned
+    a.send({ type: 'TAP_NODE', id: 'a' }); // a IS in the overview
+    // The neighbourhood stays (no silent swap to the whole overview).
+    expect(snap(a).matches({ focus: 'neighbourhood' })).toBe(true);
+    expect(snap(a).context.focusId).toBe('a');
+    // The canvas is told to centre on the tapped note.
+    expect(snap(a).context.focusRequest).toMatchObject({ id: 'a', nonce: 2 });
+  });
+
   it('follows the note between overview and neighbourhood as reloads change the cap', () => {
     const a = start();
     a.send({ type: 'TAP_NODE', id: 'a' });

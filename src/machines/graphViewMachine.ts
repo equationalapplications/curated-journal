@@ -26,6 +26,13 @@ type Context = {
   focusRequest: { id: string; nonce: number } | null;
   /** Bumped to ask the canvas to fit the whole graph. */
   fitRequest: number;
+  /**
+   * A pinned neighbourhood: taps inside it keep the neighbourhood view
+   * instead of jumping to the whole overview. Set when entering/using a
+   * neighbourhood; released when the focus is cleared or a reload brings
+   * the focused note into the overview.
+   */
+  pinned: boolean;
 };
 
 /**
@@ -49,6 +56,9 @@ export const graphViewMachine = setup({
     targetInOverview: ({ context, event }) =>
       (event.type === 'PICK' || event.type === 'TAP_NODE') && context.overview.has(event.id),
     focusInOverview: ({ context }) => context.focusId != null && context.overview.has(context.focusId),
+    /** True while a neighbourhood is pinned (its root note is outside the overview). */
+    pinnedNeighbourhood: ({ context }) =>
+      context.focusId != null && !context.overview.has(context.focusId),
     hasQuery: ({ event }) => event.type === 'SEARCH' && event.query.trim().length > 0,
   },
   actions: {
@@ -62,7 +72,8 @@ export const graphViewMachine = setup({
           : context.focusRequest,
     }),
     requestFit: assign({ fitRequest: ({ context }) => context.fitRequest + 1 }),
-    clearFocus: assign({ focusId: null }),
+    clearFocus: assign({ focusId: null, pinned: false }),
+    pin: assign({ pinned: true }),
   },
 }).createMachine({
   id: 'graphView',
@@ -74,9 +85,12 @@ export const graphViewMachine = setup({
     query: '',
     focusRequest: null,
     fitRequest: 0,
+    pinned: false,
   },
   on: {
-    OVERVIEW: { actions: assign({ overview: ({ event }) => event.ids }) },
+    OVERVIEW: {
+      actions: assign({ overview: ({ event }) => event.ids, pinned: false }),
+    },
     FIT: { actions: 'requestFit' },
   },
   states: {
@@ -85,11 +99,16 @@ export const graphViewMachine = setup({
       on: {
         PICK: [
           { guard: 'targetInOverview', target: '.focused', actions: ['focusTarget', 'requestCentre'] },
-          { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre'] },
+          { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
         ],
         TAP_NODE: [
+          // Inside a pinned neighbourhood, a tap on an overview note is
+          // ambiguous: silently swapping to the whole overview throws away
+          // the user's place, so the neighbourhood is kept and the camera
+          // moves to the note. The sheet still opens via the sheet region.
+          { guard: 'pinnedNeighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
           { guard: 'targetInOverview', target: '.focused', actions: 'focusTarget' },
-          { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre'] },
+          { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
         ],
         CLEAR_FOCUS: { target: '.none', actions: ['clearFocus', 'requestFit'] },
       },
@@ -100,15 +119,14 @@ export const graphViewMachine = setup({
           // A reload can drop the note out of the capped overview.
           always: { guard: ({ context }) => !context.overview.has(context.focusId!), target: 'neighbourhood' },
         },
-        // Background taps keep the neighbourhood: leaving it is explicit
-        // ("All notes"), since it replaces the whole graph on screen. A tap
-        // on an overview note inside a neighbourhood is ambiguous: silently
-        // swapping to the whole overview throws away the user's place, so
-        // the neighbourhood is kept and the camera moves to the note.
-        neighbourhood: {
-          TAP_NODE: { actions: ['focusTarget', 'requestCentre'] },
-          always: { guard: 'focusInOverview', target: 'focused' },
-        },
+    // Background taps keep the neighbourhood: leaving it is explicit
+    // ("All notes"), since it replaces the whole graph on screen. The pin
+    // keeps the neighbourhood when the focused note is outside the cap;
+    // it is released by a reload that brings the note into the cap
+    // (OVERVIEW clears `pinned`, then this guard moves to `focused`).
+    neighbourhood: {
+      always: { guard: ({ context }) => !context.pinned && context.focusId != null && context.overview.has(context.focusId), target: 'focused' },
+    },
       },
     },
     sheet: {
