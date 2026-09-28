@@ -13,7 +13,8 @@ import { join } from 'node:path';
  * the patch needs re-basing — do not silently skip.
  */
 const KOTLIN_PATH = join(
-  process.cwd(),
+  __dirname,
+  '..',
   'node_modules',
   'react-native-screens',
   'android',
@@ -26,27 +27,32 @@ const KOTLIN_PATH = join(
   'ScreenStackHeaderConfig.kt',
 );
 
-function readSource(): string {
-  return readFileSync(KOTLIN_PATH, 'utf8');
+// Line comments stripped, so an explanatory comment quoting the old expression
+// cannot trip the negative assertion below.
+function stripLineComments(kotlin: string): string {
+  return kotlin.replace(/\/\/.*$/gm, '');
 }
 
 describe('react-native-screens null-stack guard patch (#51)', () => {
+  let source: string;
+
+  beforeAll(() => {
+    source = stripLineComments(readFileSync(KOTLIN_PATH, 'utf8'));
+  });
+
   it('installs the source file the patch targets', () => {
-    expect(readSource()).toContain('fun onUpdate()');
+    expect(source).toContain('fun onUpdate()');
   });
 
   it('returns early when the screen has no stack', () => {
-    const source = readSource();
-    const guard = source.indexOf('if (stack == null) {');
-    expect(guard).toBeGreaterThan(-1);
+    expect(source).toContain('if (stack == null) {');
   });
 
   it('no longer treats a null stack as "is top"', () => {
-    expect(readSource()).not.toContain('stack == null || stack.topScreen == parent');
+    expect(source).not.toContain('stack == null || stack.topScreen == parent');
   });
 
-  it('computes isTop only from a non-null stack', () => {
-    const source = readSource();
+  it('computes isTop only after the null-stack guard', () => {
     const guard = source.indexOf('if (stack == null) {');
     const isTop = source.indexOf('val isTop = stack.topScreen == parent');
     expect(isTop).toBeGreaterThan(guard);
