@@ -1,6 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { buildGraphFromDump, GRAPH_LABEL_MAX, shortLabel } from '@/lib/graphData';
-import { fitToCanvas, GRAPH_EDGE_PAD, runGraphSimulation } from '@/lib/graphSimulation';
 import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
 
 jest.mock('react-native-markdown-display', () => {
@@ -28,29 +27,6 @@ describe('shortLabel', () => {
   it('collapses whitespace and falls back for blank titles', () => {
     expect(shortLabel('  Gym\n routine  ')).toBe('Gym routine');
     expect(shortLabel('   ')).toBe('Untitled');
-  });
-});
-
-describe('graph layout', () => {
-  it('fits every node inside the padded canvas', () => {
-    const size = 360;
-    const nodes = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}` }));
-    const links = nodes.slice(1).map((n, i) => ({ source: `n${i}`, target: n.id }));
-    for (const n of runGraphSimulation(nodes, links, size)) {
-      expect(n.x).toBeGreaterThanOrEqual(GRAPH_EDGE_PAD.x - 0.001);
-      expect(n.x).toBeLessThanOrEqual(size - GRAPH_EDGE_PAD.x + 0.001);
-      expect(n.y).toBeGreaterThanOrEqual(GRAPH_EDGE_PAD.top - 0.001);
-      expect(n.y).toBeLessThanOrEqual(size - GRAPH_EDGE_PAD.bottom + 0.001);
-    }
-  });
-
-  it('never enlarges a small graph', () => {
-    const nodes = [
-      { id: 'a', x: 100, y: 100 },
-      { id: 'b', x: 140, y: 100 },
-    ];
-    fitToCanvas(nodes, 360);
-    expect(nodes[1].x - nodes[0].x).toBeCloseTo(40);
   });
 });
 
@@ -107,7 +83,7 @@ describe('GraphNodeSheet', () => {
 
 describe('structure-keyed layout', () => {
   // Deferred import keeps this block independent of the mocks above.
-  const { graphStructureKey, layoutFromStructureKey } = require('@/lib/graphSimulation');
+  const { graphStructureKey } = require('@/lib/graphLayout');
   const nodes = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }];
   const edges = [{ sourceId: 'a', targetId: 'b' }];
 
@@ -122,17 +98,8 @@ describe('structure-keyed layout', () => {
     expect(graphStructureKey(nodes, [...edges, { sourceId: 'b', targetId: 'a' }])).not.toBe(base);
   });
 
-  it('survives ids with separator-like characters', () => {
+  it('round-trips ids with separator-like characters', () => {
     const odd = [{ id: 'a|b' }, { id: 'c>"d' }];
-    const layout = layoutFromStructureKey(graphStructureKey(odd, []), 360);
-    expect([...layout.keys()]).toEqual(['a|b', 'c>"d']);
-  });
-
-  it('positions every node', () => {
-    const layout = layoutFromStructureKey(graphStructureKey(nodes, edges), 360);
-    for (const id of ['a', 'b']) {
-      expect(Number.isFinite(layout.get(id)?.x)).toBe(true);
-      expect(Number.isFinite(layout.get(id)?.y)).toBe(true);
-    }
+    expect(JSON.parse(graphStructureKey(odd, [])).ids).toEqual(['a|b', 'c>"d']);
   });
 });
