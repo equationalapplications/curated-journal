@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import * as Battery from 'expo-battery';
 import * as Device from 'expo-device';
+import { devLlmMode } from '@/lib/devModel';
 import { getModelPath } from '@/lib/entityStorage';
 
 export function useNightShiftGates() {
@@ -16,7 +17,7 @@ export function useNightShiftGates() {
     if (Platform.OS === 'web') {
       setCharging(true);
       (async () => {
-        setHasModel(Boolean(await getModelPath()));
+        setHasModel(devLlmMode() === 'mock' || Boolean(await getModelPath()));
       })();
       return;
     }
@@ -33,7 +34,7 @@ export function useNightShiftGates() {
             batteryState === Battery.BatteryState.FULL,
         );
       });
-      setHasModel(Boolean(await getModelPath()));
+      setHasModel(devLlmMode() === 'mock' || Boolean(await getModelPath()));
     })();
     return () => sub?.remove();
   }, []);

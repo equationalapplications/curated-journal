@@ -142,7 +142,23 @@ npx expo start --dev-client
 
 ### Configure your model
 
-In Settings, pick a local `.gguf` via the document picker. Until a model is loaded, the app uses a deterministic mock LLM for chat and maintenance demos. **Night Shift** requires a loaded model and a charging power state.
+In Settings, pick a local `.gguf` via the document picker. Until a model is loaded, the app uses a deterministic mock LLM for chat and maintenance demos. **Night Shift** requires a loaded model and a charging power state. (Dev exception: `EXPO_PUBLIC_DEV_LLM=mock` counts as "model present" and bypasses the gate, so Night Shift can be exercised on emulators without a real model.)
+
+#### Development builds: skip the model hub
+
+Dev builds (`__DEV__`) choose their LLM with `EXPO_PUBLIC_DEV_LLM`; release builds ignore it.
+
+- **`auto`** (the default): if no model is configured but a catalog model is already on the device, the app adopts it and skips the model hub. To put one there without downloading 2-3 GB through the app on every fresh install:
+
+  ```bash
+  npm run dev:model                        # fast-light onto the connected Android device
+  npm run dev:model -- smarter-slower --ios   # booted iOS simulator
+  npm run dev:model -- --serial emulator-5554
+  ```
+
+  The model is downloaded once to `~/.cache/curated-journal/models/` (resumable, size-checked) and copied into the dev build's documents folder. Relaunch the app afterwards.
+- **`mock`**: boot on the mock LLM, for emulators where llama.rn can't load a model (e.g. x86_64 Android emulators on Intel Macs): `EXPO_PUBLIC_DEV_LLM=mock npx expo start --dev-client --clear`.
+- **`off`**: the normal first-run flow.
 
 ### OTA updates (EAS Update)
 
