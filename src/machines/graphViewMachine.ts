@@ -75,14 +75,18 @@ export const graphViewMachine = setup({
     requestFit: assign({ fitRequest: ({ context }) => context.fitRequest + 1 }),
     clearFocus: assign({ focusId: null, pinned: false, egoRoot: null }),
     unpin: assign({ pinned: false, egoRoot: null }),
-    // egoRoot is the note whose neighbourhood is on screen: the first note
-    // that pulled the view into neighbourhood mode. Later taps inside the
-    // neighbourhood only move focusId, not the root.
-    pin: assign(({ context, event }) => ({
+    // Entering (or re-rooting into) a neighbourhood: the focused note
+    // becomes the neighbourhood root shown on screen.
+    pin: assign(({ event }) => ({
       pinned: true,
-      egoRoot:
-        context.egoRoot ?? (event.type === 'PICK' || event.type === 'TAP_NODE' ? event.id : null),
+      egoRoot: event.type === 'PICK' || event.type === 'TAP_NODE' ? event.id : null,
     })),
+    // A tap inside an already-pinned neighbourhood: focus and camera move,
+    // but the neighbourhood on screen stays rooted at egoRoot.
+    repin: assign({ pinned: true }),
+    // A reload dropped the focused note out of the cap: the neighbourhood
+    // roots at that note (there is no event id on an `always` transition).
+    pinCurrent: assign({ pinned: true, egoRoot: ({ context }) => context.focusId }),
   },
 }).createMachine({
   id: 'graphView',
@@ -104,9 +108,12 @@ export const graphViewMachine = setup({
     // Keep the pin across reloads while the neighbourhood *root* is still
     // outside the cap: every tab refocus re-sends OVERVIEW, and dropping
     // the pin there would let the next tap swap the pinned neighbourhood
-    // for the whole overview.
+    // for the whole overview. Both fields are computed from the pre-event
+    // context, so they can't disagree.
         pinned: ({ context, event }) =>
           context.pinned && !(context.egoRoot && event.ids.has(context.egoRoot)),
+        egoRoot: ({ context, event }) =>
+          context.pinned && context.egoRoot && event.ids.has(context.egoRoot) ? null : context.egoRoot,
       }),
     },
     FIT: { actions: 'requestFit' },
@@ -128,7 +135,7 @@ export const graphViewMachine = setup({
           // ambiguous: silently swapping to the whole overview throws away
           // the user's place, so the neighbourhood is kept and the camera
           // moves to the note. The sheet still opens via the sheet region.
-          { guard: 'pinnedNeighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
+          { guard: 'pinnedNeighbourhood', actions: ['focusTarget', 'requestCentre', 'repin'] },
           {
             guard: 'targetInOverview',
             target: '.focused',
@@ -142,8 +149,14 @@ export const graphViewMachine = setup({
         none: {},
         focused: {
           on: { TAP_BACKGROUND: { target: 'none', actions: 'clearFocus' } },
-          // A reload can drop the note out of the capped overview.
-          always: { guard: ({ context }) => !context.overview.has(context.focusId!), target: 'neighbourhood' },
+          // A reload can drop the note out of the capped overview: the
+          // neighbourhood roots at that note and is pinned (the pin's
+          // release check tracks this root across later reloads).
+          always: {
+            guard: ({ context }) => !context.overview.has(context.focusId!),
+            target: 'neighbourhood',
+            actions: 'pinCurrent',
+          },
         },
     // Background taps keep the neighbourhood: leaving it is explicit
     // ("All notes"), since it replaces the whole graph on screen. The pin
