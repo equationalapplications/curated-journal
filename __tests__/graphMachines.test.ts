@@ -16,8 +16,8 @@ function manualFrames() {
       queue = [];
     },
     // Advances on every call: the layout's step() budget loop needs a moving
-    // clock, or the first frame runs the whole simulation to completion
-    // (Opus M3, PR #42) and "mid-settle" tests never actually are.
+    // clock, or the first frame runs the whole simulation to completion and
+    // "mid-settle" tests never actually are.
     now: () => (t += 1),
   };
   return {
@@ -194,6 +194,21 @@ describe('graphViewMachine', () => {
     // "All notes" is still the explicit way out.
     a.send({ type: 'CLEAR_FOCUS' });
     expect(snap(a).matches({ focus: 'none' })).toBe(true);
+  });
+
+  it('the pin survives a tab refocus (OVERVIEW reload) while the note stays outside the cap', () => {
+    const a = start();
+    a.send({ type: 'PICK', id: 'z' });
+    a.send({ type: 'TAP_NODE', id: 'a' });
+    // Tab refocus: the graph reloads and re-sends the same overview.
+    a.send({ type: 'OVERVIEW', ids: new Set(['a', 'b']) });
+    expect(snap(a).matches({ focus: 'neighbourhood' })).toBe(true);
+    a.send({ type: 'TAP_NODE', id: 'b' });
+    // Still pinned: the tap must not swap to the whole overview.
+    expect(snap(a).matches({ focus: 'neighbourhood' })).toBe(true);
+    // A reload that brings the focused note into the cap releases the pin.
+    a.send({ type: 'OVERVIEW', ids: new Set(['a', 'b', 'z']) });
+    expect(snap(a).matches({ focus: 'focused' })).toBe(true);
   });
 
   it('follows the note between overview and neighbourhood as reloads change the cap', () => {

@@ -177,7 +177,11 @@ export function SkiaGraphCanvas({
       lastNonce.current = focusRequest.nonce;
       // A stale park from an earlier request must never fire later.
       pendingFocus.current = null;
-      if (positions.has(focusRequest.id)) {
+      // Park unless the note's position belongs to the graph being shown:
+      // while settling, positions may still be the previous graph's, and
+      // centring on those locks the camera to a spot the new layout won't
+      // agree with. The parked branch below retries once settled.
+      if (!settling && positions.has(focusRequest.id)) {
         centre(focusRequest.id);
       } else {
         pendingFocus.current = focusRequest.id;

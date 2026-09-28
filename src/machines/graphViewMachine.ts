@@ -28,11 +28,13 @@ type Context = {
   fitRequest: number;
   /**
    * A pinned neighbourhood: taps inside it keep the neighbourhood view
-   * instead of jumping to the whole overview. Set when entering/using a
-   * neighbourhood; released when the focus is cleared or a reload brings
-   * the focused note into the overview.
+   * instead of jumping to the whole overview. Set when a neighbourhood is
+   * entered (its root note is outside the cap); released when the focus is
+   * cleared or a reload brings the neighbourhood *root* into the overview.
    */
   pinned: boolean;
+  /** The note whose neighbourhood is being shown while pinned. */
+  egoRoot: string | null;
 };
 
 /**
@@ -71,8 +73,15 @@ export const graphViewMachine = setup({
           : context.focusRequest,
     }),
     requestFit: assign({ fitRequest: ({ context }) => context.fitRequest + 1 }),
-    clearFocus: assign({ focusId: null, pinned: false }),
-    pin: assign({ pinned: true }),
+    clearFocus: assign({ focusId: null, pinned: false, egoRoot: null }),
+    // egoRoot is the note whose neighbourhood is on screen: the first note
+    // that pulled the view into neighbourhood mode. Later taps inside the
+    // neighbourhood only move focusId, not the root.
+    pin: assign(({ context, event }) => ({
+      pinned: true,
+      egoRoot:
+        context.egoRoot ?? (event.type === 'PICK' || event.type === 'TAP_NODE' ? event.id : null),
+    })),
   },
 }).createMachine({
   id: 'graphView',
@@ -85,10 +94,19 @@ export const graphViewMachine = setup({
     focusRequest: null,
     fitRequest: 0,
     pinned: false,
+    egoRoot: null,
   },
   on: {
     OVERVIEW: {
-      actions: assign({ overview: ({ event }) => event.ids, pinned: false }),
+      actions: assign({
+        overview: ({ event }) => event.ids,
+    // Keep the pin across reloads while the neighbourhood *root* is still
+    // outside the cap: every tab refocus re-sends OVERVIEW, and dropping
+    // the pin there would let the next tap swap the pinned neighbourhood
+    // for the whole overview.
+        pinned: ({ context, event }) =>
+          context.pinned && !(context.egoRoot && event.ids.has(context.egoRoot)),
+      }),
     },
     FIT: { actions: 'requestFit' },
   },
