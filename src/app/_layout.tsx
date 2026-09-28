@@ -11,6 +11,8 @@ import type { LLMProvider, WikiMemory } from '@equationalapplications/core-llm-w
 import { bootstrapWiki } from '@/services/wikiBootstrap';
 import { getModelPath, getModelId } from '@/lib/entityStorage';
 import { createLlamaProvider } from '@/lib/llamaProvider';
+import { createMockLlmProvider } from '@/lib/mockLlmProvider';
+import { adoptCachedModel, devLlmMode } from '@/lib/devModel';
 import { MODEL_CATALOG } from '@/catalog/modelManifest';
 import { AppReadyProvider } from '@/contexts/AppReadyContext';
 import { JournalProvider } from '@/contexts/JournalContext';
@@ -31,7 +33,21 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   const bootstrap = useCallback(async () => {
-    const modelPath = await getModelPath();
+    const devMode = devLlmMode();
+    if (devMode === 'mock') {
+      // Dev only (EXPO_PUBLIC_DEV_LLM=mock): for emulators where llama.rn
+      // can't load a model. Skips the model hub entirely.
+      const mock = createMockLlmProvider();
+      const boot = await bootstrapWiki(mock);
+      setWiki(boot.wiki);
+      setEntityId(boot.entityId);
+      setLlmProvider(mock);
+      setPhase('ready');
+      return;
+    }
+    // Dev only: adopt a model already on the device (npm run dev:model)
+    // instead of sending a fresh dev install through the model hub.
+    const modelPath = (await getModelPath()) ?? (devMode === 'auto' ? await adoptCachedModel() : null);
     if (!modelPath) {
       setWiki(null);
       setEntityId(null);

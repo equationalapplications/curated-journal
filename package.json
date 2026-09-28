@@ -79,7 +79,8 @@
     "lint": "expo lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "seed:night-shift": "node scripts/generate-night-shift-seed.js"
+    "seed:night-shift": "node scripts/generate-night-shift-seed.js",
+    "dev:model": "node scripts/dev-model.js"
   },
   "private": true
 }

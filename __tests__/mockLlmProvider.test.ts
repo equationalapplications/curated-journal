@@ -24,3 +24,18 @@ describe('createMockLlmProvider', () => {
     expect(provider.embed).toBeUndefined();
   });
 });
+
+describe('createMockLlmProvider ingest', () => {
+  it('answers ingest prompts with a fact, so saving a note works in mock mode', async () => {
+    const provider = createMockLlmProvider();
+    const text = await provider.generateText({
+      systemPrompt: 'Extract facts as JSON',
+      userPrompt: 'Document Chunk:\n# Morning pages\n\nThree pages, longhand.',
+    });
+    const parsed = JSON.parse(text);
+    expect(parsed.tasks).toEqual([]);
+    expect(parsed.facts).toHaveLength(1);
+    expect(parsed.facts[0]).toMatchObject({ title: 'Morning pages', confidence: 'inferred' });
+    expect(parsed.facts[0].body).toContain('Three pages, longhand.');
+  });
+});
