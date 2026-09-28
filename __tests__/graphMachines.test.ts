@@ -185,6 +185,15 @@ describe('graphViewMachine', () => {
     expect(snap(a).context.focusId).toBe('a');
     // The canvas is told to centre on the tapped note.
     expect(snap(a).context.focusRequest).toMatchObject({ id: 'a', nonce: 2 });
+    // The pin survives a second tap: b is also in the overview, but the
+    // neighbourhood still must not swap to the whole overview.
+    a.send({ type: 'TAP_NODE', id: 'b' });
+    expect(snap(a).matches({ focus: 'neighbourhood' })).toBe(true);
+    expect(snap(a).context.focusId).toBe('b');
+    expect(snap(a).context.focusRequest).toMatchObject({ id: 'b', nonce: 3 });
+    // "All notes" is still the explicit way out.
+    a.send({ type: 'CLEAR_FOCUS' });
+    expect(snap(a).matches({ focus: 'none' })).toBe(true);
   });
 
   it('follows the note between overview and neighbourhood as reloads change the cap', () => {

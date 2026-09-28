@@ -56,9 +56,8 @@ export const graphViewMachine = setup({
     targetInOverview: ({ context, event }) =>
       (event.type === 'PICK' || event.type === 'TAP_NODE') && context.overview.has(event.id),
     focusInOverview: ({ context }) => context.focusId != null && context.overview.has(context.focusId),
-    /** True while a neighbourhood is pinned (its root note is outside the overview). */
-    pinnedNeighbourhood: ({ context }) =>
-      context.focusId != null && !context.overview.has(context.focusId),
+    /** True while a neighbourhood is pinned (entered from outside the cap). */
+    pinnedNeighbourhood: ({ context }) => context.pinned && context.focusId != null,
     hasQuery: ({ event }) => event.type === 'SEARCH' && event.query.trim().length > 0,
   },
   actions: {
@@ -124,9 +123,12 @@ export const graphViewMachine = setup({
     // keeps the neighbourhood when the focused note is outside the cap;
     // it is released by a reload that brings the note into the cap
     // (OVERVIEW clears `pinned`, then this guard moves to `focused`).
-    neighbourhood: {
-      always: { guard: ({ context }) => !context.pinned && context.focusId != null && context.overview.has(context.focusId), target: 'focused' },
-    },
+        neighbourhood: {
+          always: {
+            guard: ({ context }) => !context.pinned && context.focusId != null && context.overview.has(context.focusId),
+            target: 'focused',
+          },
+        },
       },
     },
     sheet: {

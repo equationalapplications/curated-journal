@@ -111,6 +111,15 @@ export function SkiaGraphCanvas({
   // The camera as of the last gesture end / camera move: drives label placement.
   const [committed, setCommitted] = useState<Camera>({ x: width / 2, y: height / 2, scale: 1 });
   const userMoved = useRef(false);
+  // True between a gesture's begin and end: progress publishes must not
+  // fight the user's fingers for the camera mid-gesture. Gesture callbacks
+  // run as worklets on the UI runtime, so the JS-side ref is updated via
+  // scheduleOnRN — a direct write from a worklet would only change the UI
+  // runtime's copy.
+  const interacting = useRef(false);
+  const setInteracting = useCallback((v: boolean) => {
+    interacting.current = v;
+  }, []);
 
   const viewport = useMemo(() => ({ width, height }), [width, height]);
 
@@ -208,16 +217,6 @@ export function SkiaGraphCanvas({
     },
     [nodes, positions, onSelectNode, onBackgroundPress, tx, ty, sc],
   );
-
-  // True between a gesture's begin and end: progress publishes must not
-  // fight the user's fingers for the camera mid-gesture. Gesture callbacks
-  // run as worklets on the UI runtime, so the JS-side ref is updated via
-  // scheduleOnRN — a direct write from a worklet would only change the UI
-  // runtime's copy.
-  const interacting = useRef(false);
-  const setInteracting = useCallback((v: boolean) => {
-    interacting.current = v;
-  }, []);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -322,7 +321,7 @@ export function SkiaGraphCanvas({
             viewport,
           )
         : new Set<string>(),
-    [nodes, labelWidths, selectedId, highlight, positions, committed, viewport, font],
+    [nodes, labelWidths, selectedId, highlight, positions, committed, viewport],
   );
 
   const edgeColor = tint(theme.outline, highlight ? 20 : 45);

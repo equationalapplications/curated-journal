@@ -175,7 +175,17 @@ export default function GraphScreen() {
         ) : null}
       </View>
 
-      {focused ? (
+      {focusId && !focused ? (
+        // The focused note vanished (deleted elsewhere, then a reload): the
+        // focus bar would otherwise not render and the empty neighbourhood
+        // canvas has no way out. Recover to the overview.
+        <View style={[styles.focusBar, { borderBottomColor: theme.separator }]}>
+          <ThemedText type="label" numberOfLines={1} style={styles.focusLabel}>
+            Note gone
+          </ThemedText>
+          <Button label="Back to all notes" variant="ghost" onPress={() => sendView({ type: 'CLEAR_FOCUS' })} />
+        </View>
+      ) : focused ? (
         <View style={[styles.focusBar, { borderBottomColor: theme.separator }]}>
           <ThemedText type="label" numberOfLines={1} style={styles.focusLabel}>
             {egoMode ? 'Around' : 'Focused'}
