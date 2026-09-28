@@ -32,15 +32,25 @@ export default function ModelHubImportScreen() {
     const source = new File(picked.assets[0].uri);
     source.copy(dest);
     setStatus('Checking the model can run on this device…');
-    const result = await runModelSmokeTest({ modelPath: dest.uri, llamaConfig: { contextSize: 4096 } });
-    if (!result.ok) {
+    try {
+      const result = await runModelSmokeTest({ modelPath: dest.uri, llamaConfig: { contextSize: 4096 } });
+      if (!result.ok) {
+        setStatus('');
+        send({ type: 'IMPORT_FAILED', message: 'This model could not run on your device.' });
+        router.back();
+        return;
+      }
+      await setModelPath(dest.uri);
+      await setModelId('custom');
+    } catch {
+      // Smoke test or persistence threw unexpectedly. Without this the status
+      // stays nonempty and the picker button is disabled forever — clear it so
+      // the user can retry from this screen.
       setStatus('');
-      send({ type: 'IMPORT_FAILED', message: 'This model could not run on your device.' });
+      send({ type: 'IMPORT_FAILED', message: 'Import failed. Pick the model again to retry.' });
       router.back();
       return;
     }
-    await setModelPath(dest.uri);
-    await setModelId('custom');
     send({ type: 'IMPORT_SMOKE_OK' });
   };
 
