@@ -11,7 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ErrorBanner, Note } from '@/components/ui/states';
 import { ProgressBar } from '@/components/ui/progress';
 import { buildGraphFromDump } from '@/lib/graphData';
-import { runGraphSimulation } from '@/lib/graphSimulation';
+import { graphStructureKey, layoutFromStructureKey } from '@/lib/graphSimulation';
 import { useJournal } from '@/contexts/JournalContext';
 import { graphLoadMachine } from '@/machines/graphLoadMachine';
 import { Space } from '@/constants/theme';
@@ -46,25 +46,26 @@ export default function GraphScreen() {
     | ReturnType<typeof buildGraphFromDump>
     | null;
 
+  // Layout is keyed on structure, not on the graph object: every focus
+  // reloads the graph, and re-running the simulation costs seconds at a few
+  // hundred nodes. Unchanged structure = same positions, no recompute.
+  const structureKey = graph ? graphStructureKey(graph.nodes, graph.edges) : null;
+  const positions = useMemo(
+    () => (structureKey ? layoutFromStructureKey(structureKey, size) : null),
+    [structureKey, size],
+  );
+
   const layoutNodes = useMemo(() => {
-    if (!graph) return [];
-    const simNodes = graph.nodes.map((n) => ({ id: n.id }));
-    const links = graph.edges.map((e) => ({
-      source: e.sourceId,
-      target: e.targetId,
+    if (!graph || !positions) return [];
+    return graph.nodes.map((n) => ({
+      ...positions.get(n.id),
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      confidence: n.confidence,
+      okfType: n.okfType ?? undefined,
     }));
-    const positioned = runGraphSimulation(simNodes, links, size);
-    return positioned.map((p) => {
-      const meta = graph.nodes.find((n) => n.id === p.id);
-      return {
-        ...p,
-        title: meta?.title ?? p.id,
-        body: meta?.body,
-        confidence: meta?.confidence,
-        okfType: meta?.okfType ?? undefined,
-      };
-    });
-  }, [graph, size]);
+  }, [graph, positions]);
 
   const selected = layoutNodes.find((n) => n.id === selectedId);
 

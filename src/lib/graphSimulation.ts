@@ -56,3 +56,35 @@ export function fitToCanvas<T extends SimNode>(nodes: T[], size: number): T[] {
   }
   return nodes;
 }
+
+export type GraphStructure = { ids: string[]; links: [string, string][] };
+
+/**
+ * A stable key for a graph's *structure* (node ids and edges, in order).
+ * Reloading the graph produces a new object even when nothing changed, and
+ * the layout costs seconds at a few hundred nodes on a phone, so the layout is
+ * memoized on this key rather than on the graph object. Titles and bodies are
+ * not part of it: editing a note must not re-shuffle the graph.
+ */
+export function graphStructureKey(
+  nodes: readonly { id: string }[],
+  edges: readonly { sourceId: string; targetId: string }[],
+): string {
+  const structure: GraphStructure = {
+    ids: nodes.map((n) => n.id),
+    links: edges.map((e) => [e.sourceId, e.targetId]),
+  };
+  return JSON.stringify(structure);
+}
+
+/** Lay out the graph a structure key describes; node id -> position. */
+export function layoutFromStructureKey(key: string, size: number): Map<string, SimNode> {
+  const { ids, links } = JSON.parse(key) as GraphStructure;
+  const nodes: SimNode[] = ids.map((id) => ({ id }));
+  const positioned = runGraphSimulation(
+    nodes,
+    links.map(([source, target]) => ({ source, target })),
+    size,
+  );
+  return new Map(positioned.map((n) => [n.id, n]));
+}
