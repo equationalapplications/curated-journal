@@ -33,8 +33,9 @@ export default function GraphScreen() {
   // (Re)load whenever the tab gains focus. Tab screens stay mounted, so a
   // mount-only load never saw notes saved after the first visit. The old
   // graph stays on screen while the reload runs (the machine keeps
-  // `context.graph`), and a LOAD while already loading is ignored. Must be an
-  // effect, not useMemo: the React compiler drops side effects in useMemo.
+  // `context.graph`), and a LOAD while already loading restarts the load so
+  // the result can't miss a save that landed mid-read. Must be an effect,
+  // not useMemo: the React compiler drops side effects in useMemo.
   useFocusEffect(
     useCallback(() => {
       send({ type: 'LOAD' });

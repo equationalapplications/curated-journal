@@ -34,12 +34,17 @@ describe('graphLoadMachine', () => {
     expect(actor.getSnapshot().value).toBe('loading');
   });
 
-  it('does not reload on duplicate LOAD while loading', () => {
-    const load = jest.fn(async () => makeDump);
+  it('restarts the load when LOAD arrives while loading', async () => {
+    const first = { entities: [], facts: [], edges: [] } as never;
+    const second = { entities: [], facts: [], edges: [], fresh: true } as never;
+    const load = jest.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
     const actor = createActor(graphLoadMachine, { input: { load } }).start();
 
     actor.send({ type: 'LOAD' });
-    actor.send({ type: 'LOAD' });
-    expect(load).toHaveBeenCalledTimes(1);
+    actor.send({ type: 'LOAD' }); // refresh requested mid-load wins
+    await flush();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(actor.getSnapshot().value).toBe('ready');
+    expect(actor.getSnapshot().context.graph).toBe(second);
   });
 });
