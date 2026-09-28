@@ -25,8 +25,11 @@ jest.mock('expo-document-picker', () => ({
   getDocumentAsync: (...args: unknown[]) => mockPick(...args),
 }));
 
-// Just enough File to observe which path the copy lands on.
+// Just enough File to observe which path the copy lands on. copy() is async in
+// Expo SDK 57 and the screen awaits it, so the mock resolves on a later tick
+// rather than synchronously — that is what makes the ordering test meaningful.
 const mockCopy = jest.fn();
+const mockOrder: string[] = [];
 jest.mock('expo-file-system', () => {
   class File {
     uri: string;
@@ -35,6 +38,12 @@ jest.mock('expo-file-system', () => {
     }
     copy(dest: File) {
       mockCopy(this.uri, dest.uri);
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          mockOrder.push('copy-done');
+          resolve();
+        }, 0);
+      });
     }
   }
   return { File, Paths: { document: { uri: 'file:///documents' } } };
@@ -80,7 +89,24 @@ const pressImport = async () => {
 describe('model-hub custom import', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockOrder.length = 0;
     mockSmokeTest.mockResolvedValue({ ok: true });
+  });
+
+  it('finishes copying the model before smoke testing it', async () => {
+    // File.copy() is a Promise in SDK 57. Un-awaited, the smoke test would read
+    // a half-written .gguf and reject a perfectly good model as unusable.
+    mockSmokeTest.mockImplementation(async () => {
+      mockOrder.push('smoke');
+      return { ok: true };
+    });
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockOrder).toEqual(['copy-done', 'smoke']);
   });
 
   it('never writes the import over the file it is about to retire', async () => {
@@ -123,6 +149,23 @@ describe('model-hub custom import', () => {
 
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
     expect(mockSend).toHaveBeenCalledWith({ type: 'IMPORT_SMOKE_OK', retirePath: null });
+  });
+
+  it('reports a failure to read the installed model instead of dying silently', async () => {
+    // The read sits ahead of the import's own try block. Unhandled, the promise
+    // from `void runImport()` would reject into nothing: no picker, no message.
+    mockGetModelPath.mockRejectedValue(new Error('keystore locked'));
+    pickFile('fresh.gguf');
+
+    await pressImport();
+
+    await waitFor(() =>
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'IMPORT_FAILED', message: expect.stringMatching(/Could not check/) }),
+      ),
+    );
+    expect(mockPick).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
   });
 
   it('does not retire or install when the model fails its smoke test', async () => {

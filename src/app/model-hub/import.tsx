@@ -29,14 +29,36 @@ export default function ModelHubImportScreen() {
     // effect: setModelPath below overwrites MODEL_PATH_KEY with the replacement,
     // after which the old path is unrecoverable — and an effect that has not
     // settled yet would leave the outgoing model orphaned.
-    const currentPath = await getModelPath();
+    //
+    // Its own try/catch because this read sits before the import's: a rejection
+    // here would otherwise escape the `void runImport()` call unhandled, opening
+    // no picker and telling the user nothing.
+    let currentPath: string | null;
+    try {
+      currentPath = await getModelPath();
+    } catch {
+      send({
+        type: 'IMPORT_FAILED',
+        message: 'Could not check which model you have installed. Try again.',
+      });
+      router.back();
+      return;
+    }
     const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
     const dest = new File(Paths.document, uniqueFileName(picked.assets[0].name));
     const source = new File(picked.assets[0].uri);
-    source.copy(dest);
-    setStatus('Checking the model can run on this device…');
+    // Shown before the copy, not after: a multi-gigabyte .gguf takes a while.
+    setStatus('Copying the model and checking it runs on this device…');
     try {
+      // File.copy() returns a Promise (Expo SDK 57). Left un-awaited, the smoke
+      // test below races a half-written file and reports a perfectly good model
+      // as unusable, and a failed copy vanishes as an unhandled rejection.
+      //
+      // Deliberately not overwriting: the destination name is unique by
+      // construction, so an existing file there means something is wrong and
+      // should fail loudly here rather than overwrite the installed model.
+      await source.copy(dest);
       const result = await runModelSmokeTest({ modelPath: dest.uri, llamaConfig: { contextSize: 4096 } });
       if (!result.ok) {
         setStatus('');
