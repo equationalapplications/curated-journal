@@ -46,4 +46,10 @@ describe('scripts/dev-model.js', () => {
     expect(parseArgs(['--serial', 'emulator-5554'])).toMatchObject({ serial: 'emulator-5554' });
     expect(() => parseArgs(['--nope'])).toThrow(/Unknown option/);
   });
+
+  it('rejects --serial with a missing or flag-like operand', () => {
+    const { parseArgs } = require('../scripts/dev-model.js');
+    expect(() => parseArgs(['--serial'])).toThrow(/--serial expects/);
+    expect(() => parseArgs(['--serial', '--ios'])).toThrow(/--serial expects/);
+  });
 });

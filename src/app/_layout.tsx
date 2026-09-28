@@ -46,8 +46,15 @@ export default function RootLayout() {
       return;
     }
     // Dev only: adopt a model already on the device (npm run dev:model)
-    // instead of sending a fresh dev install through the model hub.
-    const modelPath = (await getModelPath()) ?? (devMode === 'auto' ? await adoptCachedModel() : null);
+    // instead of sending a fresh dev install through the model hub. If the
+    // probe fails (file system, storage), fall back to the hub instead of
+    // dying in an unhandled rejection that leaves the app on the splash.
+    let modelPath: string | null = null;
+    try {
+      modelPath = (await getModelPath()) ?? (devMode === 'auto' ? await adoptCachedModel() : null);
+    } catch (err) {
+      console.warn('[dev] Cached-model probe failed; falling back to the model hub.', err);
+    }
     if (!modelPath) {
       setWiki(null);
       setEntityId(null);

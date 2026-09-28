@@ -142,7 +142,7 @@ npx expo start --dev-client
 
 ### Configure your model
 
-In Settings, pick a local `.gguf` via the document picker. Until a model is loaded, the app uses a deterministic mock LLM for chat and maintenance demos. **Night Shift** requires a loaded model and a charging power state.
+In Settings, pick a local `.gguf` via the document picker. Until a model is loaded, the app uses a deterministic mock LLM for chat and maintenance demos. **Night Shift** requires a loaded model and a charging power state. (Dev exception: `EXPO_PUBLIC_DEV_LLM=mock` counts as "model present" and bypasses the gate, so Night Shift can be exercised on emulators without a real model.)
 
 #### Development builds: skip the model hub
 

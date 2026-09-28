@@ -57,7 +57,13 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--ios') opts.platform = 'ios';
     else if (a === '--android') opts.platform = 'android';
-    else if (a === '--serial') opts.serial = argv[++i];
+    else if (a === '--serial') {
+      const serial = argv[++i];
+      if (!serial || serial.startsWith('-')) {
+        throw new Error('--serial expects a device id, e.g. --serial emulator-5554');
+      }
+      opts.serial = serial;
+    }
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (!a.startsWith('-')) opts.modelId = a;
     else throw new Error(`Unknown option ${a}`);
@@ -105,6 +111,14 @@ function pushAndroid(file, model, serial) {
   const target = serial ? ['-s', serial] : [];
   const adb = (...args) => execFileSync('adb', [...target, ...args], { encoding: 'utf8' });
   const dest = `files/${model.filename}`;
+  // A complete copy from a previous run is already there: skip the ~2 GB
+  // rewrite instead of overwriting a working model before its replacement
+  // (a different model) has been verified on the device.
+  const existing = Number(adb('shell', `run-as ${ANDROID_PACKAGE} stat -c %s ${dest} 2>/dev/null || echo -1`).trim());
+  if (existing === model.sizeBytes) {
+    console.log(`Already on device: ${dest} (${model.sizeBytes} bytes). Nothing to do.`);
+    return;
+  }
   console.log(`Copying to ${serial ?? 'the connected device'} (${ANDROID_PACKAGE}/${dest})…`);
   // Stream the host file straight into the app's files dir. No temp copy on
   // the device: a 2-3 GB model staged in /data/local/tmp needs twice the
