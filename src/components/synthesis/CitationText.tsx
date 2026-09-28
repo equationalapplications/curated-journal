@@ -3,6 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { splitCitationSegments } from '@/lib/citationParser';
 import { useCitationNavigation } from '@/contexts/CitationNavigationContext';
 import { useJournal } from '@/contexts/JournalContext';
+import { Type } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
   content: string;
@@ -11,10 +13,11 @@ type Props = {
 export function CitationText({ content }: Props) {
   const { openCitation } = useCitationNavigation();
   const { setPaneMode, setSelectedFactId } = useJournal();
+  const theme = useTheme();
   const segments = splitCitationSegments(content);
 
   return (
-    <Text style={styles.text}>
+    <Text style={[Type.body, { color: theme.onSurface }]}>
       {segments.map((segment, index) => {
         if (segment.type === 'text') {
           return <Text key={index}>{segment.value}</Text>;
@@ -22,13 +25,16 @@ export function CitationText({ content }: Props) {
         return (
           <Pressable
             key={index}
+            accessibilityRole="link"
+            accessibilityLabel={`Open cited note ${segment.value}`}
+            hitSlop={6}
             onPress={() => {
               void Haptics.selectionAsync();
               setSelectedFactId(segment.value);
               setPaneMode('notes');
               openCitation(segment.value);
             }}>
-            <Text style={styles.chip}>[{segment.value}]</Text>
+            <Text style={[styles.chip, { color: theme.primary }]}>[{segment.value}]</Text>
           </Pressable>
         );
       })}
@@ -37,6 +43,5 @@ export function CitationText({ content }: Props) {
 }
 
 const styles = StyleSheet.create({
-  text: { fontSize: 16, lineHeight: 24 },
-  chip: { color: '#3c87f7', fontWeight: '600' },
+  chip: { fontWeight: '500' },
 });

@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Note } from '@/components/ui/states';
+import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
 import { getCuratedModel } from '@/catalog/modelManifest';
-import { Spacing } from '@/constants/theme';
+import { Space, TouchTarget } from '@/constants/theme';
 import { setDisplayName } from '@/lib/entityStorage';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
-import { useTheme } from '@/hooks/use-theme';
 
 const TIPS = [
   'Night Shift runs the librarian pass while your device is charging.',
@@ -37,7 +39,6 @@ export default function ModelHubDownloadScreen() {
   const router = useRouter();
   const { send, stateValue, modelId, progress, error, pausedReason, displayName } = useModelHub();
   const completeOnboarding = useModelHubCompletion();
-  const theme = useTheme();
   const [name, setName] = useState(displayName ?? '');
   const [tipIndex, setTipIndex] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -96,83 +97,86 @@ export default function ModelHubDownloadScreen() {
   return (
     <Screen>
       <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
-      <ThemedText type="title">Downloading your AI</ThemedText>
-      {model ? <ThemedText type="subtitle">{model.displayName}</ThemedText> : null}
-      {model ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {model.tagline}
-        </ThemedText>
-      ) : null}
-      <ThemedText type="small">Keep this screen open for the fastest download.</ThemedText>
-
-      {pct === null ? (
-        <ThemedText type="small">Starting download…</ThemedText>
-      ) : (
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${pct}%` }]} />
+        <View style={styles.intro}>
+          <ThemedText type="title">Downloading your AI</ThemedText>
+          {model ? <ThemedText type="heading">{model.displayName}</ThemedText> : null}
+          {model ? (
+            <ThemedText type="small" themeColor="onSurfaceVar">
+              {model.tagline}
+            </ThemedText>
+          ) : null}
+          <ThemedText type="small">Keep this screen open for the fastest download.</ThemedText>
         </View>
-      )}
 
-      {speedBps > 0 && (
-        <ThemedText type="small" themeColor="textSecondary">
-          {formatSpeed(speedBps)} — {formatEta(etaSeconds)}
-        </ThemedText>
-      )}
+        {pct === null ? (
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            Starting download…
+          </ThemedText>
+        ) : (
+          <ProgressBar value={pct / 100} />
+        )}
 
-      {stateValue === 'downloading' && (
-        <Pressable onPress={() => send({ type: 'PAUSE' })}>
-          <ThemedText type="link">Pause</ThemedText>
-        </Pressable>
-      )}
-      {stateValue === 'paused' && (
-        <View style={styles.row}>
-          <ThemedText type="small">{pausedReason === 'background' ? 'Paused (resuming…)' : 'Paused'}</ThemedText>
-          <Pressable onPress={() => send({ type: 'RESUME' })}>
-            <ThemedText type="link">Resume</ThemedText>
-          </Pressable>
+        {speedBps > 0 ? (
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            {formatSpeed(speedBps)} — {formatEta(etaSeconds)}
+          </ThemedText>
+        ) : null}
+
+        {stateValue === 'downloading' ? (
+          <Button
+            label="Pause"
+            variant="default"
+            style={styles.compact}
+            onPress={() => send({ type: 'PAUSE' })}
+          />
+        ) : null}
+        {stateValue === 'paused' ? (
+          <View style={styles.row}>
+            <ThemedText type="small" style={styles.rowCopy}>
+              {pausedReason === 'background' ? 'Paused (resuming…)' : 'Paused'}
+            </ThemedText>
+            <Button label="Resume" variant="primary" onPress={() => send({ type: 'RESUME' })} />
+          </View>
+        ) : null}
+        {stateValue === 'failed' && error ? (
+          <View style={styles.row}>
+            <ThemedText type="small" style={styles.rowCopy}>
+              {ERROR_COPY[error.code] ?? error.message}
+            </ThemedText>
+            <Button label="Retry" variant="primary" onPress={() => send({ type: 'RETRY' })} />
+          </View>
+        ) : null}
+
+        <Note style={styles.tip}>{TIPS[tipIndex]}</Note>
+
+        <View style={styles.composerSlot}>
+          <Input
+            style={styles.input}
+            placeholder="Name your journal (optional)"
+            value={name}
+            onChangeText={setName}
+            onBlur={() => {
+              const trimmed = name.trim();
+              if (trimmed) {
+                send({ type: 'SET_DISPLAY_NAME', displayName: trimmed });
+                void setDisplayName(trimmed);
+              }
+            }}
+          />
         </View>
-      )}
-      {stateValue === 'failed' && error && (
-        <View style={styles.row}>
-          <ThemedText type="small">{ERROR_COPY[error.code] ?? error.message}</ThemedText>
-          <Pressable onPress={() => send({ type: 'RETRY' })}>
-            <ThemedText type="link">Retry</ThemedText>
-          </Pressable>
-        </View>
-      )}
-
-      <ThemedView type="backgroundElement" style={styles.tip}>
-        <ThemedText type="small">{TIPS[tipIndex]}</ThemedText>
-      </ThemedView>
-
-      <View style={styles.composerSlot}>
-      <TextInput
-        style={[styles.input, { color: theme.text, borderColor: theme.textSecondary }]}
-        placeholder="Name your journal (optional)"
-        placeholderTextColor={theme.textSecondary}
-        value={name}
-        onChangeText={setName}
-        onBlur={() => {
-          const trimmed = name.trim();
-          if (trimmed) {
-            send({ type: 'SET_DISPLAY_NAME', displayName: trimmed });
-            void setDisplayName(trimmed);
-          }
-        }}
-      />
-      </View>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.four, gap: Spacing.three },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#3338', overflow: 'hidden' },
-  progressFill: { height: 8, backgroundColor: '#3c87f7' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  tip: { borderRadius: Spacing.three, padding: Spacing.three },
-  input: { borderWidth: 1, borderColor: '#8888', borderRadius: Spacing.two, padding: Spacing.two },
+  container: { flex: 1, padding: Space[4], gap: Space[3] },
+  intro: { gap: Space[2] },
+  compact: { alignSelf: 'flex-start' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space[3] },
+  rowCopy: { flex: 1 },
+  tip: { marginTop: Space[2] },
+  input: { minHeight: TouchTarget },
   // Bottom-anchor the name input so the keyboard-height paddingBottom lifts
   // it (flex-start content alone would just clip under the keyboard).
   composerSlot: { marginTop: 'auto' },

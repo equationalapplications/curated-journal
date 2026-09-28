@@ -27,6 +27,12 @@ export const graphLoadMachine = createMachine({
       on: { LOAD: 'loading' },
     },
     loading: {
+      on: {
+        // A focus-triggered LOAD while a load is in flight RESTARTS the
+        // invoke: the stale read is cancelled, so the final graph reflects
+        // saves that landed after the old exportDump read began.
+        LOAD: { target: 'loading', reenter: true },
+      },
       invoke: {
         src: fromPromise(({ input }: { input: Ctx }) => input.load()),
         input: ({ context }: { context: Ctx }) => context,

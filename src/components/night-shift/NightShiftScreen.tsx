@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Animated, {
@@ -10,6 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useEntityStatus } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
+import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
 import { resetNightShiftLlmProgress, setNightShiftActive } from '@/lib/llamaProvider';
 import {
@@ -21,14 +23,8 @@ import {
 import { useJournal } from '@/contexts/JournalContext';
 import { useJournalWiki } from '@/hooks/useJournalWiki';
 import { useNightShiftProgress } from '@/hooks/useNightShiftProgress';
-
-/** Fixed dark palette — screen background is always #0d1117, not theme-aware. */
-const NIGHT_SHIFT_COLORS = {
-  background: '#0d1117',
-  text: '#f0f6fc',
-  textMuted: '#c9d1d9',
-  accent: '#6ea8fe',
-} as const;
+import { useTheme } from '@/hooks/use-theme';
+import { tint } from '@/constants/theme';
 
 export function NightShiftScreen() {
   const router = useRouter();
@@ -50,6 +46,7 @@ export function NightShiftScreen() {
     isStepRunning,
     isNightShift,
   );
+  const theme = useTheme();
   const [hasStartedNightShift, setHasStartedNightShift] = useState(false);
   const prevOperationRef = useRef(currentOperation);
   const pulse = useSharedValue(1);
@@ -112,34 +109,41 @@ export function NightShiftScreen() {
   const progressPct = finished ? 100 : Math.min(99, Math.round(progress * 100));
 
   return (
-    <Screen style={styles.screen}>
+    <Screen>
       <View style={styles.container}>
-        <Animated.View style={[styles.ring, ringStyle]} />
+        <Animated.View
+          style={[
+            styles.ring,
+            ringStyle,
+            { borderColor: tint(theme.primary, 45) },
+          ]}
+        />
         <View style={styles.copyBlock}>
-          <ThemedText type="title" style={styles.clock}>
+          <ThemedText type="meta" themeColor="outline" style={styles.clock}>
             {clock}
           </ThemedText>
-          <ThemedText type="subtitle" style={styles.operationTitle}>
+          <ThemedText type="title" style={styles.operationTitle}>
             {nightShiftOperationTitle(currentOperation)}
           </ThemedText>
-          <ThemedText style={styles.phaseText}>
+          <ThemedText type="strong" style={styles.phaseText}>
             {nightShiftPhaseLabel(currentOperation, status, llm)}
           </ThemedText>
-          <ThemedText style={styles.detailText}>
+          <ThemedText type="small" themeColor="onSurfaceVar" style={styles.detailText}>
             {nightShiftDetailLabel(currentOperation)}
           </ThemedText>
-          <ThemedText style={styles.stepText}>{stepLabel}</ThemedText>
+          <ThemedText type="small" themeColor="outline" style={styles.stepText}>
+            {stepLabel}
+          </ThemedText>
           <View style={styles.progressBlock}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
-            </View>
-            <ThemedText style={styles.progressLabel}>
+            <ProgressBar value={finished ? 1 : Math.min(0.99, progress)} />
+            <ThemedText type="meta" themeColor="outline" style={styles.progressLabel}>
               {finished ? 'Complete' : `~${progressPct}%`}
             </ThemedText>
           </View>
         </View>
         <Button
-          title="Stop"
+          label="Stop"
+          variant="default"
           onPress={() => {
             send({ type: 'ABORT_NIGHT_SHIFT' });
             router.back();
@@ -151,79 +155,32 @@ export function NightShiftScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: NIGHT_SHIFT_COLORS.background },
   container: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 24,
-    backgroundColor: NIGHT_SHIFT_COLORS.background,
   },
   copyBlock: {
     width: '100%',
+    // Bounded so the copy sits inside the halo rather than running under it.
+    maxWidth: 260,
     paddingHorizontal: 24,
-    gap: 14,
+    gap: 10,
     alignItems: 'stretch',
   },
-  clock: {
-    color: NIGHT_SHIFT_COLORS.text,
-    textAlign: 'center',
-  },
-  operationTitle: {
-    color: NIGHT_SHIFT_COLORS.text,
-    fontSize: 28,
-    lineHeight: 36,
-    textAlign: 'center',
-  },
-  phaseText: {
-    color: NIGHT_SHIFT_COLORS.text,
-    fontSize: 17,
-    lineHeight: 26,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  detailText: {
-    color: NIGHT_SHIFT_COLORS.textMuted,
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  stepText: {
-    color: NIGHT_SHIFT_COLORS.textMuted,
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  progressBlock: {
-    gap: 8,
-    marginTop: 4,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#30363d',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: NIGHT_SHIFT_COLORS.accent,
-  },
-  progressLabel: {
-    color: NIGHT_SHIFT_COLORS.text,
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
+  clock: { textAlign: 'center' },
+  operationTitle: { textAlign: 'center' },
+  phaseText: { textAlign: 'center' },
+  detailText: { textAlign: 'center' },
+  stepText: { textAlign: 'center' },
+  progressBlock: { gap: 6, marginTop: 6 },
+  progressLabel: { textAlign: 'center' },
   ring: {
     position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 3,
-    borderColor: NIGHT_SHIFT_COLORS.accent,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    borderWidth: 2,
   },
 });

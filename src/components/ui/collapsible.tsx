@@ -1,11 +1,11 @@
 import { SymbolView } from 'expo-symbols';
 import { PropsWithChildren, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Card } from '@/components/ui/card';
+import { Radius, Space, TouchTarget } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
@@ -13,30 +13,30 @@ export function Collapsible({ children, title }: PropsWithChildren & { title: st
   const theme = useTheme();
 
   return (
-    <ThemedView>
+    <View>
       <Pressable
-        style={({ pressed }) => [styles.heading, pressed && styles.pressedHeading]}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: isOpen }}
+        style={({ pressed }) => [styles.heading, pressed && { backgroundColor: theme.elev2 }]}
         onPress={() => setIsOpen((value) => !value)}>
-        <ThemedView type="backgroundElement" style={styles.button}>
+        <View style={styles.button}>
           <SymbolView
             name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
             size={14}
-            weight="bold"
-            tintColor={theme.text}
+            weight="semibold"
+            tintColor={theme.onSurfaceVar}
             style={{ transform: [{ rotate: isOpen ? '-90deg' : '90deg' }] }}
           />
-        </ThemedView>
-
+        </View>
         <ThemedText type="small">{title}</ThemedText>
       </Pressable>
-      {isOpen && (
+      {isOpen ? (
         <Animated.View entering={FadeIn.duration(200)}>
-          <ThemedView type="backgroundElement" style={styles.content}>
-            {children}
-          </ThemedView>
+          <Card style={styles.content}>{children}</Card>
         </Animated.View>
-      )}
-    </ThemedView>
+      ) : null}
+    </View>
   );
 }
 
@@ -44,22 +44,11 @@ const styles = StyleSheet.create({
   heading: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Space[2],
+    minHeight: TouchTarget,
+    paddingHorizontal: Space[2],
+    borderRadius: Radius.sm,
   },
-  pressedHeading: {
-    opacity: 0.7,
-  },
-  button: {
-    width: Spacing.four,
-    height: Spacing.four,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    marginTop: Spacing.three,
-    borderRadius: Spacing.three,
-    marginLeft: Spacing.four,
-    padding: Spacing.four,
-  },
+  button: { width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
+  content: { marginTop: Space[2], marginLeft: Space[4] },
 });

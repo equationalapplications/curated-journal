@@ -8,6 +8,6 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@equationalapplications/.*|xstate|llama\\.rn)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@equationalapplications/.*|xstate|llama\\.rn|d3-.*)',
   ],
 };

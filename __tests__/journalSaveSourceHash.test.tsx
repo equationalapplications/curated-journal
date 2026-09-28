@@ -26,7 +26,8 @@ jest.mock('expo-crypto', () => {
 });
 
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
-  useWikiIngest: () => ({ execute: mockExecute, lastResult: null, isPending: false, error: null }),
+  // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
+  useWiki: () => ({ ingestDocument: mockExecute }),
 }));
 
 jest.mock('expo-router', () => ({
@@ -87,6 +88,8 @@ describe('journal save sends a valid 64-char hex sourceHash', () => {
 
     expect(mockExecute).toHaveBeenCalledTimes(1);
     const params = mockExecute.mock.calls[0][1];
+    // Saving content that already exists must not fail on the hash index.
+    expect(mockExecute.mock.calls[0][2]).toEqual({ onDuplicateHash: 'skip' });
     expect(params.sourceHash).toMatch(/^[0-9a-f]{64}$/);
     expect(params.sourceHash).not.toBe(String(Date.now()));
     // Content-addressed: hash of the exact markdown passed as documentChunk.

@@ -1,5 +1,4 @@
-import { Alert } from 'react-native';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import JournalScreen from '@/app/(tabs)/journal';
 import { countIngestFailures, type IngestResult } from '@/lib/ingestReport';
 
@@ -11,7 +10,8 @@ const mockExecute = jest.fn(async (): Promise<IngestResult> => ({
 }));
 
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
-  useWikiIngest: () => ({ execute: mockExecute, lastResult: null, isPending: false, error: null }),
+  // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
+  useWiki: () => ({ ingestDocument: mockExecute }),
 }));
 
 jest.mock('expo-router', () => ({
@@ -57,14 +57,11 @@ jest.mock('@/components/journal/JournalEntryEditor', () => {
 describe('journal save ingest-failure warning', () => {
   beforeEach(() => {
     mockExecute.mockClear();
-    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it('alerts with the failure count when chunks fail', async () => {
+  // The warning is the themed dialog sheet, not a platform Alert: same copy,
+  // same trigger, drawn in the design language.
+  it('warns with the failure count when chunks fail', async () => {
     mockExecute.mockResolvedValueOnce({
       truncated: false,
       chunks: 2,
@@ -77,20 +74,17 @@ describe('journal save ingest-failure warning', () => {
     const screen = await render(<JournalScreen />);
     fireEvent.press(screen.getByTestId('new-note'));
     fireEvent.press(await screen.findByTestId('save'));
-    await new Promise((r) => setTimeout(r, 0));
+    await waitFor(() => expect(screen.getByText('Saved with warnings')).toBeTruthy());
     expect(mockExecute).toHaveBeenCalledTimes(1);
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Saved with warnings',
-      expect.stringContaining('2'),
-    );
+    expect(screen.getByText(/2 chunks failed to process\./)).toBeTruthy();
   });
 
-  it('does not alert on a clean save', async () => {
+  it('does not warn on a clean save', async () => {
     const screen = await render(<JournalScreen />);
     fireEvent.press(screen.getByTestId('new-note'));
     fireEvent.press(await screen.findByTestId('save'));
     await new Promise((r) => setTimeout(r, 0));
     expect(mockExecute).toHaveBeenCalledTimes(1);
-    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(screen.queryByText('Saved with warnings')).toBeNull();
   });
 });

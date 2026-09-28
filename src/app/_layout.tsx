@@ -1,7 +1,8 @@
 import '@/lib/installCryptoPolyfill';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import { LlmProvider } from '@/contexts/LlmContext';
 import { ModelHubCompletionProvider } from '@/contexts/ModelHubCompletionContext';
 import { JournalWikiProvider } from '@/hooks/useJournalWiki';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 
 type Phase = 'loading' | 'needsModelHub' | 'ready';
 
@@ -56,10 +58,40 @@ export default function RootLayout() {
     void bootstrap();
   }, [bootstrap]);
 
+  const navTheme = useMemo(() => {
+    const dark = colorScheme === 'dark';
+    const base = dark ? DarkTheme : DefaultTheme;
+    const t = Colors[dark ? 'dark' : 'light'];
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: t.primary,
+        background: t.bg,
+        card: t.bg,
+        text: t.onSurface,
+        border: t.separator,
+        notification: t.error,
+      },
+    };
+  }, [colorScheme]);
+  const bg = navTheme.colors.background;
+  const t = colorScheme === 'dark' ? Colors.dark : Colors.light;
+
   const isReady = phase === 'ready' && wiki != null && entityId != null && llmProvider != null;
 
   const stack = (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        // Navigator chrome is app chrome: quiet `bg` with a `separator`
+        // hairline, no elevation (DESIGN.md 1.1).
+        headerStyle: { backgroundColor: t.bg },
+        headerShadowVisible: false,
+        headerTintColor: t.onSurface,
+        headerTitleStyle: { fontSize: 17, fontWeight: '600', color: t.onSurface },
+        contentStyle: { backgroundColor: t.bg },
+      }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="model-hub" />
@@ -87,15 +119,18 @@ export default function RootLayout() {
   );
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navTheme}>
+      {/* Without this the system keeps whatever the splash screen set, which in
+          light theme is white icons on cream. `auto` follows the OS scheme. */}
+      <StatusBar style="auto" />
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <KeyboardProvider>
         {phase === 'loading' ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: bg }}>
+            <ActivityIndicator color={navTheme.colors.primary} />
           </View>
         ) : (
-          <GestureHandlerRootView style={{ flex: 1 }}>
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: bg }}>
             <AppReadyProvider ready={isReady}>
               <ModelHubCompletionProvider onComplete={bootstrap}>
                 {isReady ? (
