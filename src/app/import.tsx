@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -7,6 +7,10 @@ import { useRouter } from 'expo-router';
 import { parseOkfBundle, useSetOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { getUnzip } from 'react-native-nitro-unzip';
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
+import { ProgressBar } from '@/components/ui/progress';
+import { useConfirmSheet } from '@/components/ui/confirm-sheet';
+import { Space } from '@/constants/theme';
 import { MAX_ZIP_UNCOMPRESSED_BYTES } from '@/lib/constants';
 import { chunkedImportDump } from '@/lib/chunkedImportDump';
 import { walkMarkdownFiles } from '@/lib/walkDirectory';
@@ -19,6 +23,7 @@ export default function ImportScreen() {
   const { execute: setManifest } = useSetOntologyManifest();
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
+  const { confirm, confirmElement } = useConfirmSheet();
 
   const runImport = async () => {
     const picked = await DocumentPicker.getDocumentAsync({ type: 'application/zip' });
@@ -67,28 +72,47 @@ export default function ImportScreen() {
 
   return (
     <View style={styles.container}>
-      <ThemedText type="small">
+      {confirmElement}
+      <ThemedText type="small" themeColor="onSurfaceVar" style={styles.hint}>
         Complex multi-line YAML or unusual markdown link formats from other apps may be gracefully
         skipped during import.
       </ThemedText>
-      <ThemedText>{status}</ThemedText>
-      <ThemedText>{Math.round(progress * 100)}%</ThemedText>
-      <Button
-        title="Pick OKF zip"
-        onPress={async () => {
-          try {
-            await runImport();
-          } catch (error) {
-            setStatus('');
-            Alert.alert(
-              'Import failed',
-              error instanceof Error ? error.message : String(error),
-            );
-          }
-        }}
-      />
+      {status ? (
+        <View style={styles.progressBlock}>
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            {status}
+          </ThemedText>
+          <ProgressBar value={progress} />
+          <ThemedText type="meta" themeColor="outline">
+            {Math.round(progress * 100)}%
+          </ThemedText>
+        </View>
+      ) : null}
+      <View style={styles.action}>
+        <Button
+          label="Pick OKF zip"
+          variant="primary"
+          disabled={status !== ''}
+          onPress={async () => {
+            try {
+              await runImport();
+            } catch (error) {
+              setStatus('');
+              confirm({
+                title: 'Import failed',
+                message: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }}
+        />
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({ container: { flex: 1, padding: 16, gap: 12 } });
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: Space[4], gap: Space[3] },
+  hint: { lineHeight: 20 },
+  progressBlock: { gap: Space[1] },
+  action: { marginTop: 'auto' },
+});

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
+import { Card, ListGroup, ListRow } from '@/components/ui/card';
+import { ErrorBanner } from '@/components/ui/states';
+import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { Screen } from '@/components/screen';
-import { Spacing } from '@/constants/theme';
+import { Space } from '@/constants/theme';
 import { MODEL_CATALOG, type CuratedModel } from '@/catalog/modelManifest';
 import { useModelHub } from '@/hooks/useModelHub';
 
@@ -12,6 +15,7 @@ export default function ModelHubIndexScreen() {
   const router = useRouter();
   const { send, stateValue, error } = useModelHub();
   const [warningFor, setWarningFor] = useState<CuratedModel | null>(null);
+  const { confirm, confirmElement } = useConfirmSheet();
 
   useEffect(() => {
     if (stateValue === 'downloading') {
@@ -19,16 +23,17 @@ export default function ModelHubIndexScreen() {
       return;
     }
     if (stateValue === 'cellularConfirm') {
-      Alert.alert(
-        'Download over cellular',
-        'This model is a large file and may use a significant amount of cellular data.',
-        [
+      confirm({
+        title: 'Download over cellular',
+        message:
+          'This model is a large file and may use a significant amount of cellular data.',
+        buttons: [
           { text: 'Cancel', style: 'cancel', onPress: () => send({ type: 'CELLULAR_CANCEL' }) },
           { text: 'Download over cellular', onPress: () => send({ type: 'CELLULAR_CONFIRM' }) },
         ],
-      );
+      });
     }
-  }, [stateValue, router, send]);
+  }, [stateValue, router, send, confirm]);
 
   const selectModel = (model: CuratedModel) => {
     if (model.deviceWarning) {
@@ -46,60 +51,84 @@ export default function ModelHubIndexScreen() {
 
   return (
     <Screen>
+      {confirmElement}
       <ScrollView contentContainerStyle={styles.container}>
-      <ThemedText type="title">Choose Your AI</ThemedText>
-      <ThemedText type="small">
-        Your journal stays fully offline. Pick a model to download once — everything after that runs
-        on your device.
-      </ThemedText>
-      {error && <ThemedText themeColor="textSecondary">{error.message}</ThemedText>}
-      {stateValue === 'awaitingWifi' && (
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedText type="smallBold">Connect to Wi-Fi to continue</ThemedText>
-          <Pressable onPress={() => send({ type: 'CHECK_NETWORK' })}>
-            <ThemedText type="link">Try again</ThemedText>
-          </Pressable>
-        </ThemedView>
-      )}
-      {MODEL_CATALOG.map((model) => (
-        <Pressable key={model.id} onPress={() => selectModel(model)}>
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="subtitle">{model.displayName}</ThemedText>
-            <ThemedText type="small">{model.tagline}</ThemedText>
-            <ThemedText type="smallBold">{model.sizeLabel}</ThemedText>
-            {model.deviceHint === 'recommended-high-ram' && (
-              <ThemedText type="small" themeColor="textSecondary">
-                Recommended for newer devices
-              </ThemedText>
-            )}
-          </ThemedView>
-        </Pressable>
-      ))}
-      <Pressable
-        onPress={() => {
-          send({ type: 'IMPORT_CUSTOM' });
-          router.push('/model-hub/import' as Href);
-        }}>
-        <ThemedText type="linkPrimary">Import custom .gguf</ThemedText>
-      </Pressable>
-      {warningFor && (
-        <View style={styles.sheet}>
-          <ThemedText type="small">{warningFor.deviceWarning}</ThemedText>
-          <Pressable onPress={confirmWarning}>
-            <ThemedText type="link">Continue</ThemedText>
-          </Pressable>
-          <Pressable onPress={() => setWarningFor(null)}>
-            <ThemedText type="link">Cancel</ThemedText>
-          </Pressable>
+        <View style={styles.intro}>
+          <ThemedText type="title">Choose Your AI</ThemedText>
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            Your journal stays fully offline. Pick a model to download once — everything after that
+            runs on your device.
+          </ThemedText>
         </View>
-      )}
+
+        {error ? <ErrorBanner message={error.message} /> : null}
+
+        {stateValue === 'awaitingWifi' ? (
+          <View style={styles.wifi}>
+            <ThemedText type="strong">Connect to Wi-Fi to continue</ThemedText>
+            <Button
+              label="Try again"
+              variant="default"
+              onPress={() => send({ type: 'CHECK_NETWORK' })}
+            />
+          </View>
+        ) : null}
+
+        <ThemedText type="label">Models</ThemedText>
+        <ListGroup>
+          {MODEL_CATALOG.map((model, index) => (
+            <ListRow
+              key={model.id}
+              divider={index < MODEL_CATALOG.length - 1}
+              onPress={() => selectModel(model)}
+              accessibilityLabel={`Select ${model.displayName}`}>
+              <ThemedText type="strong">{model.displayName}</ThemedText>
+              <ThemedText type="small" themeColor="onSurfaceVar">
+                {model.tagline}
+              </ThemedText>
+              <ThemedText type="meta" themeColor="outline">
+                {model.sizeLabel}
+              </ThemedText>
+              {model.deviceHint === 'recommended-high-ram' ? (
+                <ThemedText type="small" themeColor="onSurfaceVar">
+                  Recommended for newer devices
+                </ThemedText>
+              ) : null}
+            </ListRow>
+          ))}
+        </ListGroup>
+
+        <ListGroup>
+          <ListRow
+            divider={false}
+            onPress={() => {
+              send({ type: 'IMPORT_CUSTOM' });
+              router.push('/model-hub/import' as Href);
+            }}>
+            <ThemedText type="linkPrimary">Import custom .gguf</ThemedText>
+          </ListRow>
+        </ListGroup>
+
+        {warningFor ? (
+          <Card style={styles.warning}>
+            <ThemedText type="small" themeColor="onSurfaceVar">
+              {warningFor.deviceWarning}
+            </ThemedText>
+            <View style={styles.warningActions}>
+              <Button label="Cancel" variant="default" onPress={() => setWarningFor(null)} />
+              <Button label="Continue" variant="primary" onPress={confirmWarning} />
+            </View>
+          </Card>
+        ) : null}
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: Spacing.four, gap: Spacing.three },
-  card: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
-  sheet: { borderRadius: Spacing.three, padding: Spacing.four, gap: Spacing.two },
+  container: { flexGrow: 1, padding: Space[4], gap: Space[3] },
+  intro: { gap: Space[2] },
+  wifi: { gap: Space[3] },
+  warning: { gap: Space[3] },
+  warningActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Space[2] },
 });

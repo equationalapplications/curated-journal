@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Button, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
+import { Space, TouchTarget } from '@/constants/theme';
 
 type Props = {
   onSave: (input: { title: string; body: string }) => void | Promise<void>;
@@ -17,35 +20,49 @@ export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) 
   const theme = useTheme();
 
   return (
-    <ThemedView style={styles.container}>
-      <KeyboardAwareScrollView testID="editor-kbd-aware" bottomOffset={16}>
-        <TextInput
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <KeyboardAwareScrollView
+        testID="editor-kbd-aware"
+        bottomOffset={16}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.content}>
+        <ThemedText type="label" style={styles.label}>
+          New note
+        </ThemedText>
+        <Input
+          testID="editor-title"
           placeholder="Title"
           value={title}
           onChangeText={setTitle}
-          style={[styles.input, { color: theme.text }]}
-          placeholderTextColor={theme.textSecondary}
+          style={styles.input}
         />
-        <TextInput
+        <Input
+          testID="editor-body"
           placeholder="Write in markdown…"
           value={body}
           onChangeText={setBody}
           multiline
-          style={[styles.input, styles.body, { color: theme.text }]}
-          placeholderTextColor={theme.textSecondary}
+          style={[styles.input, styles.body]}
         />
         <View style={styles.actions}>
-          <Button title="Cancel" onPress={onCancel} />
-          <Button title={saving ? 'Saving…' : 'Save'} onPress={() => onSave({ title, body })} />
+          <Button label="Cancel" variant="default" onPress={onCancel} />
+          <Button
+            label={saving ? 'Saving…' : 'Save'}
+            variant="primary"
+            disabled={saving}
+            onPress={() => onSave({ title, body })}
+          />
         </View>
       </KeyboardAwareScrollView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, gap: 8 },
-  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8 },
-  body: { flex: 1, textAlignVertical: 'top' },
-  actions: { flexDirection: 'row', justifyContent: 'space-between' },
+  container: { flex: 1 },
+  content: { padding: Space[4], gap: Space[3] },
+  label: { marginBottom: -Space[2] },
+  input: { minHeight: TouchTarget },
+  body: { flex: 1, minHeight: 220, textAlignVertical: 'top' },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Space[2] },
 });

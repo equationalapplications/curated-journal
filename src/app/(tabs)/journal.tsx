@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useMachine } from '@xstate/react';
 import { useWikiIngest } from '@equationalapplications/expo-llm-wiki';
@@ -9,11 +9,14 @@ import { JournalList, type JournalListItem } from '@/components/journal/JournalL
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
 import { JournalPane } from '@/components/journal/JournalPane';
 import { SynthesisPane } from '@/components/synthesis/SynthesisPane';
+import { Card } from '@/components/ui/card';
+import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { useJournal } from '@/contexts/JournalContext';
 import { useJournalMemoryRead } from '@/hooks/useJournalMemoryRead';
 import { useSplitPaneLayout } from '@/hooks/useSplitPaneLayout';
+import { useTheme } from '@/hooks/use-theme';
+import { Radius, Space, TouchTarget } from '@/constants/theme';
 
 export default function JournalScreen() {
   const { entityId, selectedFactId, setSelectedFactId, paneMode, setPaneMode } = useJournal();
@@ -21,6 +24,8 @@ export default function JournalScreen() {
   const { execute: ingest } = useWikiIngest();
   const [composing, setComposing] = useState(false);
   const { isWide } = useSplitPaneLayout();
+  const theme = useTheme();
+  const { confirm, confirmElement } = useConfirmSheet();
 
   const [saveState, send] = useMachine(journalSaveMachine, {
     input: { entityId, ingest, saveTimeoutMs: 120_000 },
@@ -55,53 +60,60 @@ export default function JournalScreen() {
       const result = context.lastResult;
       if (result && countIngestFailures(result) > 0) {
         const failures = countIngestFailures(result);
-        Alert.alert(
-          'Saved with warnings',
-          `${failures} chunk${failures === 1 ? '' : 's'} failed to process. ` +
+        confirm({
+          title: 'Saved with warnings',
+          message:
+            `${failures} chunk${failures === 1 ? '' : 's'} failed to process. ` +
             'Try running Night Shift, or edit and re-save this entry.',
-        );
+        });
       }
       setComposing(false);
       refetch();
       send({ type: 'DISMISS' });
     } else if (value === 'failed' && context.lastError) {
-      Alert.alert('Save failed', context.lastError.message, [
-        { text: 'Cancel', style: 'cancel', onPress: () => {
-          send({ type: 'DISMISS' });
-          setComposing(false);
-        } },
-        { text: 'Try again', onPress: () => send({ type: 'RETRY' }) },
-      ]);
+      confirm({
+        title: 'Save failed',
+        message: context.lastError.message,
+        buttons: [
+          { text: 'Cancel', style: 'cancel', onPress: () => {
+            send({ type: 'DISMISS' });
+            setComposing(false);
+          } },
+          { text: 'Try again', onPress: () => send({ type: 'RETRY' }) },
+        ],
+      });
     }
-  }, [saveState, send, refetch]);
+  }, [saveState, send, refetch, confirm]);
 
   if (composing) {
     return (
-      <JournalEntryEditor
-        onSave={handleSave}
-        onCancel={() => {
-          if (saveInProgress) {
-            send({ type: 'CANCEL' });
-          }
-          setComposing(false);
-        }}
-        saving={saveInProgress}
-      />
+      <>
+        {confirmElement}
+        <JournalEntryEditor
+          onSave={handleSave}
+          onCancel={() => {
+            if (saveInProgress) {
+              send({ type: 'CANCEL' });
+            }
+            setComposing(false);
+          }}
+          saving={saveInProgress}
+        />
+      </>
     );
   }
 
   if (isWide) {
     return (
       <View style={styles.split}>
+        {confirmElement}
         <View style={styles.listPane}>
-          {items.length === 0 ? (
-            <TutorialCard />
-          ) : null}
           <JournalList
             items={items}
             selectedId={selectedFactId}
             onSelect={setSelectedFactId}
             onNewNote={() => setComposing(true)}
+            emptyState={<TutorialCard />}
           />
         </View>
         <View style={styles.readPane}>
@@ -116,6 +128,7 @@ export default function JournalScreen() {
 
   return (
     <View style={styles.container}>
+      {confirmElement}
       <View style={styles.toggle} accessibilityRole="tablist">
         <PaneTab
           label="Notes"
@@ -128,7 +141,6 @@ export default function JournalScreen() {
         />
         <PaneTab label="Chat" selected={paneMode === 'chat'} onPress={() => setPaneMode('chat')} />
       </View>
-      {items.length === 0 && paneMode === 'notes' ? <TutorialCard /> : null}
       {paneMode === 'notes' ? (
         selectedFactId ? (
           <>
@@ -136,8 +148,8 @@ export default function JournalScreen() {
               accessibilityRole="button"
               accessibilityLabel="All notes"
               onPress={() => setSelectedFactId(null)}
-              style={styles.back}>
-              <ThemedText type="link">‹ All notes</ThemedText>
+              style={({ pressed }) => [styles.back, pressed && { backgroundColor: theme.elev2 }]}>
+              <ThemedText type="linkPrimary">‹ All notes</ThemedText>
             </Pressable>
             <JournalPane facts={data?.facts} />
           </>
@@ -147,6 +159,7 @@ export default function JournalScreen() {
             selectedId={selectedFactId}
             onSelect={setSelectedFactId}
             onNewNote={() => setComposing(true)}
+            emptyState={<TutorialCard />}
           />
         )
       ) : (
@@ -156,6 +169,10 @@ export default function JournalScreen() {
   );
 }
 
+/**
+ * Segmented control. This is a two-way switch, not a filled-pill tab bar: the
+ * active segment is `primaryContainer` + `onPrimaryCont` at weight 500.
+ */
 function PaneTab({
   label,
   selected,
@@ -165,30 +182,37 @@ function PaneTab({
   selected: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
-      onPress={onPress}>
-      <ThemedView type={selected ? 'backgroundSelected' : 'background'} style={styles.paneTab}>
-        <ThemedText type="smallBold" themeColor={selected ? 'text' : 'textSecondary'}>
-          {label}
-        </ThemedText>
-      </ThemedView>
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.paneTab,
+        selected && { backgroundColor: theme.primaryContainer },
+        !selected && { backgroundColor: 'transparent' },
+        pressed && !selected && { backgroundColor: theme.elev2 },
+      ]}>
+      <ThemedText
+        type={selected ? 'strong' : 'small'}
+        style={selected ? { color: theme.onPrimaryCont } : undefined}>
+        {label}
+      </ThemedText>
     </Pressable>
   );
 }
 
 function TutorialCard() {
   return (
-    <ThemedView style={styles.tutorial}>
-      <ThemedText type="smallBold">Welcome to Curated Journal</ThemedText>
-      <ThemedText type="small">
+    <Card style={styles.tutorial}>
+      <ThemedText type="strong">Welcome to Curated Journal</ThemedText>
+      <ThemedText type="small" themeColor="onSurfaceVar">
         Capture notes, run Night Shift while charging to organize your graph, then ask questions in
         Chat.
       </ThemedText>
-    </ThemedView>
+    </Card>
   );
 }
 
@@ -198,8 +222,25 @@ const styles = StyleSheet.create({
   listPane: { flex: 0.3 },
   readPane: { flex: 0.35, borderLeftWidth: StyleSheet.hairlineWidth },
   chatPane: { flex: 0.35, borderLeftWidth: StyleSheet.hairlineWidth },
-  toggle: { flexDirection: 'row', gap: 8, padding: 12 },
-  paneTab: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12 },
-  back: { paddingHorizontal: 12, paddingTop: 4 },
-  tutorial: { margin: 12, padding: 12, borderRadius: 8, gap: 6 },
+  toggle: {
+    flexDirection: 'row',
+    gap: Space[2],
+    paddingHorizontal: Space[4],
+    paddingTop: Space[3],
+    paddingBottom: Space[1],
+  },
+  paneTab: {
+    minHeight: TouchTarget - 8,
+    paddingHorizontal: Space[4],
+    justifyContent: 'center',
+    borderRadius: Radius.sm,
+  },
+  back: {
+    minHeight: TouchTarget,
+    justifyContent: 'center',
+    paddingHorizontal: Space[2],
+    marginHorizontal: Space[2],
+    borderRadius: Radius.sm,
+  },
+  tutorial: { gap: Space[2], marginTop: Space[2] },
 });

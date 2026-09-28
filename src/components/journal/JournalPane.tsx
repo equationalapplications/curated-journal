@@ -3,9 +3,11 @@ import { ScrollView, StyleSheet } from 'react-native';
 import type { MemoryBundle } from '@equationalapplications/core-llm-wiki';
 import Markdown from 'react-native-markdown-display';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { EmptyState } from '@/components/ui/states';
+import { useMarkdownStyles } from '@/components/ui/markdown-styles';
 import { useCitationNavigation } from '@/contexts/CitationNavigationContext';
 import { useJournal } from '@/contexts/JournalContext';
+import { Space } from '@/constants/theme';
 
 type JournalPaneProps = {
   facts?: MemoryBundle['facts'];
@@ -20,6 +22,7 @@ export function JournalPane({ facts }: JournalPaneProps) {
   const { selectedFactId } = useJournal();
   const { target, clearTarget } = useCitationNavigation();
   const scrollRef = useRef<ScrollView>(null);
+  const markdown = useMarkdownStyles();
 
   const factId = target?.factId ?? selectedFactId;
   const fact = useMemo(
@@ -36,25 +39,28 @@ export function JournalPane({ facts }: JournalPaneProps) {
 
   if (!fact) {
     return (
-      <ThemedView style={styles.empty}>
-        <ThemedText>Select a note to read</ThemedText>
-      </ThemedView>
+      <EmptyState
+        icon={{ ios: 'doc.text', android: 'article', web: 'article' }}
+        title="Select a note to read"
+        hint="Pick a note from the list to read it here."
+        style={styles.empty}
+      />
     );
   }
 
   const title = fact.title ?? factTitle(fact.body ?? '', 'Untitled');
-  const markdown = fact.body ?? '';
+  const body = fact.body ?? '';
 
   return (
     <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
-      <ThemedText type="subtitle">{title}</ThemedText>
-      <Markdown>{markdown}</Markdown>
+      <ThemedText type="title">{title}</ThemedText>
+      <Markdown style={markdown}>{body}</Markdown>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 16, gap: 12 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  content: { padding: Space[4], gap: Space[2], paddingBottom: Space[6] },
+  empty: { flex: 1 },
 });

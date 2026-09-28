@@ -5,11 +5,15 @@ import { useOntologyManifest, useWiki } from '@equationalapplications/expo-llm-w
 import { GraphCanvas } from '@/components/graph/GraphCanvas';
 import { GraphLegend } from '@/components/graph/GraphLegend';
 import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
+import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
+import { ErrorBanner, Note } from '@/components/ui/states';
+import { ProgressBar } from '@/components/ui/progress';
 import { buildGraphFromDump } from '@/lib/graphData';
 import { runGraphSimulation } from '@/lib/graphSimulation';
 import { useJournal } from '@/contexts/JournalContext';
 import { graphLoadMachine } from '@/machines/graphLoadMachine';
+import { Space } from '@/constants/theme';
 
 export default function GraphScreen() {
   const { entityId } = useJournal();
@@ -51,20 +55,26 @@ export default function GraphScreen() {
 
   if (state.matches('failed')) {
     return (
-      <View style={styles.container}>
-        <ThemedText>Couldn&apos;t load the graph.</ThemedText>
-        <ThemedText type="small">{state.context.error?.message}</ThemedText>
-        <ThemedText type="link" onPress={() => send({ type: 'RETRY' })}>
-          Retry
-        </ThemedText>
+      <View style={[styles.container, styles.centered]}>
+        <ErrorBanner
+          message={state.context.error?.message ?? "Couldn't load the graph."}
+          action={
+            <Button label="Retry" variant="default" onPress={() => send({ type: 'RETRY' })} />
+          }
+        />
       </View>
     );
   }
 
   if (!graph) {
     return (
-      <View style={styles.container}>
-        <ThemedText>Loading graph…</ThemedText>
+      <View style={[styles.container, styles.centered]}>
+        <View style={styles.loading}>
+          <ProgressBar value={0} />
+          <ThemedText type="small" themeColor="onSurfaceVar" style={styles.loadingLabel}>
+            Loading graph…
+          </ThemedText>
+        </View>
       </View>
     );
   }
@@ -72,9 +82,10 @@ export default function GraphScreen() {
   return (
     <View style={styles.container}>
       {graph.truncated ? (
-        <ThemedText style={styles.banner}>
-          Showing 200 most recent high-confidence notes. Run Night Shift to organize the full graph.
-        </ThemedText>
+        <Note style={styles.banner}>
+          Showing 200 most recent high-confidence notes. Run Night Shift to organize the full
+          graph.
+        </Note>
       ) : null}
       <GraphLegend manifest={manifest} />
       <GraphCanvas
@@ -94,5 +105,8 @@ export default function GraphScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  banner: { padding: 12 },
+  centered: { alignItems: 'center', justifyContent: 'center', padding: Space[4] },
+  loading: { width: '60%', gap: Space[2] },
+  loadingLabel: { textAlign: 'center' },
+  banner: { margin: Space[3] },
 });

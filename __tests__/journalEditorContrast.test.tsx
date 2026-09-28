@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
+import { Colors } from '@/constants/theme';
 
 // Color-scheme mock: default 'light'; individual tests flip it.
 const mockColorScheme = jest.fn().mockReturnValue('light');
@@ -8,12 +9,6 @@ jest.mock('@/hooks/use-color-scheme', () => ({
   useColorScheme: () => mockColorScheme(),
 }));
 
-jest.mock('@/constants/theme', () => ({
-  Colors: {
-    light: { text: '#000000', textSecondary: '#60646C' },
-    dark: { text: '#ffffff', textSecondary: '#B0B4BA' },
-  },
-}));
 
 const noopSave = async () => {};
 const noopCancel = () => {};
@@ -28,7 +23,7 @@ describe('JournalEntryEditor dark-mode input contrast', () => {
     for (const placeholder of ['Title', 'Write in markdown…']) {
       const input = screen.getByPlaceholderText(placeholder);
       const flat = StyleSheet.flatten(input.props.style);
-      expect(flat.color).toBe('#ffffff');
+      expect(flat.color).toBe(Colors.dark.onSurface);
     }
   });
 
@@ -40,7 +35,7 @@ describe('JournalEntryEditor dark-mode input contrast', () => {
 
     for (const placeholder of ['Title', 'Write in markdown…']) {
       const input = screen.getByPlaceholderText(placeholder);
-      expect(input.props.placeholderTextColor).toBe('#B0B4BA');
+      expect(input.props.placeholderTextColor).toBe(Colors.dark.outline);
     }
   });
 });

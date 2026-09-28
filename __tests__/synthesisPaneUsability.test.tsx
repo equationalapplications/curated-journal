@@ -7,14 +7,6 @@ jest.mock('@/hooks/use-color-scheme', () => ({
   useColorScheme: () => mockColorScheme(),
 }));
 
-jest.mock('@/constants/theme', () => ({
-  Fonts: { mono: 'monospace' },
-  Colors: {
-    light: { text: '#000000', textSecondary: '#60646C', backgroundElement: '#F0F0F3', backgroundSelected: '#E0E1E6' },
-    dark: { text: '#ffffff', textSecondary: '#B0B4BA', backgroundElement: '#212225', backgroundSelected: '#2E3135' },
-  },
-}));
-
 jest.mock('expo-sqlite', () => ({
   openDatabaseAsync: jest.fn(async () => ({})),
 }));
@@ -49,14 +41,8 @@ jest.mock('react-native-keyboard-controller', () => ({
   KeyboardAwareScrollView: require('react-native').ScrollView,
 }));
 
-jest.mock('@/hooks/use-theme', () => ({
-  useTheme: () =>
-    mockColorScheme() === 'dark'
-      ? { text: '#ffffff', textSecondary: '#B0B4BA', backgroundElement: '#212225', backgroundSelected: '#2E3135' }
-      : { text: '#000000', textSecondary: '#60646C', backgroundElement: '#F0F0F3', backgroundSelected: '#E0E1E6' },
-}));
-
 import { SynthesisPane } from '@/components/synthesis/SynthesisPane';
+import { Colors } from '@/constants/theme';
 
 describe('SynthesisPane (chat) usability', () => {
   it('colors typed text and placeholder for dark mode', async () => {
@@ -65,8 +51,8 @@ describe('SynthesisPane (chat) usability', () => {
 
     const input = screen.getByPlaceholderText('Ask about your notes…');
     const flat = StyleSheet.flatten(input.props.style);
-    expect(flat.color).toBe('#ffffff');
-    expect(input.props.placeholderTextColor).toBe('#B0B4BA');
+    expect(flat.color).toBe(Colors.dark.onSurface);
+    expect(input.props.placeholderTextColor).toBe(Colors.dark.outline);
   });
 
   it('gives the input a themed border (visible in dark mode)', async () => {
@@ -75,8 +61,7 @@ describe('SynthesisPane (chat) usability', () => {
 
     const input = screen.getByPlaceholderText('Ask about your notes…');
     const flat = StyleSheet.flatten(input.props.style);
-    expect(flat.borderColor).toBeDefined();
-    expect(flat.borderColor).not.toBe('#000000');
+    expect(flat.borderColor).toBe(Colors.dark.outlineVar);
   });
 
   it('renders inside the keyboard-controller aware scroll view (SDK 57 edge-to-edge fix)', async () => {

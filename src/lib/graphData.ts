@@ -35,11 +35,17 @@ export function capGraphNodes<T extends { confidence: string; updatedAt: number 
   return { nodes: sorted.slice(0, cap), truncated: true };
 }
 
-export function hashColor(seed: string): string {
+/**
+ * Category colour for a graph node. Content colour, so it keeps its own hue —
+ * but lightness is chosen per theme so every hue stays readable as text on
+ * `bg`: 55% (the old fixed value) fails for yellows on cream and for blues on
+ * slate. Light runs dark enough for 4.5:1, dark runs light enough to clear it.
+ */
+export function hashColor(seed: string, dark = false): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   const hue = hash % 360;
-  return `hsl(${hue}, 65%, 55%)`;
+  return `hsl(${hue}, 60%, ${dark ? 70 : 28}%)`;
 }
 
 export function buildGraphFromDump(

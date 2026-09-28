@@ -1,5 +1,5 @@
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/sheet';
 
 type Props = {
   visible: boolean;
@@ -7,19 +7,14 @@ type Props = {
   onClose: () => void;
 };
 
+/** The dialog shape at the bottom of the screen (DESIGN.md Part 3). */
 export function GraphNodeSheet({ visible, title, onClose }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <View style={styles.sheet}>
-          <ThemedText type="subtitle">{title}</ThemedText>
-        </View>
-      </Pressable>
-    </Modal>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title={title}
+      footer={<Button label="Close" variant="primary" onPress={onClose} />}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
-  sheet: { padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: '#fff' },
-});
