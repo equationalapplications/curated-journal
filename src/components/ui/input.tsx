@@ -12,7 +12,6 @@ export function Input({ style, disabled, ...rest }: TextInputProps & { disabled?
   const theme = useTheme();
   return (
     <TextInput
-      editable={!disabled}
       accessibilityState={{ disabled: Boolean(disabled) }}
       placeholderTextColor={theme.outline}
       selectionColor={theme.primary}
@@ -26,6 +25,9 @@ export function Input({ style, disabled, ...rest }: TextInputProps & { disabled?
         style,
       ]}
       {...rest}
+      // `disabled` always wins: without this a caller-supplied `editable` in
+      // `rest` would re-enable a field that renders and reports as disabled.
+      editable={disabled ? false : rest.editable}
     />
   );
 }

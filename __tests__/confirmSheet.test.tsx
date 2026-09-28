@@ -31,7 +31,9 @@ describe('useConfirmSheet', () => {
   it('is not dismissable without a cancel button', async () => {
     const onGo = jest.fn();
     const screen = await render(<Harness buttons={[{ text: 'Go', onPress: onGo }]} />);
-    await fireEvent.press(screen.getByLabelText('Close', { includeHiddenElements: true }));
+    // The scrim is never advertised as a Close control when dismissal is
+    // impossible — screen readers must not find a button that does nothing.
+    expect(screen.queryByLabelText('Close', { includeHiddenElements: true })).toBeNull();
     expect(screen.getByText('Save failed')).toBeTruthy();
     expect(onGo).not.toHaveBeenCalled();
   });

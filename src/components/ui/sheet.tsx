@@ -14,6 +14,8 @@ type SheetProps = {
   children?: ReactNode;
   /** Right-aligned actions on the `elev1` footer. */
   footer?: ReactNode;
+  /** Scrim tap / hardware back closes. False when no cancel action exists. */
+  dismissable?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -23,7 +25,16 @@ type SheetProps = {
  * `elev1` footer separated by a `separator` hairline. Tapping the scrim or the
  * hardware back button dismisses.
  */
-export function Sheet({ visible, onClose, title, subtitle, children, footer, style }: SheetProps) {
+export function Sheet({
+  visible,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+  dismissable = true,
+  style,
+}: SheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -34,13 +45,14 @@ export function Sheet({ visible, onClose, title, subtitle, children, footer, sty
       animationType="slide"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}>
+      onRequestClose={dismissable ? onClose : undefined}>
       <View style={styles.root}>
         <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityRole={dismissable ? 'button' : 'none'}
+          accessibilityLabel={dismissable ? 'Close' : undefined}
+          importantForAccessibility={dismissable ? 'auto' : 'no-hide-descendants'}
           style={[styles.scrim, { backgroundColor: theme.backdropModal }]}
-          onPress={onClose}
+          onPress={dismissable ? onClose : undefined}
         />
         <View
           accessibilityViewIsModal

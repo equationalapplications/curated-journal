@@ -106,6 +106,7 @@ export default function JournalScreen() {
   if (isWide) {
     return (
       <View style={styles.split}>
+        {confirmElement}
         <View style={styles.listPane}>
           <JournalList
             items={items}

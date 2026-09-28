@@ -61,7 +61,11 @@ function ConfirmSheet({ options, onClose }: { options: Options; onClose: () => v
   return (
     <Sheet
       visible
+      // Scrim tap / hardware back = the cancel button, so its side effects run
+      // (e.g. dismissing a failed save). No cancel button = not dismissable,
+      // and the scrim stays out of the screen-reader order.
       onClose={cancelButton ? () => run(cancelButton) : () => {}}
+      dismissable={Boolean(cancelButton)}
       title={options.title}
       style={styles.sheet}
       footer={
