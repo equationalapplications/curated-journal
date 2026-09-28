@@ -27,6 +27,7 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     clearDownloadState: jest.fn(async () => undefined),
     setModelPath: jest.fn(async () => undefined),
     retireCurrentModel: jest.fn(async () => undefined),
+    deleteModelFile: jest.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -244,6 +245,26 @@ describe('modelHubMachine', () => {
     await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
     expect(api.checkNetwork).not.toHaveBeenCalled();
     expect(api.startDownload).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('deletes the outgoing model file after a custom import succeeds', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'IMPORT_CUSTOM' });
+    actor.send({ type: 'IMPORT_SMOKE_OK', retirePath: 'file:///old.gguf' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.deleteModelFile).toHaveBeenCalledWith('file:///old.gguf');
+    actor.stop();
+  });
+
+  it('deletes nothing when there is no outgoing model', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'IMPORT_CUSTOM' });
+    actor.send({ type: 'IMPORT_SMOKE_OK', retirePath: null });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.deleteModelFile).not.toHaveBeenCalled();
     actor.stop();
   });
 });

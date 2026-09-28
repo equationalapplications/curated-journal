@@ -17,7 +17,7 @@ export type ModelHubMachineEvents =
   | { type: 'APP_FOREGROUND' }
   | { type: 'FAIL'; code: 'network' | 'disk-full'; message: string }
   | { type: 'RETRY' }
-  | { type: 'IMPORT_SMOKE_OK' }
+  | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
   | { type: 'SET_DISPLAY_NAME'; displayName: string }
   | {
@@ -49,6 +49,7 @@ export type ModelHubApi = {
   clearDownloadState: () => Promise<void>;
   setModelPath: (model: CuratedModel) => Promise<void>;
   retireCurrentModel: () => Promise<void>;
+  deleteModelFile: (path: string) => Promise<void>;
 };
 
 export type ModelHubMachineInput = {
@@ -343,7 +344,12 @@ export const modelHubMachine = setup({
     complete: { type: 'final' },
     customImport: {
       on: {
-        IMPORT_SMOKE_OK: { target: 'complete' },
+        IMPORT_SMOKE_OK: {
+          target: 'complete',
+          actions: ({ context, event }) => {
+            if (event.retirePath) void context.api.deleteModelFile(event.retirePath);
+          },
+        },
         IMPORT_FAILED: {
           target: 'selecting',
           actions: assign({ error: ({ event }) => ({ code: 'smoke' as const, message: event.message }) }),
