@@ -12,7 +12,13 @@ function joinPosix(base: string, name: string): string {
 /** Files read at once. Sequential reads cost ~6s for 1000 notes on a device. */
 export const READ_CONCURRENCY = 16;
 
-/** Map with at most `limit` promises in flight; results keep input order. */
+/**
+ * Map with at most `limit` promises in flight; results keep input order.
+ *
+ * Note: subdirectory *walks* still run sequentially (each level awaits before
+ * recursing), so bundles made of many small folders see less benefit. Fine
+ * for the OKF layout, where `facts/` is flat.
+ */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;

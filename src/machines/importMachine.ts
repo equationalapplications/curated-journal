@@ -25,6 +25,7 @@ export type ImportApi = {
 export type ImportMachineEvents =
   | { type: 'PICK' }
   | { type: 'CANCEL' }
+  | { type: 'CANCELLED' }
   | { type: 'PHASE'; phase: PreparePhase }
   | { type: 'PREPARED'; prepared: PreparedImport }
   | { type: 'PROGRESS'; progress: ImportProgress }
@@ -38,22 +39,37 @@ type Context = {
   prepared: PreparedImport | null;
   progress: ImportProgress;
   error: string | null;
+  /** Owns the import's AbortSignal; created when importing starts. */
+  abort: AbortController | null;
 };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** Abort the in-flight import; a no-op once the promise has settled. */
+const abortImport = ({ context }: { context: Context }) => {
+  context.abort?.abort();
+};
+
 /**
  * OKF import:
  *
- *   idle ─PICK→ picking ─(file)→ working.preparing ─PREPARED→ working.importing
+ *   idle ─PICK→ picking ─(file)→ working.preparing ─PREPARED→ working.importing.active
  *        ─IMPORTED→ working.finalizing → done
- *   working ─FAIL→ failed ─PICK→ picking      working ─CANCEL→ idle
+ *   working.preparing ─CANCEL→ idle      working.importing.active ─CANCEL→ …importing.cancelling
+ *        ─CANCELLED→ idle (the in-flight chunk has settled)
+ *   working ─FAIL→ failed ─PICK→ picking
  *
  * Temp files belong to the actor that holds them: `prepare` cleans up on its
  * own failure, and the import actor's teardown cleans up whenever `importing`
  * is left, on success, failure, cancel or unmount, so nothing depends on a
- * single try/finally around the whole flow. Cancelling stops the import
- * between chunks; notes already imported stay (imports merge).
+ * single try/finally around the whole flow.
+ *
+ * Cancel is a two-step handshake: CANCEL only aborts the signal and moves to
+ * `importing.cancelling`; the import actor stays invoked (the state isn't
+ * exited) and sends CANCELLED once its promise settles. Going to `idle`
+ * immediately would leave the in-flight `importDump` holding the wiki's
+ * global import lock for seconds (chunks are up to 500 notes), so the next
+ * wiki operation could fail with `WikiBusyError`.
  */
 export const importMachine = setup({
   types: {
@@ -96,27 +112,32 @@ export const importMachine = setup({
         input,
       }: {
         sendBack: (e: ImportMachineEvents) => void;
-        input: { api: ImportApi; prepared: PreparedImport };
+        input: { api: ImportApi; prepared: PreparedImport; controller: AbortController };
       }) => {
-        const controller = new AbortController();
+        let stopped = false;
         input.api
-          .importDump(
-            input.prepared.dump,
-            (progress) => {
-              if (!controller.signal.aborted) sendBack({ type: 'PROGRESS', progress });
-            },
-            controller.signal,
-          )
+          .importDump(input.prepared.dump, (progress) => {
+            if (!stopped) sendBack({ type: 'PROGRESS', progress });
+          }, input.controller.signal)
           .then(
             () => {
-              if (!controller.signal.aborted) sendBack({ type: 'IMPORTED' });
+              if (stopped) return;
+              if (input.controller.signal.aborted) sendBack({ type: 'CANCELLED' });
+              else sendBack({ type: 'IMPORTED' });
             },
             (e) => {
-              if (!controller.signal.aborted) sendBack({ type: 'FAIL', message: message(e) });
+              if (stopped) return;
+              if (input.controller.signal.aborted) sendBack({ type: 'CANCELLED' });
+              else sendBack({ type: 'FAIL', message: message(e) });
             },
           );
         return () => {
-          controller.abort();
+          stopped = true;
+          // Aborting here is a no-op when the promise has already settled
+          // (CANCEL handshake, IMPORTED); before settle — the user left the
+          // screen and the actor was stopped — it stops the import at its
+          // next chunk boundary.
+          input.controller.abort();
           input.prepared.cleanup();
         };
       },
@@ -132,6 +153,7 @@ export const importMachine = setup({
     prepared: null,
     progress: { factsDone: 0, factsTotal: 0 },
     error: null,
+    abort: null,
   }),
   initial: 'idle',
   states: {
@@ -156,6 +178,7 @@ export const importMachine = setup({
         phase: 'copying',
         prepared: null,
         progress: { factsDone: 0, factsTotal: 0 },
+        abort: null,
       }),
       on: {
         CANCEL: 'idle',
@@ -174,18 +197,45 @@ export const importMachine = setup({
               actions: assign({
                 prepared: ({ event }) => event.prepared,
                 progress: ({ event }) => ({ factsDone: 0, factsTotal: event.prepared.noteCount }),
+                abort: () => new AbortController(),
               }),
             },
           },
         },
         importing: {
+          initial: 'active',
+          // The invoke lives on `importing`, not `active`, so it survives the
+          // CANCEL handshake: `active` → `cancelling` must not tear the import
+          // actor down while its last chunk is still writing. The exit aborts
+          // on teardown-before-settle (user left the screen): the import then
+          // stops at its next chunk boundary.
           invoke: {
             src: 'runImport',
-            input: ({ context }) => ({ api: context.api, prepared: context.prepared! }),
+            input: ({ context }) => ({
+              api: context.api,
+              prepared: context.prepared!,
+              controller: context.abort!,
+            }),
           },
           on: {
             PROGRESS: { actions: assign({ progress: ({ event }) => event.progress }) },
             IMPORTED: 'finalizing',
+          },
+          states: {
+            active: {
+              on: {
+                CANCEL: { target: 'cancelling', actions: abortImport },
+              },
+            },
+            cancelling: {
+              // Waiting for the in-flight chunk to settle. Extra CANCELs are
+              // consumed here so the parent's CANCEL → idle can't fire and
+              // tear the import actor down mid-chunk.
+              on: {
+                CANCELLED: '#import.idle',
+                CANCEL: { actions: [] },
+              },
+            },
           },
         },
         finalizing: {

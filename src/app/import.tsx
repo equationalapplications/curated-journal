@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
+import { usePreventRemove } from 'expo-router/build/react-navigation/core';
 import { useMachine } from '@xstate/react';
 import { parseOkfBundle, useSetOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { getUnzip } from 'react-native-nitro-unzip';
@@ -30,6 +31,11 @@ export default function ImportScreen() {
   const wiki = useWiki();
   const { execute: setManifest } = useSetOntologyManifest();
 
+  // `api` closes over this render's entityId/wiki/setManifest. useMachine
+  // reads `input` only on the first render, so these must stay stable for
+  // the screen's lifetime — true today (entityId is fixed per provider,
+  // useWiki's instance is a context singleton) — and a dependency change
+  // here would silently keep using the stale values.
   const api: ImportApi = {
     pick: async () => {
       const picked = await DocumentPicker.getDocumentAsync({ type: 'application/zip' });
@@ -40,8 +46,15 @@ export default function ImportScreen() {
       const zipDest = new File(Paths.cache, `import-${id}.zip`);
       const extractDir = new Directory(Paths.cache, `import-${id}`);
       const cleanup = () => {
-        if (zipDest.exists) zipDest.delete();
-        if (extractDir.exists) extractDir.delete();
+        // expo-file-system delete() can reject (file locked, already swept
+        // by the OS); cleanup runs inside actor teardown and must never be
+        // the error that masks the real one.
+        try {
+          if (zipDest.exists) zipDest.delete();
+          if (extractDir.exists) extractDir.delete();
+        } catch (e) {
+          console.warn('[import] temp cleanup failed; cache entries can be swept manually.', e);
+        }
       };
       try {
         onPhase('copying');
@@ -85,6 +98,19 @@ export default function ImportScreen() {
   const [state, send] = useMachine(importMachine, { input: { api } });
   const { phase, progress, error } = state.context;
   const working = state.matches('working');
+  const cancelling = state.matches({ working: { importing: 'cancelling' } });
+
+  // A back gesture during a large import would unmount the actor and abort
+  // the import at its next chunk boundary, silently leaving a half-imported
+  // journal. Block leaving while working; the follow-up issue covers moving
+  // the actor above the screen so navigation survives instead.
+  usePreventRemove(working, () => {
+    Alert.alert(
+      'Import in progress',
+      'An import is running. Use Cancel before leaving this screen.',
+      [{ text: 'OK' }],
+    );
+  });
 
   useEffect(() => {
     if (state.matches('done')) router.back();
@@ -93,7 +119,9 @@ export default function ImportScreen() {
   const status = state.matches({ working: 'preparing' })
     ? PHASE_LABEL[phase]
     : state.matches({ working: 'importing' })
-      ? `Importing ${progress.factsDone} of ${progress.factsTotal} notes…`
+      ? state.matches({ working: { importing: 'cancelling' } })
+        ? `Stopping after the current chunk (${progress.factsDone} of ${progress.factsTotal})…`
+        : `Importing ${progress.factsDone} of ${progress.factsTotal} notes…`
       : state.matches({ working: 'finalizing' })
         ? 'Finishing…'
         : null;
@@ -121,7 +149,11 @@ export default function ImportScreen() {
       {state.matches('failed') && error ? <ErrorBanner message={`Import failed: ${error}`} /> : null}
       <View style={styles.action}>
         {working ? (
-          <Button label="Cancel" onPress={() => send({ type: 'CANCEL' })} />
+          <Button
+            label={cancelling ? 'Cancelling…' : 'Cancel'}
+            onPress={() => send({ type: 'CANCEL' })}
+            disabled={cancelling}
+          />
         ) : (
           <Button
             label={state.matches('failed') ? 'Pick another zip' : 'Pick OKF zip'}

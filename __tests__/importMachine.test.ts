@@ -59,7 +59,7 @@ describe('importMachine', () => {
     gate.resolve();
   });
 
-  it('cancel aborts the import between chunks and cleans up', async () => {
+  it('cancel waits for the in-flight chunk, then goes idle without finalizing', async () => {
     let signal: AbortSignal | undefined;
     const gate = deferred<void>();
     const { api, cleanup } = fakeApi({
@@ -70,14 +70,38 @@ describe('importMachine', () => {
     });
     const actor = createActor(importMachine, { input: { api } }).start();
     actor.send({ type: 'PICK' });
-    await waitFor(actor, (s) => s.matches({ working: 'importing' }));
+    await waitFor(actor, (s) => s.matches({ working: { importing: 'active' } }));
     actor.send({ type: 'CANCEL' });
-    expect(actor.getSnapshot().matches('idle')).toBe(true);
+    // Handshake: still importing (invoke alive) while the chunk settles.
+    expect(actor.getSnapshot().matches({ working: { importing: 'cancelling' } })).toBe(true);
+    expect(signal?.aborted).toBe(true);
+    expect(cleanup).not.toHaveBeenCalled();
+    gate.resolve();
+    await waitFor(actor, (s) => s.matches('idle'));
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    // setTimeout(0), not Promise.resolve(): the finalize-guard assertion must
+    // run after the import actor's .then handlers, not just microtasks.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.finalize).not.toHaveBeenCalled();
+  });
+
+  it('leaving the screen mid-import aborts at the chunk boundary and cleans up', async () => {
+    let signal: AbortSignal | undefined;
+    const gate = deferred<void>();
+    const { api, cleanup } = fakeApi({
+      importDump: jest.fn((_d, _p, s) => {
+        signal = s;
+        return gate.promise;
+      }),
+    });
+    const actor = createActor(importMachine, { input: { api } }).start();
+    actor.send({ type: 'PICK' });
+    await waitFor(actor, (s) => s.matches({ working: { importing: 'active' } }));
+    actor.stop(); // unmount
     expect(signal?.aborted).toBe(true);
     expect(cleanup).toHaveBeenCalledTimes(1);
-    gate.resolve();
-    await Promise.resolve();
-    expect(api.finalize).not.toHaveBeenCalled();
+    gate.resolve(); // settles after teardown; must not corrupt anything
+    await new Promise((r) => setTimeout(r, 0));
   });
 
   it('a failed import shows the error, cleans up, and can pick again', async () => {

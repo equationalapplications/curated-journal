@@ -11,8 +11,10 @@ export const MAX_IMPORT_CHUNK_SIZE = 500;
  * entity's whole search index, so the rebuild cost grows with the journal,
  * not with the chunk: fixed small chunks made a 1000-note import quadratic
  * (40 rebuilds; ~129s on an emulator, 19s in Node vs 1s in one call). A
- * roughly constant number of chunks keeps it linear while still yielding to
- * the UI and bounding each write transaction.
+ * roughly constant number of chunks keeps it linear *up to the cap*: above
+ * ~4000 notes (8 × 500) the chunk count grows as n/500, by design — the cap
+ * bounds each write transaction and keeps every chunk well under the
+ * transaction/latency budget even for very large journals.
  */
 export function chunkSizeFor(factCount: number): number {
   return Math.min(
