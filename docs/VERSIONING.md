@@ -2,7 +2,8 @@
 
 Every change that lands on `main` carries a version consequence. The version
 lives in three synced places (`package.json`, `app.json`, `package-lock.json`)
-and is bumped through a `chore/version-X.Y.Z` PR — never by hand on main.
+and is bumped in the same PR as the change that causes it — not in a separate
+release PR.
 
 The rule that drives the bump class is **OTA compatibility**: does the change
 break the ability to ship an over-the-air update (EAS Update) to binaries
@@ -30,8 +31,8 @@ on a scratch branch), and if the native project changes at all, it's a MAJOR.
 
 ## Release train (per release)
 
-1. `chore/version-X.Y.Z` PR: bump the three synced files (see the 1.3.0/1.4.0
-   bumps for the exact shape).
+1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
+   for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
    `versionName`, `expo_runtime_version`, and the `expo-channel-name` header in
    the generated tree **before** building. A stale stamp means the APK bakes
@@ -40,5 +41,6 @@ on a scratch branch), and if the native project changes at all, it's a MAJOR.
    `heavy-build` wrapper — never bare gradle on this machine.
 4. Verify the **built artifact** with `aapt2 dump badging` — never trust source
    files for what shipped.
-5. Tag `vX.Y.Z` at the bump merge commit, create the GitHub release with the
-   APK attached, and read back the asset byte-size from the release API.
+5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
+   GitHub release with the APK attached, and read back the asset byte-size from
+   the release API.
