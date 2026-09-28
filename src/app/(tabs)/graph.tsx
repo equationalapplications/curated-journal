@@ -64,10 +64,14 @@ export default function GraphScreen() {
     sendView({ type: 'OVERVIEW', ids: inOverview });
   }, [inOverview, sendView]);
   const egoMode = view.matches({ focus: 'neighbourhood' });
+  // While pinned, the whole neighbourhood belongs to egoRoot: taps browse
+  // inside it (focus/camera/sheet move), but the shown graph stays rooted
+  // until "All notes" or a reload that brings the root into the cap.
+  const egoId = egoMode ? (view.context.egoRoot ?? focusId) : null;
   const shown = useMemo(() => {
     if (!graph) return null;
-    return egoMode && focusId ? egoGraph(focusId, graph.all.nodes, graph.all.edges) : graph;
-  }, [graph, egoMode, focusId]);
+    return egoId ? egoGraph(egoId, graph.all.nodes, graph.all.edges) : graph;
+  }, [graph, egoId]);
 
   // Layout is keyed on structure (ids + edges), not on the graph object:
   // a reload that finds the same graph reuses the saved positions. Memoized:
@@ -102,6 +106,15 @@ export default function GraphScreen() {
   const results = useMemo(() => searchNotes(graph?.all.nodes ?? [], query), [graph, query]);
   const focused = focusId ? byId.get(focusId) : undefined;
   const sheetNode = sheetId ? byId.get(sheetId) : undefined;
+
+  // A reload can remove the note shown in the details sheet: the sheet
+  // component hides itself, but the view machine would stay `open` and
+  // ignore later TAP_NODE / OPEN_DETAILS. Close it explicitly.
+  useEffect(() => {
+    if (view.matches({ sheet: 'open' }) && sheetId && !byId.has(sheetId)) {
+      sendView({ type: 'CLOSE_SHEET' });
+    }
+  }, [view, sheetId, byId, sendView]);
 
   // The machine owns the issued request ({id, nonce}); TAP_NODE without a
   // requestCentre leaves this object identical, so the canvas doesn't

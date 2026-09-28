@@ -74,6 +74,7 @@ export const graphViewMachine = setup({
     }),
     requestFit: assign({ fitRequest: ({ context }) => context.fitRequest + 1 }),
     clearFocus: assign({ focusId: null, pinned: false, egoRoot: null }),
+    unpin: assign({ pinned: false, egoRoot: null }),
     // egoRoot is the note whose neighbourhood is on screen: the first note
     // that pulled the view into neighbourhood mode. Later taps inside the
     // neighbourhood only move focusId, not the root.
@@ -115,7 +116,11 @@ export const graphViewMachine = setup({
       initial: 'none',
       on: {
         PICK: [
-          { guard: 'targetInOverview', target: '.focused', actions: ['focusTarget', 'requestCentre'] },
+          {
+            guard: 'targetInOverview',
+            target: '.focused',
+            actions: ['focusTarget', 'requestCentre', 'unpin'],
+          },
           { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
         ],
         TAP_NODE: [
@@ -124,7 +129,11 @@ export const graphViewMachine = setup({
           // the user's place, so the neighbourhood is kept and the camera
           // moves to the note. The sheet still opens via the sheet region.
           { guard: 'pinnedNeighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
-          { guard: 'targetInOverview', target: '.focused', actions: 'focusTarget' },
+          {
+            guard: 'targetInOverview',
+            target: '.focused',
+            actions: ['focusTarget', 'unpin'],
+          },
           { target: '.neighbourhood', actions: ['focusTarget', 'requestCentre', 'pin'] },
         ],
         CLEAR_FOCUS: { target: '.none', actions: ['clearFocus', 'requestFit'] },

@@ -16,7 +16,7 @@ export function neighbourhood(id: string, edges: readonly Edge[]): Set<string> {
  * Search every note, not just the ones the overview can show. Ranked: title
  * starts with the query, then a title word starts with it, then the title
  * contains it, then the body does. Case-insensitive; ties keep input order
- * (most relevant notes come first from the graph builder).
+ * (which is the wiki's fact order, not a relevance order).
  */
 export function searchNotes<T extends Pick<GraphNodeInput, 'id' | 'title' | 'body'>>(
   notes: readonly T[],
@@ -55,8 +55,8 @@ export function egoGraph<N extends { id: string }, E extends Edge>(
 ): { nodes: N[]; edges: E[] } {
   const direct = neighbourhood(id, edges);
   const keep = new Set<string>([id]);
-  // Direct links first (input order ≈ most-connected first from the builder),
-  // then two-hop notes, until the cap. `id` always stays.
+  // Direct links first (edge order — arbitrary, not a relevance rank), then
+  // two-hop notes, until the cap. `id` always stays.
   for (const n of direct) {
     if (keep.size >= maxNodes) break;
     keep.add(n);
