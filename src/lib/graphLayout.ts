@@ -31,7 +31,7 @@ export function graphStructureKey(
   const ids = nodes.map((n) => n.id).toSorted();
   const links = edges
     .map((e) => (e.sourceId <= e.targetId ? [e.sourceId, e.targetId] : [e.targetId, e.sourceId]) as [string, string])
-    .toSorted((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+    .toSorted((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
   const structure: GraphStructure = { ids, links };
   return JSON.stringify(structure);
 }

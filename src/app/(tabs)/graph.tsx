@@ -70,8 +70,12 @@ export default function GraphScreen() {
   }, [graph, egoMode, focusId]);
 
   // Layout is keyed on structure (ids + edges), not on the graph object:
-  // a reload that finds the same graph reuses the saved positions.
-  const structureKey = shown ? graphStructureKey(shown.nodes, shown.edges) : null;
+  // a reload that finds the same graph reuses the saved positions. Memoized:
+  // this recomputes on every layout progress publish (120ms) otherwise.
+  const structureKey = useMemo(
+    () => (shown ? graphStructureKey(shown.nodes, shown.edges) : null),
+    [shown],
+  );
   const { positions, settling } = useGraphLayout(structureKey, egoMode ? null : entityId);
 
   const canvasNodes = useMemo(() => {

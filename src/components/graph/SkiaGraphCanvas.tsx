@@ -120,25 +120,59 @@ export function SkiaGraphCanvas({
   );
 
   // Keep the whole graph in view while it settles, until the user takes over.
-  // Re-fit when the shown graph changes (overview ↔ neighbourhood): the new
-  // positions are a different graph and may start partly off screen.
+  // When the shown graph changes (overview ↔ neighbourhood), the old camera
+  // position is meaningless for the new graph: re-fit regardless of userMoved.
   const graphKey = useMemo(() => graphStructureKey(nodes, edges), [nodes, edges]);
+  const prevGraphKey = useRef(graphKey);
   useEffect(() => {
+    const graphChanged = prevGraphKey.current !== graphKey;
+    prevGraphKey.current = graphKey;
+    if (graphChanged) {
+      userMoved.current = false;
+      moveCamera(fitCamera(boundsOf(positions.values()), viewport), false);
+      return;
+    }
     if (userMoved.current || interacting.current) return;
     moveCamera(fitCamera(boundsOf(positions.values()), viewport), false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions, viewport, moveCamera, graphKey]);
 
+  // Explicit "show whole graph" (the FIT button, and CLEAR_FOCUS's re-fit).
+  // fitRequest === 0 means nothing has been requested yet.
+  useEffect(() => {
+    if (fitRequest === 0) return;
+    userMoved.current = false;
+    moveCamera(fitCamera(boundsOf(positions.values()), viewport), true);
+    // Only on an explicit request, not on every settle step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitRequest]);
+
   // Centring on a note whose position hasn't arrived yet (the layout machine
-  // is still restoring the new graph) must not drop the request: keep it
-  // pending and retry when positions change.
+  // is still restoring the new graph) must not drop the request: park it and
+  // retry when positions change. The nonce guard keeps later positions
+  // updates from re-centring on an already-handled request (Opus M1, r2).
+  const lastNonce = useRef<number | null>(null);
   const pendingFocus = useRef<string | null>(null);
   useEffect(() => {
-    const id = pendingFocus.current ?? focusRequest?.id ?? null;
-    if (!id || !positions.has(id)) return;
-    pendingFocus.current = null;
-    userMoved.current = true;
-    moveCamera(centerOn({ x: tx.get(), y: ty.get(), scale: sc.get() }, positions.get(id)!, viewport), true);
+    if (!focusRequest) return;
+    const centre = (id: string) => {
+      userMoved.current = true;
+      moveCamera(centerOn({ x: tx.get(), y: ty.get(), scale: sc.get() }, positions.get(id)!, viewport), true);
+    };
+    if (focusRequest.nonce !== lastNonce.current) {
+      lastNonce.current = focusRequest.nonce;
+      if (positions.has(focusRequest.id)) {
+        centre(focusRequest.id);
+      } else {
+        pendingFocus.current = focusRequest.id;
+      }
+      return;
+    }
+    const id = pendingFocus.current;
+    if (id && positions.has(id)) {
+      pendingFocus.current = null;
+      centre(id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest, positions, viewport, moveCamera]);
 
@@ -168,31 +202,36 @@ export function SkiaGraphCanvas({
   );
 
   // True between a gesture's begin and end: progress publishes must not
-  // fight the user's fingers for the camera mid-gesture (onEnd alone left a
-  // 120ms window where the fit overwrote an in-progress drag).
+  // fight the user's fingers for the camera mid-gesture. Gesture callbacks
+  // run as worklets on the UI runtime, so the JS-side ref is updated via
+  // scheduleOnRN — a direct write from a worklet would only change the UI
+  // runtime's copy (Opus M2, r2).
   const interacting = useRef(false);
+  const setInteracting = useCallback((v: boolean) => {
+    interacting.current = v;
+  }, []);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
       .minDistance(4)
       .averageTouches(true)
       .onBegin(() => {
-        interacting.current = true;
+        scheduleOnRN(setInteracting, true);
       })
       .onChange((e) => {
         tx.set(tx.get() + e.changeX);
         ty.set(ty.get() + e.changeY);
       })
       .onEnd(() => {
-        interacting.current = false;
+        scheduleOnRN(setInteracting, false);
         scheduleOnRN(commit, tx.get(), ty.get(), sc.get());
       })
       .onFinalize(() => {
-        interacting.current = false;
+        scheduleOnRN(setInteracting, false);
       });
     const pinch = Gesture.Pinch()
       .onBegin(() => {
-        interacting.current = true;
+        scheduleOnRN(setInteracting, true);
       })
       .onChange((e) => {
         const next = zoomAround(
@@ -205,11 +244,11 @@ export function SkiaGraphCanvas({
         sc.set(next.scale);
       })
       .onEnd(() => {
-        interacting.current = false;
+        scheduleOnRN(setInteracting, false);
         scheduleOnRN(commit, tx.get(), ty.get(), sc.get());
       })
       .onFinalize(() => {
-        interacting.current = false;
+        scheduleOnRN(setInteracting, false);
       });
     // Double-tap zooms in 2x around the finger: the one-handed way to zoom.
     const doubleTap = Gesture.Tap()
@@ -224,7 +263,7 @@ export function SkiaGraphCanvas({
         if (success) scheduleOnRN(handleTap, e.x, e.y);
       });
     return Gesture.Race(Gesture.Exclusive(doubleTap, tap), Gesture.Simultaneous(pan, pinch));
-  }, [commit, handleTap, zoomBy, tx, ty, sc]);
+  }, [commit, handleTap, zoomBy, tx, ty, sc, setInteracting]);
 
   const worldTransform = useDerivedValue(() => [
     { translateX: tx.get() },
