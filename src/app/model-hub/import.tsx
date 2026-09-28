@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Note } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
-import { setModelPath, setModelId } from '@/lib/entityStorage';
+import { setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
@@ -25,14 +25,40 @@ export default function ModelHubImportScreen() {
   }, [stateValue, completeOnboarding, router]);
 
   const runImport = async () => {
+    // Read the outgoing path first, and await it here rather than in a mount
+    // effect: setModelPath below overwrites MODEL_PATH_KEY with the replacement,
+    // after which the old path is unrecoverable — and an effect that has not
+    // settled yet would leave the outgoing model orphaned.
+    //
+    // Its own try/catch because this read sits before the import's: a rejection
+    // here would otherwise escape the `void runImport()` call unhandled, opening
+    // no picker and telling the user nothing.
+    let currentPath: string | null;
+    try {
+      currentPath = await getModelPath();
+    } catch {
+      send({
+        type: 'IMPORT_FAILED',
+        message: 'Could not check which model you have installed. Try again.',
+      });
+      router.back();
+      return;
+    }
     const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
-    const name = picked.assets[0].name ?? `model-${Date.now()}.gguf`;
-    const dest = new File(Paths.document, name);
+    const dest = new File(Paths.document, uniqueFileName(picked.assets[0].name));
     const source = new File(picked.assets[0].uri);
-    source.copy(dest);
-    setStatus('Checking the model can run on this device…');
+    // Shown before the copy, not after: a multi-gigabyte .gguf takes a while.
+    setStatus('Copying the model and checking it runs on this device…');
     try {
+      // File.copy() returns a Promise (Expo SDK 57). Left un-awaited, the smoke
+      // test below races a half-written file and reports a perfectly good model
+      // as unusable, and a failed copy vanishes as an unhandled rejection.
+      //
+      // Deliberately not overwriting: the destination name is unique by
+      // construction, so an existing file there means something is wrong and
+      // should fail loudly here rather than overwrite the installed model.
+      await source.copy(dest);
       const result = await runModelSmokeTest({ modelPath: dest.uri, llamaConfig: { contextSize: 4096 } });
       if (!result.ok) {
         setStatus('');
@@ -51,8 +77,23 @@ export default function ModelHubImportScreen() {
       router.back();
       return;
     }
-    send({ type: 'IMPORT_SMOKE_OK' });
+    send({ type: 'IMPORT_SMOKE_OK', retirePath: currentPath });
   };
+
+/**
+ * Disambiguates the copy we land in the documents directory. Re-importing a
+ * file that shares a name with the installed model is the ordinary case, not an
+ * edge case: a plain copy would land exactly on the path the machine retires,
+ * so the import would delete the model it had just installed. The `.gguf`
+ * extension is kept last so the copy still reads as a model file.
+ */
+function uniqueFileName(name: string | null | undefined): string {
+  const safe = name ?? 'model.gguf';
+  const dot = safe.lastIndexOf('.');
+  const stem = dot > 0 ? safe.slice(0, dot) : safe;
+  const ext = dot > 0 ? safe.slice(dot) : '';
+  return `${stem}-${Date.now()}${ext}`;
+}
 
   return (
     <View style={styles.container}>

@@ -9,7 +9,8 @@ import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-c
 import { WikiProvider } from '@equationalapplications/expo-llm-wiki';
 import type { LLMProvider, WikiMemory } from '@equationalapplications/core-llm-wiki';
 import { bootstrapWiki } from '@/services/wikiBootstrap';
-import { getModelPath, getModelId } from '@/lib/entityStorage';
+import { File } from 'expo-file-system';
+import { getModelPath, getModelId, clearModelPath } from '@/lib/entityStorage';
 import { createLlamaProvider } from '@/lib/llamaProvider';
 import { createMockLlmProvider } from '@/lib/mockLlmProvider';
 import { adoptCachedModel, devLlmMode } from '@/lib/devModel';
@@ -51,7 +52,23 @@ export default function RootLayout() {
     // dying in an unhandled rejection that leaves the app on the splash.
     let modelPath: string | null = null;
     try {
-      modelPath = (await getModelPath()) ?? (devMode === 'auto' ? await adoptCachedModel() : null);
+      const stored = await getModelPath();
+      // A stored path can outlive its file. Retirement deletes the .gguf first
+      // and only then clears the key, so a clear that failed leaves the key
+      // naming a model that no longer exists. Booting a provider against that
+      // would fail much later, at inference, with no route back to the hub — so
+      // treat it as no model, and clear the stale identity while we are here.
+      if (stored) {
+        if (new File(stored).exists) {
+          modelPath = stored;
+        } else {
+          console.warn('[model] Stored model file is missing; clearing its identity.', stored);
+          await clearModelPath();
+        }
+      }
+      if (modelPath === null && devMode === 'auto') {
+        modelPath = await adoptCachedModel();
+      }
     } catch (err) {
       console.warn('[model] Cached-model probe failed; falling back to the model hub.', err);
     }

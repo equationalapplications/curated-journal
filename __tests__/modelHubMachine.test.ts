@@ -26,6 +26,8 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     persistDownloadState: jest.fn(async () => undefined),
     clearDownloadState: jest.fn(async () => undefined),
     setModelPath: jest.fn(async () => undefined),
+    retireCurrentModel: jest.fn(async () => ({ identityCleared: true })),
+    deleteModelFile: jest.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -208,6 +210,132 @@ describe('modelHubMachine', () => {
     const actor = createActor(modelHubMachine, { input: { api } }).start();
     actor.send({ type: 'SET_DISPLAY_NAME', displayName: 'My Journal' });
     expect(actor.getSnapshot().context.displayName).toBe('My Journal');
+    actor.stop();
+  });
+
+  it('retires the current model before starting a new download', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.retireCurrentModel).toHaveBeenCalledTimes(1);
+    expect(api.setModelPath).toHaveBeenCalledWith(expect.objectContaining({ id: 'smarter-slower' }));
+    actor.stop();
+  });
+
+  it('does not retire when the selected model is already installed', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.retireCurrentModel).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('does not consult the network when retirement fails', async () => {
+    const api = makeApi({ retireCurrentModel: jest.fn(async () => { throw new Error('locked'); }) });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    expect(api.checkNetwork).not.toHaveBeenCalled();
+    expect(api.startDownload).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('clears currentModelId once the outgoing model has actually been retired', async () => {
+    // The file is gone the moment retireTask resolves, so the id must not
+    // survive into the states that can still fail — it would render the deleted
+    // model as Current and block the user from re-selecting it.
+    const api = makeApi({
+      startDownload: jest.fn(async () => { throw new Error('fetch failed'); }),
+    });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.currentModelId).toBeNull();
+    actor.send({ type: 'RETRY' });
+    await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.currentModelId).toBeNull();
+    actor.stop();
+  });
+
+  it('keeps currentModelId when retirement itself fails', async () => {
+    // The file is still on disk here, so the id is still true and the row must
+    // stay disabled rather than inviting a doomed re-download.
+    const api = makeApi({ retireCurrentModel: jest.fn(async () => { throw new Error('locked'); }) });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    expect(actor.getSnapshot().context.currentModelId).toBe('fast-light');
+    expect(actor.getSnapshot().context.error?.message).toMatch(/nothing has changed/);
+    actor.stop();
+  });
+
+  it('does not claim nothing changed when the file was retired but its identity was not cleared', async () => {
+    // The file is gone; only the stored path and id outlived it. Telling the
+    // user nothing has changed would be a lie about an irreversible action, and
+    // currentModelId would go on rendering a deleted model as Current.
+    const api = makeApi({ retireCurrentModel: jest.fn(async () => ({ identityCleared: false })) });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    expect(actor.getSnapshot().context.error?.code).toBe('retire');
+    expect(actor.getSnapshot().context.error?.message).not.toMatch(/nothing has changed/);
+    expect(actor.getSnapshot().context.error?.message).toMatch(/was removed/);
+    expect(actor.getSnapshot().context.currentModelId).toBeNull();
+    actor.stop();
+  });
+
+  it('lets a retry finish clearing the identity left stale by a retirement', async () => {
+    // The second attempt finds no file to unlink (already gone) and only has to
+    // clear the key, so it proceeds to the download the user wanted.
+    let attempt = 0;
+    const api = makeApi({
+      retireCurrentModel: jest.fn(async () => {
+        attempt += 1;
+        return { identityCleared: attempt > 1 };
+      }),
+    });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.setModelPath).toHaveBeenCalledWith(expect.objectContaining({ id: 'smarter-slower' }));
+    actor.stop();
+  });
+
+  it('deletes the outgoing model file after a custom import succeeds', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'IMPORT_CUSTOM' });
+    actor.send({ type: 'IMPORT_SMOKE_OK', retirePath: 'file:///old.gguf' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.deleteModelFile).toHaveBeenCalledWith('file:///old.gguf');
+    actor.stop();
+  });
+
+  it('deletes nothing when there is no outgoing model', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'IMPORT_CUSTOM' });
+    actor.send({ type: 'IMPORT_SMOKE_OK', retirePath: null });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.deleteModelFile).not.toHaveBeenCalled();
     actor.stop();
   });
 });

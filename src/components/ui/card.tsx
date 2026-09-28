@@ -56,19 +56,23 @@ export function Row({ children, style, divider = true }: RowProps) {
 }
 
 type ListRowProps = RowProps & {
-  onPress: () => void;
+  /** Omit for an inert row — e.g. the entry that is already installed. */
+  onPress?: () => void;
   selected?: boolean;
+  disabled?: boolean;
   accessibilityLabel?: string;
 };
 
 /**
  * Pressable row: `elev2` when pressed, `primaryContainer` + weight 500 when
- * selected — selection is structure, not a dimmed copy.
+ * selected — selection is structure, not a dimmed copy. A `disabled` row is
+ * announced as disabled as well as being unpressable.
  */
 export function ListRow({
   children,
   style,
   selected,
+  disabled,
   divider = true,
   accessibilityLabel,
   onPress,
@@ -77,8 +81,11 @@ export function ListRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected: Boolean(selected) }}
+      accessibilityState={{ selected: Boolean(selected), disabled: Boolean(disabled) }}
       accessibilityLabel={accessibilityLabel}
+      // `disabled` here, not just in accessibilityState above: the state only
+      // announces. Without the prop the row still takes taps.
+      disabled={Boolean(disabled)}
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,

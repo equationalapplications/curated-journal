@@ -17,7 +17,7 @@ export type ModelHubMachineEvents =
   | { type: 'APP_FOREGROUND' }
   | { type: 'FAIL'; code: 'network' | 'disk-full'; message: string }
   | { type: 'RETRY' }
-  | { type: 'IMPORT_SMOKE_OK' }
+  | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
   | { type: 'SET_DISPLAY_NAME'; displayName: string }
   | {
@@ -48,14 +48,29 @@ export type ModelHubApi = {
   }) => Promise<void>;
   clearDownloadState: () => Promise<void>;
   setModelPath: (model: CuratedModel) => Promise<void>;
+  retireCurrentModel: () => Promise<RetireOutcome>;
+  deleteModelFile: (path: string) => Promise<void>;
 };
 
-export type ModelHubMachineInput = { api: ModelHubApi };
+/**
+ * Resolving means the outgoing file is gone — the unlink is the commitment
+ * point, so a rejection can only mean the unlink itself failed and the model is
+ * still on disk. `identityCleared` reports the bookkeeping that follows: when
+ * false, the stored path and id still name a file that no longer exists, and
+ * the launch-time reconciliation in `_layout.tsx` is what cleans that up.
+ */
+export type RetireOutcome = { identityCleared: boolean };
 
-type ErrorCode = 'network' | 'disk-full' | 'verify' | 'smoke';
+export type ModelHubMachineInput = {
+  api: ModelHubApi;
+  currentModelId?: CuratedModelId | 'custom' | null;
+};
+
+type ErrorCode = 'network' | 'disk-full' | 'verify' | 'smoke' | 'retire';
 
 type Context = {
   api: ModelHubApi;
+  currentModelId: CuratedModelId | 'custom' | null;
   modelId: CuratedModelId | null;
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: ErrorCode; message: string } | null;
@@ -124,12 +139,16 @@ export const modelHubMachine = setup({
       async ({ input }: { input: { api: ModelHubApi; model: CuratedModel } }) =>
         input.api.runSmokeTest(input.model),
     ),
+    retireTask: fromPromise(async ({ input }: { input: { api: ModelHubApi } }) =>
+      input.api.retireCurrentModel(),
+    ),
   },
 }).createMachine({
   id: 'modelHub',
   initial: 'selecting',
   context: ({ input }) => ({
     api: input.api,
+    currentModelId: input.currentModelId ?? null,
     modelId: null,
     progress: { bytesWritten: 0, totalBytes: -1 },
     error: null,
@@ -143,15 +162,27 @@ export const modelHubMachine = setup({
   states: {
     selecting: {
       on: {
-        SELECT_MODEL: {
-          target: 'confirmingNetwork',
-          actions: assign({
-            modelId: ({ event }) => event.modelId,
-            error: null,
-            pauseState: null,
-            pausedReason: null,
-          }),
-        },
+        SELECT_MODEL: [
+          {
+            guard: ({ event, context }) => event.modelId === context.currentModelId,
+            target: 'confirmingNetwork',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              error: null,
+              pauseState: null,
+              pausedReason: null,
+            }),
+          },
+          {
+            target: 'retiringCurrent',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              error: null,
+              pauseState: null,
+              pausedReason: null,
+            }),
+          },
+        ],
         IMPORT_CUSTOM: { target: 'customImport' },
         RESTORE_DOWNLOAD: [
           {
@@ -173,6 +204,47 @@ export const modelHubMachine = setup({
             }),
           },
         ],
+      },
+    },
+    retiringCurrent: {
+      invoke: {
+        src: 'retireTask',
+        input: ({ context }) => ({ api: context.api }),
+        // currentModelId is cleared in both done branches: the file is gone the
+        // moment this resolves, so leaving it set would render a deleted model
+        // as Current and block re-selecting it.
+        onDone: [
+          {
+            guard: ({ event }) => event.output.identityCleared,
+            target: 'confirmingNetwork',
+            actions: assign({ currentModelId: null }),
+          },
+          {
+            // The model really was removed — only its stored identity outlived
+            // it. Saying "nothing has changed" here would be a lie about an
+            // irreversible action, so the message has to distinguish the two.
+            target: 'selecting',
+            actions: assign({
+              currentModelId: null,
+              error: {
+                code: 'retire' as const,
+                message:
+                  'Your model was removed, but its saved details could not be cleared. Pick a model to finish.',
+              },
+            }),
+          },
+        ],
+        onError: {
+          // Reached only when the unlink itself failed, so the model is still
+          // installed and currentModelId is still true.
+          target: 'selecting',
+          actions: assign({
+            error: {
+              code: 'retire' as const,
+              message: 'Your current model could not be removed, so nothing has changed. Try again.',
+            },
+          }),
+        },
       },
     },
     confirmingNetwork: {
@@ -306,7 +378,12 @@ export const modelHubMachine = setup({
     complete: { type: 'final' },
     customImport: {
       on: {
-        IMPORT_SMOKE_OK: { target: 'complete' },
+        IMPORT_SMOKE_OK: {
+          target: 'complete',
+          actions: ({ context, event }) => {
+            if (event.retirePath) void context.api.deleteModelFile(event.retirePath);
+          },
+        },
         IMPORT_FAILED: {
           target: 'selecting',
           actions: assign({ error: ({ event }) => ({ code: 'smoke' as const, message: event.message }) }),
