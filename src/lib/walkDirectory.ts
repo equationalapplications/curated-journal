@@ -15,9 +15,10 @@ export const READ_CONCURRENCY = 16;
 /**
  * Map with at most `limit` promises in flight; results keep input order.
  *
- * On the first rejection the remaining workers stop picking up new items
- * (in-flight reads are allowed to settle) instead of reading a directory
- * that the caller's cleanup may already be deleting.
+ * On the first rejection the remaining workers stop picking up new items.
+ * Note that Promise.all still rejects immediately: the caller's cleanup can
+ * run while in-flight reads settle (their results/rejections are handled by
+ * Promise.all and never surface as unhandled rejections).
  *
  * Note: subdirectory *walks* still run sequentially (each level awaits before
  * recursing), so bundles made of many small folders see less benefit. Fine

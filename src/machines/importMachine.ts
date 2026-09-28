@@ -130,8 +130,12 @@ export const importMachine = setup({
             },
             (e) => {
               if (stopped) return;
-              if (input.controller.signal.aborted) sendBack({ type: 'CANCELLED' });
-              else sendBack({ type: 'FAIL', message: message(e) });
+              if (input.controller.signal.aborted) {
+                // The user already asked to cancel; the error itself would
+                // otherwise be lost. Keep the cancel outcome, keep the log.
+                console.warn('[import] chunk failed while cancelling:', e);
+                sendBack({ type: 'CANCELLED' });
+              } else sendBack({ type: 'FAIL', message: message(e) });
             },
           );
         return () => {
