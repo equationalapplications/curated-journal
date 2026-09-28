@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Note } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
-import { setModelPath, setModelId } from '@/lib/entityStorage';
+import { setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
@@ -17,6 +17,21 @@ export default function ModelHubImportScreen() {
   const { send, stateValue } = useModelHub();
   const completeOnboarding = useModelHubCompletion();
   const [status, setStatus] = useState('');
+
+  // The outgoing model path must be read here, not after the import: runImport
+  // overwrites MODEL_PATH_KEY with the replacement before it signals success,
+  // so by then the old path is gone. null on first run — nothing to retire.
+  const [retirePath, setRetirePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getModelPath().then((path) => {
+      if (!cancelled) setRetirePath(path);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (stateValue === 'complete') {
@@ -51,7 +66,7 @@ export default function ModelHubImportScreen() {
       router.back();
       return;
     }
-    send({ type: 'IMPORT_SMOKE_OK' });
+    send({ type: 'IMPORT_SMOKE_OK', retirePath });
   };
 
   return (
