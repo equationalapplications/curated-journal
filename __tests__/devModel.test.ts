@@ -29,6 +29,35 @@ describe('findCachedCatalogModel', () => {
   });
 });
 
+describe('adoptCachedModel', () => {
+  const { File, Paths } = require('expo-file-system');
+
+  function mockVerify(completeId: string) {
+    return (file: unknown, model: { id: string }) => (model.id === completeId ? true : false) && !!file;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const { resetDevAdoptionForTests } = require('@/lib/devModel');
+    resetDevAdoptionForTests();
+  });
+
+  it('adopts once per session; a later call returns null so "Change AI model" reaches the hub', async () => {
+    const { adoptCachedModel } = require('@/lib/devModel');
+    const { verifyDownload } = require('@/services/modelDownloadService');
+    const first = MODEL_CATALOG[0];
+    verifyDownload.mockImplementation(mockVerify(first.id));
+
+    await expect(adoptCachedModel()).resolves.toBe(new File(Paths.document, first.filename).uri);
+    expect(require('@/lib/entityStorage').setModelId).toHaveBeenCalledWith(first.id);
+
+    // e.g. after "Change AI model" deletes the model and rebooots the wiki:
+    // the hub must take over, not another cached catalog model.
+    await expect(adoptCachedModel()).resolves.toBeNull();
+    expect(require('@/lib/entityStorage').setModelId).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('scripts/dev-model.js', () => {
   // The script reads the catalog out of modelManifest.ts; if the catalog's
   // shape changes, this fails before a developer's download does.

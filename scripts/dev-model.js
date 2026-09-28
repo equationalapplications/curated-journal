@@ -84,6 +84,31 @@ function sizeOf(file) {
   }
 }
 
+/** Size of `filename` inside the app's documents folder on the target device, or -1. */
+function sizeOnDevice(filename, platform) {
+  if (platform === 'ios') {
+    try {
+      const container = execFileSync(
+        'xcrun',
+        ['simctl', 'get_app_container', 'booted', IOS_BUNDLE_ID, 'data'],
+        { encoding: 'utf8' },
+      ).trim();
+      return sizeOf(path.join(container, 'Documents', filename));
+    } catch {
+      return -1;
+    }
+  }
+  try {
+    return Number(
+      execFileSync('adb', ['shell', `run-as ${ANDROID_PACKAGE} stat -c %s files/${filename} 2>/dev/null || echo -1`], {
+        encoding: 'utf8',
+      }).trim(),
+    );
+  } catch {
+    return -1;
+  }
+}
+
 function ensureCached(model) {
   const dir = cacheDir();
   fs.mkdirSync(dir, { recursive: true });
@@ -167,6 +192,17 @@ function main() {
   const file = ensureCached(model);
   if (opts.platform === 'ios') pushIos(file, model);
   else pushAndroid(file, model, opts.serial);
+  // The app adopts in catalog order (first complete model wins), which can
+  // differ from the model just pushed when another one is already on the
+  // device — warn so the message below doesn't promise the wrong model.
+  const earlier = catalog.find(
+    (m) => m.id !== model.id && sizeOnDevice(m.filename, opts.platform) === m.sizeBytes,
+  );
+  if (earlier) {
+    console.log(
+      `Note: ${earlier.id} is also on the device; the app adopts the first complete model in catalog order (${earlier.id} comes first), so it may not pick ${model.id}.`,
+    );
+  }
   console.log(
     `Done. Relaunch the dev build: with no model configured it adopts ${model.id} and skips the model hub.`,
   );

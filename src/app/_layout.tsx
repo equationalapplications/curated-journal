@@ -53,7 +53,7 @@ export default function RootLayout() {
     try {
       modelPath = (await getModelPath()) ?? (devMode === 'auto' ? await adoptCachedModel() : null);
     } catch (err) {
-      console.warn('[dev] Cached-model probe failed; falling back to the model hub.', err);
+      console.warn('[model] Cached-model probe failed; falling back to the model hub.', err);
     }
     if (!modelPath) {
       setWiki(null);

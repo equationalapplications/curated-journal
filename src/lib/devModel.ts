@@ -35,14 +35,27 @@ export function findCachedCatalogModel(
   return MODEL_CATALOG.find(isComplete) ?? null;
 }
 
+// Adoption is once per app session: "Change AI model" reboots the app into
+// the model hub, and silently re-adopting another cached model there would
+// send the user to the hub with a different model already configured.
+let adoptedThisSession = false;
+
+/** Test hook: restore cold-start behaviour. */
+export function resetDevAdoptionForTests(): void {
+  adoptedThisSession = false;
+}
+
 /**
  * `auto` mode: adopt a catalog model already in the app's documents folder
  * (where the model hub downloads to) as if the hub had just finished.
- * Returns the model path, or null when there is nothing to adopt.
+ * Returns the model path, or null when there is nothing to adopt (or
+ * adoption already happened this session).
  */
 export async function adoptCachedModel(): Promise<string | null> {
+  if (adoptedThisSession) return null;
   const model = findCachedCatalogModel((m) => verifyDownload(new File(Paths.document, m.filename), m));
   if (!model) return null;
+  adoptedThisSession = true;
   const file = new File(Paths.document, model.filename);
   await setModelPath(file.uri);
   await setModelId(model.id);

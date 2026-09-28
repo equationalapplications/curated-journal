@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import * as Battery from 'expo-battery';
-import { devLlmMode } from '@/lib/devModel';
 import * as Device from 'expo-device';
+import { devLlmMode } from '@/lib/devModel';
 import { getModelPath } from '@/lib/entityStorage';
 
 export function useNightShiftGates() {
