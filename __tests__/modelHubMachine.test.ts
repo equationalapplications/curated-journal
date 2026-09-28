@@ -248,6 +248,38 @@ describe('modelHubMachine', () => {
     actor.stop();
   });
 
+  it('clears currentModelId once the outgoing model has actually been retired', async () => {
+    // The file is gone the moment retireTask resolves, so the id must not
+    // survive into the states that can still fail — it would render the deleted
+    // model as Current and block the user from re-selecting it.
+    const api = makeApi({
+      startDownload: jest.fn(async () => { throw new Error('fetch failed'); }),
+    });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.currentModelId).toBeNull();
+    actor.send({ type: 'RETRY' });
+    await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.currentModelId).toBeNull();
+    actor.stop();
+  });
+
+  it('keeps currentModelId when retirement itself fails', async () => {
+    // The file is still on disk here, so the id is still true and the row must
+    // stay disabled rather than inviting a doomed re-download.
+    const api = makeApi({ retireCurrentModel: jest.fn(async () => { throw new Error('locked'); }) });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    expect(actor.getSnapshot().context.currentModelId).toBe('fast-light');
+    actor.stop();
+  });
+
   it('deletes the outgoing model file after a custom import succeeds', async () => {
     const api = makeApi();
     const actor = createActor(modelHubMachine, { input: { api } }).start();

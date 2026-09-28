@@ -18,21 +18,6 @@ export default function ModelHubImportScreen() {
   const completeOnboarding = useModelHubCompletion();
   const [status, setStatus] = useState('');
 
-  // The outgoing model path must be read here, not after the import: runImport
-  // overwrites MODEL_PATH_KEY with the replacement before it signals success,
-  // so by then the old path is gone. null on first run — nothing to retire.
-  const [retirePath, setRetirePath] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void getModelPath().then((path) => {
-      if (!cancelled) setRetirePath(path);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   useEffect(() => {
     if (stateValue === 'complete') {
       void completeOnboarding().then(() => router.replace('/'));
@@ -40,10 +25,14 @@ export default function ModelHubImportScreen() {
   }, [stateValue, completeOnboarding, router]);
 
   const runImport = async () => {
+    // Read the outgoing path first, and await it here rather than in a mount
+    // effect: setModelPath below overwrites MODEL_PATH_KEY with the replacement,
+    // after which the old path is unrecoverable — and an effect that has not
+    // settled yet would leave the outgoing model orphaned.
+    const currentPath = await getModelPath();
     const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
-    const name = picked.assets[0].name ?? `model-${Date.now()}.gguf`;
-    const dest = new File(Paths.document, name);
+    const dest = new File(Paths.document, uniqueFileName(picked.assets[0].name));
     const source = new File(picked.assets[0].uri);
     source.copy(dest);
     setStatus('Checking the model can run on this device…');
@@ -66,8 +55,23 @@ export default function ModelHubImportScreen() {
       router.back();
       return;
     }
-    send({ type: 'IMPORT_SMOKE_OK', retirePath });
+    send({ type: 'IMPORT_SMOKE_OK', retirePath: currentPath });
   };
+
+/**
+ * Disambiguates the copy we land in the documents directory. Re-importing a
+ * file that shares a name with the installed model is the ordinary case, not an
+ * edge case: a plain copy would land exactly on the path the machine retires,
+ * so the import would delete the model it had just installed. The `.gguf`
+ * extension is kept last so the copy still reads as a model file.
+ */
+function uniqueFileName(name: string | null | undefined): string {
+  const safe = name ?? 'model.gguf';
+  const dot = safe.lastIndexOf('.');
+  const stem = dot > 0 ? safe.slice(0, dot) : safe;
+  const ext = dot > 0 ? safe.slice(dot) : '';
+  return `${stem}-${Date.now()}${ext}`;
+}
 
   return (
     <View style={styles.container}>

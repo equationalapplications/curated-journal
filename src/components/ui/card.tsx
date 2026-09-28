@@ -83,6 +83,9 @@ export function ListRow({
       accessibilityRole="button"
       accessibilityState={{ selected: Boolean(selected), disabled: Boolean(disabled) }}
       accessibilityLabel={accessibilityLabel}
+      // `disabled` here, not just in accessibilityState above: the state only
+      // announces. Without the prop the row still takes taps.
+      disabled={Boolean(disabled)}
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,

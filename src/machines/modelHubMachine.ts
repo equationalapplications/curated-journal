@@ -201,7 +201,10 @@ export const modelHubMachine = setup({
       invoke: {
         src: 'retireTask',
         input: ({ context }) => ({ api: context.api }),
-        onDone: { target: 'confirmingNetwork' },
+        // The outgoing file is gone once retireTask resolves, so currentModelId
+        // must not survive into the states this can fail into. Left set, it
+        // would render the deleted model as Current and block re-selecting it.
+        onDone: { target: 'confirmingNetwork', actions: assign({ currentModelId: null }) },
         onError: {
           target: 'selecting',
           actions: assign({
