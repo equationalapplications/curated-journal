@@ -40,20 +40,39 @@ describe('noteBody', () => {
 
 describe('notePreview', () => {
   it('does not repeat the title', () => {
-    expect(notePreview('# Morning pages\n\nBus was late so I listened to a full album.')).toBe(
-      'Bus was late so I listened to a full album.',
-    );
+    expect(
+      notePreview('# Morning pages\n\nBus was late so I listened to a full album.', 'Morning pages'),
+    ).toBe('Bus was late so I listened to a full album.');
+  });
+
+  it('keeps a heading that is not the title it is previewing', () => {
+    // The row renders "Travel" from the record, so a body opening "# Packing"
+    // is a real section heading, not a second title — same as in the pane.
+    expect(notePreview('# Packing\n\nShoes and a hat.', 'Travel')).toBe('Packing Shoes and a hat.');
+  });
+
+  it('previews a heading-only body that is not the title', () => {
+    expect(notePreview('# Packing', 'Travel')).toBe('Packing');
   });
 
   it('keeps section headings but flattens inline emphasis', () => {
-    expect(notePreview('## Section\n\n- **bold** item\n- second')).toBe('Section bold item second');
+    expect(notePreview('## Section\n\n- **bold** item\n- second', 'Untitled')).toBe(
+      'Section bold item second',
+    );
+  });
+
+  it('keeps hyphens that belong to the note text', () => {
+    // Only a leading `-` is a list marker; `-42` and `check-in` are words.
+    expect(notePreview('Dropped to -42 after the check-in.', 'Untitled')).toBe(
+      'Dropped to -42 after the check-in.',
+    );
   });
 
   it('truncates with an ellipsis', () => {
-    expect(notePreview('x'.repeat(200), 10)).toBe(`${'x'.repeat(10)}…`);
+    expect(notePreview('x'.repeat(200), 'Untitled', 10)).toBe(`${'x'.repeat(10)}…`);
   });
 
   it('is empty for a missing body', () => {
-    expect(notePreview(null)).toBe('');
+    expect(notePreview(null, 'Untitled')).toBe('');
   });
 });

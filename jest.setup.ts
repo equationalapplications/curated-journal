@@ -39,15 +39,33 @@ jest.mock('react-native-safe-area-context', () => {
 // Rendering a throwaway Modal once per file here absorbs the cost outside any
 // test's timeout window. This is what made graphLabels.test.tsx's
 // "GraphNodeSheet > shows the full title, chips and body" fail; it drops from
-// ~3.1s to ~25ms. Delete the very next line and that test goes back to failing.
-{
+// ~3.1s to ~25ms. Delete the warmup below and that test goes back to failing.
+//
+// It has to be an awaited beforeAll, not a bare call: render() and unmount()
+// both return promises, so a fire-and-forget render lets the first test start
+// while the warmup tree is still settling, and leaves a mounted Modal in the
+// tree that test can see. Unmounting here keeps it out of every test.
+//
+// The require stays at module scope on purpose: RNTL registers its own
+// beforeAll/afterEach/afterAll when it loads, and jest-circus rejects hooks
+// added after the run has started. Only the render moves into the hook.
+//
+// A file that replaces react-native with a stub (llamaProvider.test.ts does,
+// down to AppState and Platform) has no Modal to warm. Rendering one there
+// fails on the undefined component type, and awaiting is what makes that
+// failure visible — an unawaited render just swallowed it. Skip instead: the
+// module-scope requires above still paid whatever that file can pay.
+const { render: renderForTest } = require('@testing-library/react-native');
+beforeAll(async () => {
   const React = require('react');
   const { Modal, Text } = require('react-native');
-  require('@testing-library/react-native').render(
+  if (!Modal || !Text) return;
+  const warmup = await renderForTest(
     React.createElement(
       Modal,
       { visible: true, transparent: true, animationType: 'slide' },
       React.createElement(Text, null, 'warmup'),
     ),
   );
-}
+  await warmup.unmount();
+});

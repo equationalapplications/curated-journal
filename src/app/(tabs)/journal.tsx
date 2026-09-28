@@ -14,7 +14,7 @@ import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { useJournal } from '@/contexts/JournalContext';
 import { createJournalIngest } from '@/lib/journalIngest';
-import { noteBody, notePreview, noteTitle } from '@/lib/noteText';
+import { notePreview, noteTitle } from '@/lib/noteText';
 import { useJournalMemoryRead } from '@/hooks/useJournalMemoryRead';
 import { useSplitPaneLayout } from '@/hooks/useSplitPaneLayout';
 import { useTheme } from '@/hooks/use-theme';
@@ -49,7 +49,7 @@ export default function JournalScreen() {
         id: f.id,
         title,
         // The row already shows the title, so the preview starts below it.
-        preview: notePreview(noteBody(f.body, title)),
+        preview: notePreview(f.body, title),
       };
     });
   }, [data]);

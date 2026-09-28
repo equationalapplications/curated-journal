@@ -37,14 +37,25 @@ export function noteBody(body: string | null | undefined, title: string): string
 }
 
 /**
- * A single-line summary of a note, for list previews. Drops the title line
- * (the caller renders the title) but keeps section headings, which are real
- * content — only inline emphasis and line structure are flattened away.
+ * A single-line summary of a note, for list previews. Drops the leading H1 —
+ * but only the one `title` is, which is the one the row already renders, so a
+ * heading that is genuine content survives. Section headings, which are always
+ * content, are kept; only inline emphasis and line structure are flattened.
+ *
+ * `title` is what the row shows, so it must be the same string the caller gave
+ * `noteTitle`. An unknown title (the empty string) strips nothing.
  */
-export function notePreview(body: string | null | undefined, limit = 120): string {
+export function notePreview(
+  body: string | null | undefined,
+  title: string | null | undefined,
+  limit = 120,
+): string {
   if (!body) return '';
-  const text = noteBody(body, noteTitle(body, ''))
-    .replace(/[*_`>#-]/g, ' ')
+  const text = noteBody(body, title ?? '')
+    // A list marker is a `-` at the start of a line. A hyphen anywhere else is
+    // the note's own punctuation — `check-in`, `-42` — so it is left alone.
+    .replace(/^[ \t]*[-*+][ \t]+/gm, ' ')
+    .replace(/[*_`>#]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text;
