@@ -3,7 +3,8 @@ import JournalScreen from '@/app/(tabs)/journal';
 import { JournalProvider } from '@/contexts/JournalContext';
 
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
-  useWikiIngest: () => ({ execute: jest.fn(), lastResult: null, isPending: false, error: null }),
+  // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
+  useWiki: () => ({ ingestDocument: jest.fn() }),
 }));
 
 jest.mock('expo-router', () => ({

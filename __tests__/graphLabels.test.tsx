@@ -104,3 +104,35 @@ describe('GraphNodeSheet', () => {
     expect(screen.getByText('This note has no text yet.')).toBeTruthy();
   });
 });
+
+describe('structure-keyed layout', () => {
+  // Deferred import keeps this block independent of the mocks above.
+  const { graphStructureKey, layoutFromStructureKey } = require('@/lib/graphSimulation');
+  const nodes = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }];
+  const edges = [{ sourceId: 'a', targetId: 'b' }];
+
+  it('ignores titles and bodies, so a reload with the same structure keeps the key', () => {
+    const renamed = nodes.map((n) => ({ ...n, title: `${n.title} (edited)`, body: 'new' }));
+    expect(graphStructureKey(renamed, edges)).toBe(graphStructureKey(nodes, edges));
+  });
+
+  it('changes when a node or edge is added', () => {
+    const base = graphStructureKey(nodes, edges);
+    expect(graphStructureKey([...nodes, { id: 'c' }], edges)).not.toBe(base);
+    expect(graphStructureKey(nodes, [...edges, { sourceId: 'b', targetId: 'a' }])).not.toBe(base);
+  });
+
+  it('survives ids with separator-like characters', () => {
+    const odd = [{ id: 'a|b' }, { id: 'c>"d' }];
+    const layout = layoutFromStructureKey(graphStructureKey(odd, []), 360);
+    expect([...layout.keys()]).toEqual(['a|b', 'c>"d']);
+  });
+
+  it('positions every node', () => {
+    const layout = layoutFromStructureKey(graphStructureKey(nodes, edges), 360);
+    for (const id of ['a', 'b']) {
+      expect(Number.isFinite(layout.get(id)?.x)).toBe(true);
+      expect(Number.isFinite(layout.get(id)?.y)).toBe(true);
+    }
+  });
+});

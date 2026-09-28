@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useMachine } from '@xstate/react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { GraphCanvas } from '@/components/graph/GraphCanvas';
 import { GraphLegend } from '@/components/graph/GraphLegend';
@@ -11,7 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ErrorBanner, Note } from '@/components/ui/states';
 import { ProgressBar } from '@/components/ui/progress';
 import { buildGraphFromDump } from '@/lib/graphData';
-import { runGraphSimulation } from '@/lib/graphSimulation';
+import { graphStructureKey, layoutFromStructureKey } from '@/lib/graphSimulation';
 import { useJournal } from '@/contexts/JournalContext';
 import { graphLoadMachine } from '@/machines/graphLoadMachine';
 import { Space } from '@/constants/theme';
@@ -30,37 +30,43 @@ export default function GraphScreen() {
     },
   });
 
-  // Kick the load on mount (CodeRabbit #35: machine starts idle). This must be
-  // an effect: a side effect inside useMemo is dropped by the React compiler,
-  // which left the screen on "Loading graph…".
-  useEffect(() => {
-    send({ type: 'LOAD' });
-  }, [send]);
+  // (Re)load whenever the tab gains focus. Tab screens stay mounted, so a
+  // mount-only load never saw notes saved after the first visit. The old
+  // graph stays on screen while the reload runs (the machine keeps
+  // `context.graph`), and a LOAD while already loading restarts the load so
+  // the result can't miss a save that landed mid-read. Must be an effect,
+  // not useMemo: the React compiler drops side effects in useMemo.
+  useFocusEffect(
+    useCallback(() => {
+      send({ type: 'LOAD' });
+    }, [send]),
+  );
 
   const state = actorRef;
   const graph = state.context.graph as
     | ReturnType<typeof buildGraphFromDump>
     | null;
 
+  // Layout is keyed on structure, not on the graph object: every focus
+  // reloads the graph, and re-running the simulation costs seconds at a few
+  // hundred nodes. Unchanged structure = same positions, no recompute.
+  const structureKey = graph ? graphStructureKey(graph.nodes, graph.edges) : null;
+  const positions = useMemo(
+    () => (structureKey ? layoutFromStructureKey(structureKey, size) : null),
+    [structureKey, size],
+  );
+
   const layoutNodes = useMemo(() => {
-    if (!graph) return [];
-    const simNodes = graph.nodes.map((n) => ({ id: n.id }));
-    const links = graph.edges.map((e) => ({
-      source: e.sourceId,
-      target: e.targetId,
+    if (!graph || !positions) return [];
+    return graph.nodes.map((n) => ({
+      ...positions.get(n.id),
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      confidence: n.confidence,
+      okfType: n.okfType ?? undefined,
     }));
-    const positioned = runGraphSimulation(simNodes, links, size);
-    return positioned.map((p) => {
-      const meta = graph.nodes.find((n) => n.id === p.id);
-      return {
-        ...p,
-        title: meta?.title ?? p.id,
-        body: meta?.body,
-        confidence: meta?.confidence,
-        okfType: meta?.okfType ?? undefined,
-      };
-    });
-  }, [graph, size]);
+  }, [graph, positions]);
 
   const selected = layoutNodes.find((n) => n.id === selectedId);
 
