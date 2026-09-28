@@ -211,6 +211,22 @@ describe('graphViewMachine', () => {
     expect(snap(a).matches({ focus: 'focused' })).toBe(true);
   });
 
+  it('releases the pin onto the focused note when a reload caps the root only', () => {
+    const a = start();
+    a.send({ type: 'PICK', id: 'z' }); // egoRoot = z (outside cap)
+    a.send({ type: 'TAP_NODE', id: 'y' }); // browsing y, also outside cap
+    expect(snap(a).context.egoRoot).toBe('z');
+    // A reload brings z into the cap but not y: the pin releases onto y
+    // (the note the user is on) instead of leaving an unpinned swap.
+    a.send({ type: 'OVERVIEW', ids: new Set(['a', 'b', 'z']) });
+    expect(snap(a).matches({ focus: 'neighbourhood' })).toBe(true);
+    expect(snap(a).context.pinned).toBe(true);
+    expect(snap(a).context.egoRoot).toBe('y');
+    // The silent overview swap stays prevented.
+    a.send({ type: 'TAP_NODE', id: 'a' });
+    expect(snap(a).matches({ focus: 'neighbourhood' })).toBe(true);
+  });
+
   it('follows the note between overview and neighbourhood as reloads change the cap', () => {
     const a = start();
     a.send({ type: 'TAP_NODE', id: 'a' });

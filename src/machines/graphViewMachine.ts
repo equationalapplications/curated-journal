@@ -87,6 +87,28 @@ export const graphViewMachine = setup({
     // A reload dropped the focused note out of the cap: the neighbourhood
     // roots at that note (there is no event id on an `always` transition).
     pinCurrent: assign({ pinned: true, egoRoot: ({ context }) => context.focusId }),
+    // Reload bookkeeping for the OVERVIEW event, decided as one coherent
+    // choice against the pre-event context: either the neighbourhood root is
+    // still outside the cap (keep the pin, keep the root), or the pin
+    // releases — and if the focused note is itself outside the cap, the pin
+    // re-roots onto that note, so an unpinned neighbourhood can never linger
+    // (the next tap would otherwise swap the whole overview in).
+    syncPin: assign(({ context, event }) => {
+      if (event.type !== 'OVERVIEW') return {};
+      // Root still outside the cap: keep the pin and the root as-is.
+      const keepRoot = context.pinned && context.egoRoot != null && !event.ids.has(context.egoRoot);
+      if (keepRoot) return { pinned: true, egoRoot: context.egoRoot };
+      // Root came into the cap (or there was no root): the pin releases,
+      // unless the focused note is itself outside the cap — then re-root
+      // the pin onto that note so an unpinned neighbourhood can never
+      // linger (the next tap would otherwise swap the whole overview in).
+      const focusOutside = context.focusId != null && !event.ids.has(context.focusId);
+      return { pinned: focusOutside, egoRoot: focusOutside ? context.focusId : null };
+    }),
+    assignOverview: assign(({ event }) => {
+      if (event.type !== 'OVERVIEW') return {};
+      return { overview: event.ids };
+    }),
   },
 }).createMachine({
   id: 'graphView',
@@ -103,18 +125,14 @@ export const graphViewMachine = setup({
   },
   on: {
     OVERVIEW: {
-      actions: assign({
-        overview: ({ event }) => event.ids,
-    // Keep the pin across reloads while the neighbourhood *root* is still
-    // outside the cap: every tab refocus re-sends OVERVIEW, and dropping
-    // the pin there would let the next tap swap the pinned neighbourhood
-    // for the whole overview. Both fields are computed from the pre-event
-    // context, so they can't disagree.
-        pinned: ({ context, event }) =>
-          context.pinned && !(context.egoRoot && event.ids.has(context.egoRoot)),
-        egoRoot: ({ context, event }) =>
-          context.pinned && context.egoRoot && event.ids.has(context.egoRoot) ? null : context.egoRoot,
-      }),
+      // Pin bookkeeping first (computed against pre-event context), then the
+      // overview id swap. syncPin decides as one coherent choice: either the
+      // neighbourhood root is still outside the cap (keep the pin, keep the
+      // root), or the pin releases — and if the focused note is itself
+      // outside the cap, the pin re-roots onto that note, so an unpinned
+      // neighbourhood can never linger (the next tap would otherwise swap
+      // the whole overview in).
+      actions: ['syncPin', 'assignOverview'],
     },
     FIT: { actions: 'requestFit' },
   },
