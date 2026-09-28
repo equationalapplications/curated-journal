@@ -23,6 +23,7 @@ function fakeApi(overrides: Partial<ImportApi> = {}) {
     }),
     importDump: jest.fn(async (_dump, onProgress) => {
       onProgress({ factsDone: 3, factsTotal: 3 });
+      return { completed: true };
     }),
     finalize: jest.fn(async () => undefined),
     ...overrides,
@@ -50,21 +51,21 @@ describe('importMachine', () => {
   });
 
   it('shows the import count as soon as the bundle is parsed', async () => {
-    const gate = deferred<void>();
+    const gate = deferred<{ completed: boolean }>();
     const { api } = fakeApi({ importDump: jest.fn(() => gate.promise) });
     const actor = createActor(importMachine, { input: { api } }).start();
     actor.send({ type: 'PICK' });
-    await waitFor(actor, (s) => s.matches({ working: 'importing' }));
+    await waitFor(actor, (s) => s.matches({ working: { importing: 'active' } }));
     expect(actor.getSnapshot().context.progress).toEqual({ factsDone: 0, factsTotal: 3 });
-    gate.resolve();
+    gate.resolve({ completed: true });
   });
 
   it('cancel waits for the in-flight chunk, then goes idle without finalizing', async () => {
     let signal: AbortSignal | undefined;
-    const gate = deferred<void>();
+    const gate = deferred<{ completed: boolean }>();
     const { api, cleanup } = fakeApi({
-      importDump: jest.fn((_d, _p, s) => {
-        signal = s;
+      importDump: jest.fn((_d, _p, c: AbortController) => {
+        signal = c.signal;
         return gate.promise;
       }),
     });
@@ -76,7 +77,7 @@ describe('importMachine', () => {
     expect(actor.getSnapshot().matches({ working: { importing: 'cancelling' } })).toBe(true);
     expect(signal?.aborted).toBe(true);
     expect(cleanup).not.toHaveBeenCalled();
-    gate.resolve();
+    gate.resolve({ completed: false });
     await waitFor(actor, (s) => s.matches('idle'));
     expect(cleanup).toHaveBeenCalledTimes(1);
     // setTimeout(0), not Promise.resolve(): the finalize-guard assertion must
@@ -87,10 +88,10 @@ describe('importMachine', () => {
 
   it('leaving the screen mid-import aborts at the chunk boundary and cleans up', async () => {
     let signal: AbortSignal | undefined;
-    const gate = deferred<void>();
+    const gate = deferred<{ completed: boolean }>();
     const { api, cleanup } = fakeApi({
-      importDump: jest.fn((_d, _p, s) => {
-        signal = s;
+      importDump: jest.fn((_d, _p, c: AbortController) => {
+        signal = c.signal;
         return gate.promise;
       }),
     });
@@ -100,7 +101,7 @@ describe('importMachine', () => {
     actor.stop(); // unmount
     expect(signal?.aborted).toBe(true);
     expect(cleanup).toHaveBeenCalledTimes(1);
-    gate.resolve(); // settles after teardown; must not corrupt anything
+    gate.resolve({ completed: false }); // settles after teardown; must not corrupt anything
     await new Promise((r) => setTimeout(r, 0));
   });
 
@@ -121,6 +122,18 @@ describe('importMachine', () => {
     actor.send({ type: 'PICK' });
     await waitFor(actor, (s) => s.matches('failed'));
     expect(actor.getSnapshot().context.error).toBe('Could not open ZIP file');
+  });
+
+  it('cancel during finalizing is ignored (the manifest write cannot be cancelled)', async () => {
+    const gate = deferred<void>();
+    const { api } = fakeApi({ finalize: jest.fn(() => gate.promise) });
+    const actor = createActor(importMachine, { input: { api } }).start();
+    actor.send({ type: 'PICK' });
+    await waitFor(actor, (s) => s.matches({ working: 'finalizing' }));
+    actor.send({ type: 'CANCEL' });
+    expect(actor.getSnapshot().matches({ working: 'finalizing' })).toBe(true);
+    gate.resolve();
+    await waitFor(actor, (s) => s.matches('done'));
   });
 
   it('cancelling while preparing still cleans up what prepare created', async () => {

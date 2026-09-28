@@ -4,8 +4,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
-import { usePreventRemove } from 'expo-router/build/react-navigation/core';
 import { useMachine } from '@xstate/react';
+// Not in expo-router's public API (only its bundled react-navigation core
+// exports it). If a router bump moves this path, re-point it here — the only
+// consumer is this screen.
+import { usePreventRemove } from 'expo-router/build/react-navigation/core';
 import { parseOkfBundle, useSetOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { getUnzip } from 'react-native-nitro-unzip';
 import { ThemedText } from '@/components/themed-text';
@@ -84,10 +87,10 @@ export default function ImportScreen() {
         throw error;
       }
     },
-    importDump: (dump, onProgress, signal) =>
+    importDump: (dump, onProgress, controller) =>
       chunkedImportDump(wiki, dump, {
         merge: true,
-        signal,
+        signal: controller.signal,
         onProgress: (_pct, detail) => onProgress(detail),
       }),
     finalize: async () => {
@@ -148,20 +151,21 @@ export default function ImportScreen() {
       ) : null}
       {state.matches('failed') && error ? <ErrorBanner message={`Import failed: ${error}`} /> : null}
       <View style={styles.action}>
-        {working ? (
+        {working && !state.matches({ working: 'finalizing' }) ? (
           <Button
             label={cancelling ? 'Cancelling…' : 'Cancel'}
             onPress={() => send({ type: 'CANCEL' })}
             disabled={cancelling}
           />
-        ) : (
+        ) : null}
+        {!working ? (
           <Button
             label={state.matches('failed') ? 'Pick another zip' : 'Pick OKF zip'}
             variant="primary"
             disabled={state.matches('picking')}
             onPress={() => send({ type: 'PICK' })}
           />
-        )}
+        ) : null}
       </View>
     </View>
   );

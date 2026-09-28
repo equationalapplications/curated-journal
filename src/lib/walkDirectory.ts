@@ -15,6 +15,10 @@ export const READ_CONCURRENCY = 16;
 /**
  * Map with at most `limit` promises in flight; results keep input order.
  *
+ * On the first rejection the remaining workers stop picking up new items
+ * (in-flight reads are allowed to settle) instead of reading a directory
+ * that the caller's cleanup may already be deleting.
+ *
  * Note: subdirectory *walks* still run sequentially (each level awaits before
  * recursing), so bundles made of many small folders see less benefit. Fine
  * for the OKF layout, where `facts/` is flat.
@@ -22,10 +26,16 @@ export const READ_CONCURRENCY = 16;
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;
+  let failed = false;
   const worker = async () => {
-    while (next < items.length) {
+    while (!failed && next < items.length) {
       const i = next++;
-      out[i] = await fn(items[i]);
+      try {
+        out[i] = await fn(items[i]);
+      } catch (e) {
+        failed = true;
+        throw e;
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));

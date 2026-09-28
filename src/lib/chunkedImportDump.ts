@@ -58,7 +58,7 @@ export async function chunkedImportDump(
     /** Stops between chunks; chunks already imported stay imported (merge). */
     signal?: AbortSignal;
   },
-): Promise<void> {
+): Promise<{ completed: boolean }> {
   const entities = Object.entries(dump.entities);
   const factsTotal = entities.reduce((n, [, b]) => n + b.facts.length, 0);
   let factsDone = 0;
@@ -66,7 +66,7 @@ export async function chunkedImportDump(
   for (const [entityId, bundle] of entities) {
     const chunkSize = opts.chunkSize ?? chunkSizeFor(bundle.facts.length);
     for (const slice of chunkBundle(bundle, chunkSize)) {
-      if (opts.signal?.aborted) return;
+      if (opts.signal?.aborted) return { completed: false };
       await wiki.importDump(
         { generatedAt: dump.generatedAt, entities: { [entityId]: slice } },
         { merge: opts.merge },
@@ -76,4 +76,5 @@ export async function chunkedImportDump(
       await yieldToUI();
     }
   }
+  return { completed: true };
 }

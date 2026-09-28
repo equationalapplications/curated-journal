@@ -16,8 +16,8 @@ export type ImportApi = {
   importDump: (
     dump: MemoryDump,
     onProgress: (detail: ImportProgress) => void,
-    signal: AbortSignal,
-  ) => Promise<void>;
+    controller: AbortController,
+  ) => Promise<{ completed: boolean }>;
   /** After the data is in: e.g. reset the ontology manifest. */
   finalize: () => Promise<void>;
 };
@@ -115,14 +115,17 @@ export const importMachine = setup({
         input: { api: ImportApi; prepared: PreparedImport; controller: AbortController };
       }) => {
         let stopped = false;
+        // `completed` — not the signal flag — decides the outcome: a CANCEL
+        // landing during the final chunk still imported every note, so the
+        // machine must finalize instead of dropping the work as cancelled.
         input.api
           .importDump(input.prepared.dump, (progress) => {
             if (!stopped) sendBack({ type: 'PROGRESS', progress });
-          }, input.controller.signal)
+          }, input.controller)
           .then(
-            () => {
+            ({ completed }) => {
               if (stopped) return;
-              if (input.controller.signal.aborted) sendBack({ type: 'CANCELLED' });
+              if (!completed) sendBack({ type: 'CANCELLED' });
               else sendBack({ type: 'IMPORTED' });
             },
             (e) => {
@@ -239,6 +242,13 @@ export const importMachine = setup({
           },
         },
         finalizing: {
+          // CANCEL is consumed here: the finalize promise can't be cancelled,
+          // so letting CANCEL through would drop the user to idle while
+          // setManifest still holds the wiki — the same overlap the
+          // importing.cancelling handshake prevents.
+          on: {
+            CANCEL: { actions: [] },
+          },
           invoke: {
             src: 'finalizeImport',
             input: ({ context }) => ({ api: context.api }),

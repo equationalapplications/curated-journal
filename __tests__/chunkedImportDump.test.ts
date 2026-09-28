@@ -77,12 +77,30 @@ describe('chunkedImportDump sizing and progress', () => {
     const importDump = jest.fn(async () => {
       if (importDump.mock.calls.length === 2) controller.abort();
     });
-    await chunkedImportDump({ importDump } as never, dumpOf(100), {
+    const result = await chunkedImportDump({ importDump } as never, dumpOf(100), {
       merge: true,
       chunkSize: 25,
       signal: controller.signal,
       onProgress: () => {},
     });
     expect(importDump).toHaveBeenCalledTimes(2);
+    expect(result.completed).toBe(false);
+  });
+
+  it('reports completed=true when the abort lands during the final chunk', async () => {
+    // m1: a CANCEL arriving while the last chunk writes must not discard a
+    // fully imported journal — the machine finalizes based on this flag.
+    const controller = new AbortController();
+    const importDump = jest.fn(async () => {
+      if (importDump.mock.calls.length === 4) controller.abort();
+    });
+    const result = await chunkedImportDump({ importDump } as never, dumpOf(100), {
+      merge: true,
+      chunkSize: 25,
+      signal: controller.signal,
+      onProgress: () => {},
+    });
+    expect(importDump).toHaveBeenCalledTimes(4);
+    expect(result.completed).toBe(true);
   });
 });
