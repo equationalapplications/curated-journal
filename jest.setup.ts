@@ -46,6 +46,16 @@ jest.mock('react-native-safe-area-context', () => {
 // while the warmup tree is still settling, and leaves a mounted Modal in the
 // tree that test can see. Unmounting here keeps it out of every test.
 //
+// The hook needs its own timeout for the same reason a test did. Moving the
+// cold cost out of a test only relocated the 5s budget: hooks get jest's 5s
+// default too, and this hook legitimately spends it. Measured cold on a cleared
+// cache, modelHubMachine.test.ts — a plain machine test that never renders the
+// app — takes 6.2s of that budget here, and on a CI worker with other workers
+// competing for CPU it crosses 5s, taking the whole file's tests with it (both
+// suites that failed on CI were machine tests, not render tests). 30s leaves
+// room for a contended worker without masking a genuinely hung render, which
+// would have to wait on a promise that never settles.
+//
 // The require stays at module scope on purpose: RNTL registers its own
 // beforeAll/afterEach/afterAll when it loads, and jest-circus rejects hooks
 // added after the run has started. Only the render moves into the hook.
@@ -68,4 +78,4 @@ beforeAll(async () => {
     ),
   );
   await warmup.unmount();
-});
+}, 30_000);
