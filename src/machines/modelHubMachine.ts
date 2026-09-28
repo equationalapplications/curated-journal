@@ -48,14 +48,19 @@ export type ModelHubApi = {
   }) => Promise<void>;
   clearDownloadState: () => Promise<void>;
   setModelPath: (model: CuratedModel) => Promise<void>;
+  retireCurrentModel: () => Promise<void>;
 };
 
-export type ModelHubMachineInput = { api: ModelHubApi };
+export type ModelHubMachineInput = {
+  api: ModelHubApi;
+  currentModelId?: CuratedModelId | 'custom' | null;
+};
 
-type ErrorCode = 'network' | 'disk-full' | 'verify' | 'smoke';
+type ErrorCode = 'network' | 'disk-full' | 'verify' | 'smoke' | 'retire';
 
 type Context = {
   api: ModelHubApi;
+  currentModelId: CuratedModelId | 'custom' | null;
   modelId: CuratedModelId | null;
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: ErrorCode; message: string } | null;
@@ -124,12 +129,16 @@ export const modelHubMachine = setup({
       async ({ input }: { input: { api: ModelHubApi; model: CuratedModel } }) =>
         input.api.runSmokeTest(input.model),
     ),
+    retireTask: fromPromise(async ({ input }: { input: { api: ModelHubApi } }) =>
+      input.api.retireCurrentModel(),
+    ),
   },
 }).createMachine({
   id: 'modelHub',
   initial: 'selecting',
   context: ({ input }) => ({
     api: input.api,
+    currentModelId: input.currentModelId ?? null,
     modelId: null,
     progress: { bytesWritten: 0, totalBytes: -1 },
     error: null,
@@ -143,15 +152,27 @@ export const modelHubMachine = setup({
   states: {
     selecting: {
       on: {
-        SELECT_MODEL: {
-          target: 'confirmingNetwork',
-          actions: assign({
-            modelId: ({ event }) => event.modelId,
-            error: null,
-            pauseState: null,
-            pausedReason: null,
-          }),
-        },
+        SELECT_MODEL: [
+          {
+            guard: ({ event, context }) => event.modelId === context.currentModelId,
+            target: 'confirmingNetwork',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              error: null,
+              pauseState: null,
+              pausedReason: null,
+            }),
+          },
+          {
+            target: 'retiringCurrent',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              error: null,
+              pauseState: null,
+              pausedReason: null,
+            }),
+          },
+        ],
         IMPORT_CUSTOM: { target: 'customImport' },
         RESTORE_DOWNLOAD: [
           {
@@ -173,6 +194,22 @@ export const modelHubMachine = setup({
             }),
           },
         ],
+      },
+    },
+    retiringCurrent: {
+      invoke: {
+        src: 'retireTask',
+        input: ({ context }) => ({ api: context.api }),
+        onDone: { target: 'confirmingNetwork' },
+        onError: {
+          target: 'selecting',
+          actions: assign({
+            error: {
+              code: 'retire' as const,
+              message: 'Your current model could not be removed, so nothing has changed. Try again.',
+            },
+          }),
+        },
       },
     },
     confirmingNetwork: {

@@ -26,6 +26,7 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     persistDownloadState: jest.fn(async () => undefined),
     clearDownloadState: jest.fn(async () => undefined),
     setModelPath: jest.fn(async () => undefined),
+    retireCurrentModel: jest.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -208,6 +209,41 @@ describe('modelHubMachine', () => {
     const actor = createActor(modelHubMachine, { input: { api } }).start();
     actor.send({ type: 'SET_DISPLAY_NAME', displayName: 'My Journal' });
     expect(actor.getSnapshot().context.displayName).toBe('My Journal');
+    actor.stop();
+  });
+
+  it('retires the current model before starting a new download', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.retireCurrentModel).toHaveBeenCalledTimes(1);
+    expect(api.setModelPath).toHaveBeenCalledWith(expect.objectContaining({ id: 'smarter-slower' }));
+    actor.stop();
+  });
+
+  it('does not retire when the selected model is already installed', async () => {
+    const api = makeApi();
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.retireCurrentModel).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('does not consult the network when retirement fails', async () => {
+    const api = makeApi({ retireCurrentModel: jest.fn(async () => { throw new Error('locked'); }) });
+    const actor = createActor(modelHubMachine, {
+      input: { api, currentModelId: 'fast-light' },
+    }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    expect(api.checkNetwork).not.toHaveBeenCalled();
+    expect(api.startDownload).not.toHaveBeenCalled();
     actor.stop();
   });
 });
