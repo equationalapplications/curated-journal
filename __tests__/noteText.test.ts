@@ -68,6 +68,26 @@ describe('notePreview', () => {
     );
   });
 
+  it('keeps punctuation that sits inside a word', () => {
+    // `#` and `_` are formatting only where they mark formatting. Elsewhere
+    // they are the note's text, and dropping them changes what it says.
+    expect(notePreview('C# notes and snake_case identifiers', 'Untitled')).toBe(
+      'C# notes and snake_case identifiers',
+    );
+  });
+
+  it('keeps a heading that is not the title it is previewing, whole', () => {
+    // A `#` at the start of a line strips only the marker, never the words
+    // after it — this used to lose the first one.
+    expect(notePreview('# List item\n\nContent', 'Untitled')).toBe('List item Content');
+  });
+
+  it('flattens inline code and italic, and keeps a bare asterisk', () => {
+    expect(notePreview('Ran `npm test` then *twice* for 2 * 3', 'Untitled')).toBe(
+      'Ran npm test then twice for 2 * 3',
+    );
+  });
+
   it('truncates with an ellipsis', () => {
     expect(notePreview('x'.repeat(200), 'Untitled', 10)).toBe(`${'x'.repeat(10)}…`);
   });

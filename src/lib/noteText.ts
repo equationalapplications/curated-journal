@@ -52,10 +52,17 @@ export function notePreview(
 ): string {
   if (!body) return '';
   const text = noteBody(body, title ?? '')
-    // A list marker is a `-` at the start of a line. A hyphen anywhere else is
-    // the note's own punctuation — `check-in`, `-42` — so it is left alone.
+    // Formatting markers are stripped by what they are, not by what character
+    // they are made of. A `-`, `#` or `>` counts as a marker only in the
+    // position that makes it one, and emphasis only when it pairs up around
+    // content. Everywhere else those characters are the note's own text:
+    // `check-in`, `-42`, `C#`, `snake_case` all have to survive intact.
     .replace(/^[ \t]*[-*+][ \t]+/gm, ' ')
-    .replace(/[*_`>#]/g, ' ')
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, ' ')
+    .replace(/^[ \t]*>[ \t]?/gm, ' ')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(\*|_)(.+?)\1/g, '$2')
+    .replace(/`([^`]+)`/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text;
