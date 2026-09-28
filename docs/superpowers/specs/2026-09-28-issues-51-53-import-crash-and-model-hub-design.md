@@ -1,7 +1,7 @@
 # Issues #51 and #53 — Android Import Crash, and the Model Hub One-Way Door
 
 Date: 2026-09-28
-Status: Draft (approved in chat 2026-09-28, not yet implemented)
+Status: Part B implemented (2026-09-28, branch `fix/issues-51-53`, commits 7d9ff7a..ff4a8d3). Part A not yet implemented.
 Issues: [#51](https://github.com/equationalapplications/curated-journal/issues/51) (import crash), [#53](https://github.com/equationalapplications/curated-journal/issues/53) (model hub one-way door)
 Branch: `fix/issues-51-53`, branched from `main` @ `fe98159`
 Base: Curated Journal 1.4.0, `react-native-screens` 4.26.2, React Native 0.86.0 (Fabric), Expo / Expo Router 57
