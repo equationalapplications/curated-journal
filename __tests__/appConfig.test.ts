@@ -1,4 +1,5 @@
-import { deriveRuntimeVersion } from '../app.config'
+import appConfig, { deriveRuntimeVersion } from '../app.config'
+import appJson from '../app.json'
 
 describe('deriveRuntimeVersion', () => {
   it('keeps the MAJOR and zeroes the rest', () => {
@@ -13,5 +14,25 @@ describe('deriveRuntimeVersion', () => {
 
   it('starts a new island only when the MAJOR changes', () => {
     expect(deriveRuntimeVersion('3.9.9')).not.toBe(deriveRuntimeVersion('4.0.0'));
+  });
+});
+
+describe('app config privacy + OTA gate', () => {
+  it('disables the launch-time update check (strict privacy holds from app start)', () => {
+    expect(appConfig.expo.updates.checkAutomatically).toBe('NEVER');
+  });
+
+  it('keeps the OTA url and production channel from app.json', () => {
+    expect(appConfig.expo.updates.url).toBe(appJson.expo.updates.url);
+    expect(appConfig.expo.updates.requestHeaders).toEqual(
+      appJson.expo.updates.requestHeaders,
+    );
+  });
+
+  it('derives the runtime version from the app version MAJOR', () => {
+    expect(appConfig.expo.runtimeVersion).toBe(
+      deriveRuntimeVersion(appJson.expo.version),
+    );
+    expect(appConfig.expo.runtimeVersion).toBe('3.0.0');
   });
 });

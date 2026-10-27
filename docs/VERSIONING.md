@@ -34,6 +34,9 @@ MAJOR, so this test behaves as originally intended.)
 
 ## Release train (per release)
 
+0. **3.0.0 gate:** the first release advertising over-the-air delivery is
+   gated on #68 (the explicit update-check trigger) landing first —
+   without a trigger, published bundles are never fetched by any phone.
 1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
    for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
@@ -47,4 +50,5 @@ MAJOR, so this test behaves as originally intended.)
    files for what shipped.
 5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
    GitHub release with the APK attached, and read back the asset byte-size from
-   the release API.
+   the release API. Release notes for 3.0.0 must carry the ≤ 2.0.1 stranding
+   note (old-island binaries need this store install).

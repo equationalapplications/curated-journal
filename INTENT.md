@@ -243,13 +243,14 @@ stamps themselves, the bump is MAJOR.
 *Why:* installed phones can only receive updates their binary can run;
 the version number is how the app tells them apart.
 
-**Status: Partly built.** The delivery-blocking policy is fixed: the
+**Status: Partly built.** The island-addressing policy is fixed: the
 runtime version now derives from the MAJOR version (the Clanker model,
 issue #64), so MINOR and PATCH updates address every installed binary on
-the current MAJOR, and only a MAJOR bump starts a new island. The
-delivery path has not been smoke-tested on a device, no rollback drill
-has been run, and the app does not yet trigger update checks itself
-(issue #68).
+the current MAJOR, and only a MAJOR bump starts a new island. Delivery,
+however, is dormant end-to-end: no update checks run until the explicit
+trigger (#68) lands, so nothing published over-the-air reaches any phone
+yet. The delivery path has not been smoke-tested on a device and no
+rollback drill has been run.
 
 ### 11. The user picks a privacy mode, and strict privacy means nothing leaves the device
 
