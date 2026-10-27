@@ -25,7 +25,7 @@ Most mobile AI apps assume a data center. They stream your private notes to
 a hosted model, need a network connection to be useful, and run invisible
 background work that drains the battery. Curated Journal is the opposite: a
 personal journal and knowledge base that works completely offline, on the
-phone, with nothing leaving the device.
+phone, with none of your data leaving the device.
 
 You write ordinary journal entries. An on-device language model reads them
 and organizes them into a small, searchable body of knowledge — notes,
@@ -79,10 +79,14 @@ inference, and maintenance passes that respect real hardware limits.
 - **Citation chip** — the tappable `[cite:fact_id]` marker in an assistant
   reply that scrolls to the source note.
 - **Runtime island** — the set of installed app binaries that a given
-  over-the-air (OTA) update can reach; native changes start a new island.
-- **Privacy mode** — a setting the user picks that decides how much of the
-  internet the app may touch. The strictest mode, **strict privacy**,
-  allows no internet access at all. Each less strict mode unlocks a
+  over-the-air (OTA) update can reach. Today the island is derived from
+  the app version, so *every* version bump starts a new island; the
+  intended behavior, in which only native changes split the island, is
+  not yet in place (see rule 10).
+- **Privacy mode** — a setting the user picks that decides whether and how
+  the app may communicate beyond the device. The strictest mode, **strict
+  privacy**, allows no off-device communication of any kind — no internet,
+  no Bluetooth, no local network. Each less strict mode unlocks a
   further, named set of connectivity settings. Not yet in the code.
 - **Curated Thoughts** — the family's desktop app, and the sibling whose
   privacy-mode pattern Curated Journal adopts.
@@ -160,7 +164,9 @@ inference.
 *Why:* RAM and battery on a phone are finite; running a second model next
 to the inference model is the design error this rule exists to prevent.
 
-**Status: Built.**
+**Status: Built.** The engine still exposes a re-embedding operation and
+the maintenance screen's copy still mentions it, but the app never queues
+it; removing that dead path is tracked cleanup.
 
 ### 6. Knowledge is portable in the open format
 
@@ -203,11 +209,13 @@ All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind, and the only
 network traffic is model downloads the user starts and OTA update checks.
 
-That is also the only behavior this app will ever have by default. The
-privacy modes in rules 11 through 14 are the one sanctioned way for user
-data to go anywhere else, and each of them starts from an explicit choice
-by the user. Strict privacy will tighten today's behavior further, not
-loosen it: in that mode even update checks stop.
+That behavior is also the app's default mode: the everyday setting needs
+no switch, and it consists of model downloads the user starts and OTA
+update checks — nothing else. The privacy modes in rules 11 through 14
+are the one sanctioned way for user data to go anywhere else, and each of
+them starts from an explicit choice by the user. Strict privacy will
+tighten today's behavior further, not loosen it: in that mode nothing
+reaches beyond the device, update checks included.
 
 *Why:* privacy is the product, not a feature flag.
 
@@ -227,18 +235,26 @@ at all, the bump is MAJOR.
 the version number is how the app tells them apart.
 
 **Status: Partly built.** OTA updates are configured (expo-updates,
-production channel, app-version runtime policy) but the delivery path has
-not been smoke-tested on a device and no rollback drill has been run.
+production channel), but under the current app-version runtime policy
+every version bump starts a new runtime island, so updates do not yet
+reach installed binaries the way the bump classes intend. Changing that
+policy is planned native work and will be a MAJOR change. The delivery
+path has not been smoke-tested on a device and no rollback drill has been
+run.
 
-### 11. The user picks a privacy mode, and strict privacy means no internet at all
+### 11. The user picks a privacy mode, and strict privacy means nothing leaves the device
 
 The user will choose a privacy mode, following the pattern of the sibling
-desktop app, Curated Thoughts. In strict privacy the app cannot access the
-internet for any reason — no update checks, no model downloads, no
-exceptions. A user in strict privacy who wants a new model steps out of
-strict privacy on purpose, gets the model, and steps back; the app never
-makes that trip for them. Everything the journal does (rule 1) keeps
-working in strict privacy.
+desktop app, Curated Thoughts. In strict privacy the app cannot
+communicate beyond the device for any reason — no internet, no Bluetooth,
+no local network; no update checks, no model downloads, no pairing; no
+exceptions. Strict privacy holds from the moment the app starts: nothing
+that can reach outside may act before the mode is honored (making that
+true today is expected to ship as a native, MAJOR change). A user in
+strict privacy who wants a new model steps out of strict privacy on
+purpose, gets the model, and steps back; the app never makes that trip
+for them. Everything the journal does (rule 1) keeps working in strict
+privacy.
 
 *Why:* a privacy promise with an exception is a promise with a hole, and
 the user cannot see how big the hole is. A mode that means "nothing, ever"
@@ -271,8 +287,10 @@ stays theirs. Syncing it with SynapseTree, or consolidating it into a
 cloud or hardware knowledge graph, happens only because the user chose a
 privacy mode that allows it and then chose to do it. It is never an
 automatic background behavior, never a default, and never a condition of
-using the journal. The user can stay in strict privacy forever and lose
-nothing the journal does today.
+using the journal. Knowledge that arrives from the cloud service or from
+hardware enters the journal only through the engine, under the same mode
+rules as knowledge leaving. The user can stay in strict privacy forever
+and lose nothing the journal does today.
 
 *Why:* the product's founding claim is that private notes do not belong
 in a data center unless their owner says so. Extending the product to a
@@ -284,20 +302,23 @@ to add such a thing starts from it.
 
 ### 14. Curated Journal is the phone side of Synapse Core
 
-Synapse Core devices are small, and the phone is their brain: it holds
-the memory and runs the model. When a user has unlocked hardware pairing
-through a privacy mode (rule 12), Curated Journal is the app that pairs
-with a Synapse Core Lite or Synapse Core Solo device and serves as its
-phone-side brain, on the user's explicit instruction. Solo's on-board
-memory does not change
-who decides: the user, from the phone, through a privacy mode.
+Synapse Core devices are small: a Lite device has no memory of its own,
+so the phone runs the model and is the system of record; a Solo device
+carries its own memory as a user-controlled replica of what the phone
+holds. When a user has unlocked hardware pairing through a privacy mode
+(rule 12), Curated Journal is the app that pairs with the device and
+serves as its phone-side brain, in a pairing session the user starts and
+runs. An active pairing session is not sync (rule 13): it exists only
+while the user is running it. What the phone may spend — battery, RAM, a
+model's attention — during a mission is an open decision.
 
 *Why:* the family's hardware is only useful with a phone-side partner,
 and that partner must honor the same privacy rules as the journal — a
 drone accessory must not become the back door to the user's notes.
 
 **Status: Planned.** The app has no hardware pairing of any kind in the
-code.
+code, and the resource budget for phone-side inference in a mission is an
+**Open decision**.
 
 ## Out of scope (don't build these here)
 
@@ -316,9 +337,12 @@ first.
   moves to the cloud service or to hardware only when the user has
   unlocked it through a privacy mode and asked for it (rule 13). A sync
   that runs on its own, even once, turns the privacy mode into a label
-  rather than a guarantee.
-- **Any internet access in strict privacy.** *Permanent.* Not update
-  checks, not telemetry, not model downloads (rule 11). The first "just
+  rather than a guarantee. (An active pairing session the user starts and
+  runs is not sync; it is allowed only in modes that unlock hardware
+  pairing — rule 14.)
+- **Any off-device communication in strict privacy.** *Permanent.* Not
+  update checks, not telemetry, not model downloads, not Bluetooth or
+  local-network pairing (rule 11). The first "just
   this one harmless request" is the hole that makes the whole mode
   untrustworthy.
 - **Background maintenance passes.** *Permanent.* They are killed or

@@ -14,8 +14,8 @@ already in the field?
 | Change | Bump | Why |
 |---|---|---|
 | Anything that breaks OTA compatibility for shipped binaries (native module add/remove/change, SDK upgrade, `app.json` plugin/config changes that regenerate native projects, permission changes, target API bumps) | **MAJOR** | Fielded binaries can never receive the update; only a new install carries it. The major signals "new binary required". |
-| New feature that does **not** break OTA (JS/TS-only: new screens, components, machines, pure-JS libs) | **MINOR** | Shippable to existing binaries via EAS Update; runtimeVersion island stays compatible. |
-| Bug fix or patch (JS/TS-only fixes, test-only changes, docs, CI) | **PATCH** | Same OTA island; safe over-the-air delivery. |
+| New feature that does **not** break OTA (JS/TS-only: new screens, components, machines, pure-JS libs) | **MINOR** | Compatibility *intent*: shippable to existing binaries via EAS Update. Under the current `appVersion` runtime policy every bump starts a new island, so this promise does not hold yet — see issue #64. |
+| Bug fix or patch (JS/TS-only fixes, test-only changes, docs, CI) | **PATCH** | Same compatibility intent as MINOR; same appVersion-policy caveat. |
 
 ## How to decide
 
