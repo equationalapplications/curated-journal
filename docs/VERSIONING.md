@@ -14,8 +14,8 @@ already in the field?
 | Change | Bump | Why |
 |---|---|---|
 | Anything that breaks OTA compatibility for shipped binaries (native module add/remove/change, SDK upgrade, `app.json` plugin/config changes that regenerate native projects, permission changes, target API bumps) | **MAJOR** | Fielded binaries can never receive the update; only a new install carries it. The major signals "new binary required". |
-| New feature that does **not** break OTA (JS/TS-only: new screens, components, machines, pure-JS libs) | **MINOR** | Compatibility *intent*: shippable to existing binaries via EAS Update. Under the current `appVersion` runtime policy every bump starts a new island, so this promise does not hold yet — see issue #64. |
-| Bug fix or patch (JS/TS-only fixes, test-only changes, docs, CI) | **PATCH** | Same compatibility intent as MINOR; same appVersion-policy caveat. |
+| New feature that does **not** break OTA (JS/TS-only: new screens, components, machines, pure-JS libs) | **MINOR** | Shippable to existing binaries via EAS Update: the runtime version derives from the MAJOR (#64), so MINOR bumps stay on the island installed phones are already on. |
+| Bug fix or patch (JS/TS-only fixes, test-only changes, docs, CI) | **PATCH** | Same as MINOR. |
 
 ## How to decide
 
@@ -29,8 +29,8 @@ When in doubt between MAJOR and MINOR: run `npx expo-doctor`, diff the
 regenerated `android/` tree (`npx expo prebuild --platform android --no-install`)
 on a scratch branch **before and after applying the bump** — if the
 regenerated tree differs beyond the version stamps themselves, it's a
-MAJOR. (Under the current `appVersion` runtime policy the stamps always
-change; compare against the intended post-fix policy, or wait for #64.)
+MAJOR. (Since the #64 runtime-version fix the stamps only move on a
+MAJOR, so this test behaves as originally intended.)
 
 ## Release train (per release)
 
@@ -39,7 +39,8 @@ change; compare against the intended post-fix policy, or wait for #64.)
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
    `versionName`, `expo_runtime_version`, and the `expo-channel-name` header in
    the generated tree **before** building. A stale stamp means the APK bakes
-   the old version regardless of the tag.
+   the old version regardless of the tag. `expo_runtime_version` must equal
+   `<MAJOR>.0.0` (the derived runtime version, `app.config.ts`).
 3. Production build: `./gradlew assembleRelease` (from `android/`) through the
    `heavy-build` wrapper — never bare gradle on this machine.
 4. Verify the **built artifact** with `aapt2 dump badging` — never trust source

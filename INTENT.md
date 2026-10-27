@@ -81,10 +81,9 @@ inference, and maintenance passes that respect real hardware limits.
 - **Citation chip** — the tappable `[cite:fact_id]` marker in an assistant
   reply that scrolls to the source note.
 - **Runtime island** — the set of installed app binaries that a given
-  over-the-air (OTA) update can reach. Today the island is derived from
-  the app version, so *every* version bump starts a new island; the
-  intended behavior, in which only native changes split the island, is
-  not yet in place (see rule 10).
+  over-the-air (OTA) update can reach. The island is derived from the
+  MAJOR version: only a MAJOR bump — the only class that may change
+  native surfaces — starts a new island.
 - **Privacy mode** — a setting the user picks that decides whether and how
   the app itself may communicate beyond the device. The strictest mode,
   **strict privacy**, allows no off-device communication by the app of any
@@ -213,13 +212,14 @@ model claims.
 
 All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind, and the only
-network traffic is model downloads the user starts, OTA update checks on
-every launch, and update downloads when one is available.
+network traffic is model downloads the user starts. (Over-the-air update
+checks no longer run automatically — they were disabled as the native
+gate for rule 11's strict privacy, and an explicit check trigger is
+tracked in issue #68.)
 
 That behavior is also the app's default mode: the everyday setting needs
-no switch, and it consists of model downloads the user starts, OTA update
-checks on every launch, and update downloads when one is available —
-nothing else. The privacy modes in rules 11 through 14
+no switch, and it consists of model downloads the user starts — nothing
+else runs on its own. The privacy modes in rules 11 through 14
 are the one sanctioned way for user data to go anywhere else, and each of
 them starts from an explicit choice by the user. Strict privacy will
 tighten today's behavior further, not loosen it: in that mode nothing
@@ -243,13 +243,13 @@ stamps themselves, the bump is MAJOR.
 *Why:* installed phones can only receive updates their binary can run;
 the version number is how the app tells them apart.
 
-**Status: Partly built.** OTA updates are configured (expo-updates,
-production channel), but under the current app-version runtime policy
-every version bump starts a new runtime island, so updates do not yet
-reach installed binaries the way the bump classes intend. Changing that
-policy is planned native work and will be a MAJOR change (issue #64). The
-delivery path has not been smoke-tested on a device and no rollback drill
-has been run.
+**Status: Partly built.** The delivery-blocking policy is fixed: the
+runtime version now derives from the MAJOR version (the Clanker model,
+issue #64), so MINOR and PATCH updates address every installed binary on
+the current MAJOR, and only a MAJOR bump starts a new island. The
+delivery path has not been smoke-tested on a device, no rollback drill
+has been run, and the app does not yet trigger update checks itself
+(issue #68).
 
 ### 11. The user picks a privacy mode, and strict privacy means nothing leaves the device
 
@@ -274,10 +274,10 @@ the user cannot see how big the hole is. A mode that means "nothing, ever"
 is one the user can trust without reading the code.
 
 **Status: Planned.** There is no privacy mode setting in the code. Today
-the app's network behavior is fixed as rule 9 describes. Enforcing strict
-privacy from app start needs a native-side gate: under the current
-`updates` configuration a launch-time check cannot be suppressed from
-JavaScript, so a JS-only toggle cannot honor this rule (a MAJOR change).
+the app's network behavior is fixed as rule 9 describes. The native-side
+gate exists as of this change: the launch-time update check is disabled
+(`checkAutomatically: 'NEVER'`), so nothing network-capable runs before
+the app decides; the mode system itself is still to be built.
 
 ### 12. Each privacy mode away from strict unlocks connectivity step by step
 
