@@ -36,14 +36,15 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
     const checkRollback =
       'isRollBackToEmbedded' in check && check.isRollBackToEmbedded;
     if (!check.isAvailable && !checkRollback) {
-      // The installed types distinguish "nothing published" from "this
-      // device already fetched an update that never launched successfully"
-      // — the latter is a dead end the user should hear about, not a
-      // silent "up to date".
+      // Only a previously-failed update is a real dead end the user should
+      // hear about. UPDATE_REJECTED_BY_SELECTION_POLICY is the steady state
+      // when the server's latest bundle isn't newer than the running one —
+      // reporting that as "blocked" would be false on every current
+      // install. ROLLBACK_* rejections default to up-to-date.
       if (
         'reason' in check &&
-        check.reason !==
-          Updates.UpdateCheckResultNotAvailableReason.NO_UPDATE_AVAILABLE_ON_SERVER
+        check.reason ===
+          Updates.UpdateCheckResultNotAvailableReason.UPDATE_PREVIOUSLY_FAILED
       ) {
         return 'blocked-on-device';
       }
@@ -59,6 +60,7 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
   } catch (error) {
     throw new UpdateCheckError(
       error instanceof Error ? error.message : String(error),
+      { cause: error },
     );
   }
 }

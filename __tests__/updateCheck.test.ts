@@ -1,8 +1,5 @@
 import * as Updates from 'expo-updates';
 
-// See updateCheckRow.test.tsx: React 19 needs the act-environment flag.
-(global as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 import {
   checkForAppUpdates,
   describeUpdateCheckResult,
@@ -13,7 +10,9 @@ jest.mock('expo-updates', () => ({
   isEnabled: true,
   UpdateCheckResultNotAvailableReason: {
     NO_UPDATE_AVAILABLE_ON_SERVER: 'noUpdateAvailableOnServer',
+    UPDATE_REJECTED_BY_SELECTION_POLICY: 'updateRejectedBySelectionPolicy',
     UPDATE_PREVIOUSLY_FAILED: 'updatePreviouslyFailed',
+    ROLLBACK_REJECTED_BY_SELECTION_POLICY: 'rollbackRejectedBySelectionPolicy',
   },
   checkForUpdateAsync: jest.fn(),
   fetchUpdateAsync: jest.fn(),
@@ -88,9 +87,9 @@ describe('checkForAppUpdates', () => {
     await expect(checkForAppUpdates()).resolves.toBe('update-downloaded');
   });
 
-  it('distinguishes a device-blocked update from no-update-available', async () => {
-    // Runtime values of UpdateCheckResultNotAvailableReason (the enum is
-    // exported from expo-updates; jest's CJS vm can't dynamic-import it here).
+  it('distinguishes a device-blocked update from benign no-update reasons', async () => {
+    // UPDATE_PREVIOUSLY_FAILED is the only real dead end; the selection
+    // policy rejections are the steady state on an up-to-date install.
     (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
       isAvailable: false,
       reason: 'updatePreviouslyFailed',
@@ -99,6 +98,16 @@ describe('checkForAppUpdates', () => {
     (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
       isAvailable: false,
       reason: 'noUpdateAvailableOnServer',
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: false,
+      reason: 'updateRejectedBySelectionPolicy',
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: false,
+      reason: 'rollbackRejectedBySelectionPolicy',
     });
     await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
   });
@@ -126,6 +135,9 @@ describe('describeUpdateCheckResult', () => {
     expect(describeUpdateCheckResult('up-to-date')).toMatch(/up to date/i);
     expect(describeUpdateCheckResult('update-downloaded')).toMatch(
       /restart/i,
+    );
+    expect(describeUpdateCheckResult('blocked-on-device')).toMatch(
+      /can’t install/i,
     );
     expect(describeUpdateCheckResult('unavailable')).toMatch(
       /aren’t available/i,
