@@ -14,19 +14,15 @@ all: island addressing was fixed but delivery was dormant end-to-end.
 
 ## Mechanism
 
-`src/lib/updateCheck.ts` — the one sanctioned network path for checks:
+- `src/lib/updateCheck.ts` — the one sanctioned network path for checks:
 
-- Dev builds and disabled-OTA environments short-circuit to
-  `unavailable` (no network call at all).
-- Otherwise: `checkForUpdateAsync` → if an update exists,
-  `fetchUpdateAsync` → result `update-downloaded`.
-- **No auto-reload.** Applying an update restarts the app, which would
-  interrupt a journal session; the UI tells the user to restart instead.
-- API failures wrap in `UpdateCheckError` so the screen can show an
-  honest failure.
-
-`src/app/(tabs)/settings.tsx` — new "App updates" section: a Check
-button with idle / checking / result / failed states and honest copy.
+  - Dev builds and disabled-OTA environments short-circuit to
+    `unavailable` (no network call at all).
+  - Otherwise: `checkForUpdateAsync` → if an update exists,
+    `fetchUpdateAsync` → result `update-downloaded`.
+  - `src/components/settings/UpdateCheckRow.tsx` — the "App updates"
+    Settings row: Check button with idle / checking / result / failed
+    states and honest copy (`settings.tsx` only renders the row).
 
 ## Doc consequences
 

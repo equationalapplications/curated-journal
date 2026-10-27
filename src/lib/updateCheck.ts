@@ -53,7 +53,10 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
     const fetched = await Updates.fetchUpdateAsync();
     const fetchRollback =
       'isRollBackToEmbedded' in fetched && fetched.isRollBackToEmbedded;
-    if (!fetched.isNew && !fetchRollback) {
+    // An actionable check means there is something to apply. isNew false
+    // here just means the bundle is already stored but still waiting for
+    // the restart that applies it — that is "downloaded", not "up to date".
+    if (!fetched.isNew && !fetchRollback && !check.isAvailable) {
       return 'up-to-date';
     }
     return 'update-downloaded';

@@ -253,7 +253,8 @@ place: the runtime version derives from the MAJOR version (the Clanker
 model, issue #64), MINOR and PATCH updates address every installed binary
 on the current MAJOR, and the app checks only when the user asks, via
 the Settings trigger (issue #68, shipped in 3.1.0). Delivery of a
-published bundle additionally requires the user to run that trigger. The
+published bundle additionally requires the user to run that trigger and
+restart the app. The
 delivery path has not been smoke-tested on a device and no rollback drill
 has been run.
 

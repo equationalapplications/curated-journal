@@ -76,7 +76,7 @@ describe('checkForAppUpdates', () => {
     expect(mockedList.fetchUpdateAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('fetches when the check reports a rollback even with isNew false', async () => {
+  it('fetches when the check reports an update and the fetch turns out to be a rollback', async () => {
     (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
       isAvailable: true,
       isRollBackToEmbedded: false,
@@ -118,14 +118,16 @@ describe('checkForAppUpdates', () => {
     await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
   });
 
-  it('reports up-to-date when a found update is already fetched', async () => {
+  it('reports an already-stored update as downloaded when re-checked before restart', async () => {
     (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
       isAvailable: true,
     });
     (mockedList.fetchUpdateAsync as jest.Mock).mockResolvedValue({
       isNew: false,
     });
-    await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
+    // The running bundle is still old; the fetched bundle waits for the
+    // restart that applies it. Reporting "up to date" would hide it.
+    await expect(checkForAppUpdates()).resolves.toBe('update-downloaded');
   });
 
   it('wraps check-phase API failures in UpdateCheckError', async () => {

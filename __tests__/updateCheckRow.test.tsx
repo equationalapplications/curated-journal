@@ -15,6 +15,15 @@ jest.mock('expo-updates', () => ({
   fetchUpdateAsync: jest.fn(),
 }));
 
+jest.mock('expo-updates', () => ({
+  isEnabled: true,
+  checkForUpdateAsync: jest.fn(),
+  fetchUpdateAsync: jest.fn(),
+}));
+
+// The expo-updates mock above is kept even though checkForAppUpdates is
+// mocked too: jest.requireActual('@/lib/updateCheck') still imports the
+// real expo-updates module, which needs these members to exist.
 jest.mock('@/lib/updateCheck', () => {
   const actual = jest.requireActual('@/lib/updateCheck');
   return { ...actual, checkForAppUpdates: jest.fn() };
