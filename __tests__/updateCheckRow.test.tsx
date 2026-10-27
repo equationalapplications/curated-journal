@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as Updates from 'expo-updates';
 
 // React 19 requires this flag for act() to be honored; jest-expo does not
@@ -87,9 +87,6 @@ describe('UpdateCheckRow', () => {
     warn.mockRestore();
   });
 
-  // Runs LAST: this test leaves the RNTL render root poisoned (a pending
-  // check resolved without act), which empties the tree of any test that
-  // renders after it. Self-contained, so nothing follows it.
   it('does not start a second check on a double-tap', async () => {
     let resolve!: (v: 'up-to-date') => void;
     mockCheck.mockReturnValue(
@@ -101,15 +98,9 @@ describe('UpdateCheckRow', () => {
     const button = screen.getByRole('button', { name: 'Check' });
     fireEvent.press(button);
     fireEvent.press(button);
-    resolve('up-to-date');
-    // Settle fully inside this test: the resolved check updates state
-    // without act, and leaving that update pending bleeds into any test
-    // that renders after this one.
-    await waitFor(() =>
-      expect(screen.getByTestId('update-check-label')).toHaveTextContent(
-        /up to date/i,
-      ),
-    );
+    await act(async () => {
+      resolve('up-to-date');
+    });
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
   });
 });

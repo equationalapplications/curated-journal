@@ -14,6 +14,7 @@ import * as Updates from 'expo-updates';
 export type UpdateCheckResult =
   | 'up-to-date'
   | 'update-downloaded'
+  | 'blocked-on-device'
   | 'unavailable';
 
 export class UpdateCheckError extends Error {}
@@ -35,6 +36,17 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
     const checkRollback =
       'isRollBackToEmbedded' in check && check.isRollBackToEmbedded;
     if (!check.isAvailable && !checkRollback) {
+      // The installed types distinguish "nothing published" from "this
+      // device already fetched an update that never launched successfully"
+      // — the latter is a dead end the user should hear about, not a
+      // silent "up to date".
+      if (
+        'reason' in check &&
+        check.reason !==
+          Updates.UpdateCheckResultNotAvailableReason.NO_UPDATE_AVAILABLE_ON_SERVER
+      ) {
+        return 'blocked-on-device';
+      }
       return 'up-to-date';
     }
     const fetched = await Updates.fetchUpdateAsync();
@@ -57,6 +69,8 @@ export function describeUpdateCheckResult(result: UpdateCheckResult): string {
       return 'You’re up to date.';
     case 'update-downloaded':
       return 'Update downloaded. Restart the app to install it.';
+    case 'blocked-on-device':
+      return 'An update is available, but this device can’t install it right now.';
     case 'unavailable':
       return 'Updates aren’t available in this build.';
     default:

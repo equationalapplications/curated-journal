@@ -11,6 +11,10 @@ import {
 
 jest.mock('expo-updates', () => ({
   isEnabled: true,
+  UpdateCheckResultNotAvailableReason: {
+    NO_UPDATE_AVAILABLE_ON_SERVER: 'noUpdateAvailableOnServer',
+    UPDATE_PREVIOUSLY_FAILED: 'updatePreviouslyFailed',
+  },
   checkForUpdateAsync: jest.fn(),
   fetchUpdateAsync: jest.fn(),
 }));
@@ -82,6 +86,21 @@ describe('checkForAppUpdates', () => {
       isRollBackToEmbedded: true,
     });
     await expect(checkForAppUpdates()).resolves.toBe('update-downloaded');
+  });
+
+  it('distinguishes a device-blocked update from no-update-available', async () => {
+    // Runtime values of UpdateCheckResultNotAvailableReason (the enum is
+    // exported from expo-updates; jest's CJS vm can't dynamic-import it here).
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: false,
+      reason: 'updatePreviouslyFailed',
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('blocked-on-device');
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: false,
+      reason: 'noUpdateAvailableOnServer',
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
   });
 
   it('reports up-to-date when a found update is already fetched', async () => {
