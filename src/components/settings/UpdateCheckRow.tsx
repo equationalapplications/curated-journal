@@ -52,7 +52,7 @@ export function UpdateCheckRow() {
   } else if (busy) {
     label = 'Checking…';
   } else if (checkState === 'failed') {
-    label = 'Couldn’t reach the update server. Check your connection and try again.';
+    label = 'Couldn’t reach the update server. Try again later.';
   } else {
     label = 'Check for an app update';
   }

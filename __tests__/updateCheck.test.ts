@@ -13,6 +13,7 @@ jest.mock('expo-updates', () => ({
     UPDATE_REJECTED_BY_SELECTION_POLICY: 'updateRejectedBySelectionPolicy',
     UPDATE_PREVIOUSLY_FAILED: 'updatePreviouslyFailed',
     ROLLBACK_REJECTED_BY_SELECTION_POLICY: 'rollbackRejectedBySelectionPolicy',
+    ROLLBACK_NO_EMBEDDED: 'rollbackNoEmbedded',
   },
   checkForUpdateAsync: jest.fn(),
   fetchUpdateAsync: jest.fn(),
@@ -110,6 +111,11 @@ describe('checkForAppUpdates', () => {
       reason: 'rollbackRejectedBySelectionPolicy',
     });
     await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: false,
+      reason: 'rollbackNoEmbedded',
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
   });
 
   it('reports up-to-date when a found update is already fetched', async () => {
@@ -122,11 +128,22 @@ describe('checkForAppUpdates', () => {
     await expect(checkForAppUpdates()).resolves.toBe('up-to-date');
   });
 
-  it('wraps API failures in UpdateCheckError', async () => {
+  it('wraps check-phase API failures in UpdateCheckError', async () => {
     (mockedList.checkForUpdateAsync as jest.Mock).mockRejectedValue(
       new Error('offline'),
     );
     await expect(checkForAppUpdates()).rejects.toThrow(UpdateCheckError);
+  });
+
+  it('wraps fetch-phase API failures in UpdateCheckError', async () => {
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: true,
+    });
+    (mockedList.fetchUpdateAsync as jest.Mock).mockRejectedValue(
+      new Error('connection dropped mid-download'),
+    );
+    await expect(checkForAppUpdates()).rejects.toThrow(UpdateCheckError);
+    expect(mockedList.fetchUpdateAsync).toHaveBeenCalledTimes(1);
   });
 });
 
