@@ -171,7 +171,7 @@ to the inference model is the design error this rule exists to prevent.
 **Status: Built.** The engine exposes re-embedding and prune operations
 and the app has wired them (`journalWikiMachine.ts`, `useJournalWiki`,
 `nightShiftCopy.ts`) but never queues them; removing those dead paths is
-tracked cleanup (issue #64).
+tracked cleanup (issue #65).
 
 ### 6. Knowledge is portable in the open format
 
@@ -225,10 +225,9 @@ reaches beyond the device, update checks included.
 
 *Why:* privacy is the product, not a feature flag.
 
-**Status: Built** for today's behavior in paragraph 1 and for the
-default-mode naming that opens paragraph 2; the privacy-mode machinery
-the rest of that paragraph describes (rules 11 through 14) is
-**Planned**.
+**Status: Built** for today's behavior in paragraph 1. Paragraph 2
+describes how that behavior will be framed once privacy modes exist; that
+framing is **Planned** under rules 11 through 14.
 
 ### 10. Every change to main carries a version bump, decided by OTA compatibility
 
@@ -272,7 +271,10 @@ the user cannot see how big the hole is. A mode that means "nothing, ever"
 is one the user can trust without reading the code.
 
 **Status: Planned.** There is no privacy mode setting in the code. Today
-the app's network behavior is fixed as rule 9 describes.
+the app's network behavior is fixed as rule 9 describes. Enforcing strict
+privacy from app start needs a native-side gate: under the current
+`updates` configuration a launch-time check cannot be suppressed from
+JavaScript, so a JS-only toggle cannot honor this rule (a MAJOR change).
 
 ### 12. Each privacy mode away from strict unlocks connectivity step by step
 
@@ -322,7 +324,9 @@ serves as its phone-side brain, in a pairing session the user starts and
 runs. An active pairing session is not sync (rule 13): it exists only
 while the user is running it, and it carries only the in-mission data the
 mode's description names. Writing to or refreshing a Solo replica is sync
-under rule 13 and needs its own explicit choice. What the phone may
+under rule 13 and needs its own explicit choice. Anything from a session
+that persists into the journal after the session ends is sync under rule
+13 and needs its own explicit choice. What the phone may
 spend — battery, RAM, a model's attention — during a mission is an open
 decision.
 
@@ -377,9 +381,10 @@ first.
 
 1. **Spec first.** Write a spec under `docs/superpowers/specs/`, based on
    an investigation that reads the real code (not memory). Spec, plan, and
-   implementation go in one pull request. A spec for anything in rules 11
-   through 14 is checked against those rules before implementation begins;
-   if it contradicts them on intent, this file is amended first.
+   implementation go in one pull request. Every spec is checked against
+   this file before implementation begins — specs touching rules 11
+   through 14 most of all, but no spec is exempt; if a spec contradicts
+   this file on intent, this file is amended first.
 2. **Decision history** lives in this repo — GitHub issues, pull request
    discussions, and the specs themselves. There is no private channel a
    contributor cannot read.
@@ -389,7 +394,8 @@ first.
 4. **Tests gate behavior changes.** The test suite must pass with no
    regressions; a change that updates a status line in this file must
    arrive in the same pull request as the behavior change.
-5. **Releases follow the train** in `docs/VERSIONING.md`: version-bump PR,
-   prebuild, verify the generated version stamps before building, then
-   build the release artifact on this machine (which runs builds
-   through a resource-discipline wrapper — see `docs/VERSIONING.md`).
+5. **Releases follow the train** in `docs/VERSIONING.md`: the version
+   bump rides in the change's own PR (never a separate release PR); then
+   merge → prebuild → verify the generated version stamps → build on this
+   machine (through a resource-discipline wrapper — see
+   `docs/VERSIONING.md`) → verify the built artifact → tag and release.
