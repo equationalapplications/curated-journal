@@ -11,7 +11,7 @@ import {
   type HealStepSummary,
 } from '@/lib/healLoop';
 
-export type NightShiftOperation = 'librarian' | 'heal' | 'reembed' | 'prune';
+export type NightShiftOperation = 'librarian' | 'heal';
 
 export type QueueItem = { operation: NightShiftOperation; entityId: string };
 
@@ -71,12 +71,6 @@ async function runQueueStep(
       return;
     case 'heal':
       return runHealToCompletion(maintenance.runHeal, item.entityId, { shouldContinue });
-    case 'reembed':
-      await maintenance.runReembed(item.entityId);
-      return;
-    case 'prune':
-      await maintenance.runPrune(item.entityId);
-      return;
   }
 }
 

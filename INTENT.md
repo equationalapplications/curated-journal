@@ -72,8 +72,9 @@ inference, and maintenance passes that respect real hardware limits.
   librarian and heal passes in the foreground while the device charges.
 - **Librarian / heal pass** — the engine's two upkeep jobs: organizing
   entries into notes and connections (librarian), and repairing or
-  retiring stale ones (heal). The engine also offers re-embedding and
-  prune operations; the app has wired but never queues them.
+  retiring stale ones (heal). These are the only maintenance passes the
+  app queues; the engine's re-embedding and prune operations are unused
+  by this app.
 - **Emergent ontology** — the default mode in which the model invents its
   own note categories and link types, instead of following a fixed schema.
 - **OKF** — the Open Knowledge Format, the zip bundle used for import and
@@ -168,10 +169,10 @@ inference.
 *Why:* RAM and battery on a phone are finite; running a second model next
 to the inference model is the design error this rule exists to prevent.
 
-**Status: Built.** The engine exposes re-embedding and prune operations
-and the app has wired them (`journalWikiMachine.ts`, `useJournalWiki`,
-`nightShiftCopy.ts`) but never queues them; removing those dead paths is
-tracked cleanup (issue #65).
+**Status: Built.** The engine still exposes re-embedding and prune
+operations; the app's dead wiring for them was removed in this PR
+(issue #65) so no future change can queue an embedding pass and silently
+violate this rule.
 
 ### 6. Knowledge is portable in the open format
 
