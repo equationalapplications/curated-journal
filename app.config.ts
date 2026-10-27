@@ -14,8 +14,11 @@
  */
 import appJson from './app.json'
 
-const breakingChangeVersion = appJson.expo.version.split('.')[0]
-const runtimeVer = `${breakingChangeVersion}.0.0`
+export function deriveRuntimeVersion(version: string): string {
+  return `${version.split('.')[0]}.0.0`
+}
+
+const runtimeVer = deriveRuntimeVersion(appJson.expo.version)
 
 export default {
   expo: {

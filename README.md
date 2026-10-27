@@ -162,10 +162,11 @@ Dev builds (`__DEV__`) choose their LLM with `EXPO_PUBLIC_DEV_LLM`; release buil
 
 ### OTA updates (EAS Update)
 
-JS-level fixes and assets can be published over-the-air without a native rebuild. Full design: `docs/superpowers/specs/2026-09-26-expo-updates-ota-design.md`.
+JS-level fixes and assets can be published over-the-air without a native rebuild. Full design: `docs/superpowers/specs/2026-09-26-expo-updates-ota-design.md` + `docs/superpowers/specs/2026-10-27-runtime-version-ota-and-strict-privacy-native-fix.md`.
 
-- Release builds check for updates on launch and apply them on the next restart (expo-updates defaults, `ON_LOAD` / `fallbackToCacheTimeout: 0`).
-- Runtime compatibility is keyed to `expo.version` (`runtimeVersion.policy: appVersion`) — a published bundle only reaches binaries whose version matches.
+- Release builds do **not** check for updates automatically (`checkAutomatically: 'NEVER'` — the strict-privacy gate, INTENT rule 11); an explicit in-app check trigger is tracked in [#68](https://github.com/equationalapplications/curated-journal/issues/68).
+- Runtime compatibility is keyed to a **derived runtime version** — `<MAJOR>.0.0` (`app.config.ts`) — so a published bundle reaches every binary on the same MAJOR; only a MAJOR bump starts a new island.
+- Note: binaries shipped before the runtime-version fix (≤ 2.0.1) are stranded on their old island — they receive nothing over-the-air and need the 3.0.0 store install.
 - Release APKs are built **locally** (Gradle wrapper + heavy-build procedure), so the update channel is embedded from `expo.updates.requestHeaders` at prebuild — the `eas.json` `production` profile's `channel` field is only consumed by `eas build`.
 - The server-side `production` channel is created once with `eas channel:create production`.
 
