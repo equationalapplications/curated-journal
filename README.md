@@ -164,7 +164,7 @@ Dev builds (`__DEV__`) choose their LLM with `EXPO_PUBLIC_DEV_LLM`; release buil
 
 JS-level fixes and assets can be published over-the-air without a native rebuild. Full design: `docs/superpowers/specs/2026-09-26-expo-updates-ota-design.md` (superseded in part — runtime version and update-check policy — by `docs/superpowers/specs/2026-10-27-runtime-version-ota-and-strict-privacy-native-fix.md`; follow the 2026-10-27 spec where they disagree).
 
-- Release builds do **not** check for updates automatically (`checkAutomatically: 'NEVER'` — the strict-privacy gate, INTENT rule 11); an explicit in-app check trigger is tracked in [#68](https://github.com/equationalapplications/curated-journal/issues/68).
+- Release builds do **not** check for updates automatically (`checkAutomatically: 'NEVER'` — the strict-privacy gate, INTENT rule 11); the user checks explicitly via Settings (**Check for an app update**, shipped in 3.0.1, [#68](https://github.com/equationalapplications/curated-journal/issues/68)).
 - Runtime compatibility is keyed to a **derived runtime version** — `<MAJOR>.0.0` (`app.config.ts`) — so a published bundle reaches every binary on the same MAJOR; only a MAJOR bump starts a new island.
 - Note: all pre-3.0.0 installs are effectively stranded — a 2.0.1 label matches nothing the new scheme publishes, and reaching 2.0.0 installs would need a maintained 2.x branch, which does not exist. They get the fixes through the 3.0.0 store install.
 - Release APKs are built **locally** (Gradle wrapper + heavy-build procedure), so the update channel is embedded from `expo.updates.requestHeaders` at prebuild — the `eas.json` `production` profile's `channel` field is only consumed by `eas build`.

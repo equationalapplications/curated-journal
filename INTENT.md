@@ -212,19 +212,18 @@ model claims.
 
 All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind. From 3.0.0
-binaries onward, the only network traffic the app starts is model
-downloads the user starts. (Over-the-air update checks no longer run
-automatically in 3.0.0+ — disabled as the native gate for rule 11's
-strict privacy, with an explicit check trigger tracked in issue #68.
-Fielded pre-3.0.0 binaries still carry the old launch-time check until
-the 3.0.0 store install reaches them.)
+binaries onward, the network traffic the app starts is model downloads
+the user starts and update checks the user starts from Settings. (The
+explicit check trigger exists since 3.0.1 — issue #68; checks never run
+automatically. Fielded pre-3.0.0 binaries still carry the old
+launch-time check until the store install reaches them.)
 
 That behavior is also the app's default mode: the everyday setting needs
-no switch, and it consists of model downloads the user starts — nothing
-else runs on its own. Over-the-air update checks are **paused** until the
-explicit update-check trigger (#68) lands; they return as a
-user-started action, and any further check automation is a privacy-mode
-unlock (rule 12), never a default. The privacy modes in rules 11 through 14
+no switch, and it consists of model downloads the user starts and update
+checks the user starts — nothing else runs on its own. Over-the-air
+update checks never run automatically; if any further check automation
+ever arrives, it is a privacy-mode unlock (rule 12), never a default.
+The privacy modes in rules 11 through 14
 are the one sanctioned way for user data to go anywhere else, and each of
 them starts from an explicit choice by the user. Strict privacy will
 tighten today's behavior further, not loosen it: in that mode nothing
@@ -248,14 +247,13 @@ stamps themselves, the bump is MAJOR.
 *Why:* installed phones can only receive updates their binary can run;
 the version number is how the app tells them apart.
 
-**Status: Partly built.** The island-addressing policy is fixed: the
-runtime version now derives from the MAJOR version (the Clanker model,
-issue #64), so MINOR and PATCH updates address every installed binary on
-the current MAJOR, and only a MAJOR bump starts a new island. Delivery,
-however, is dormant end-to-end: no update checks run until the explicit
-trigger (#68) lands, so nothing published over-the-air reaches any phone
-yet. The delivery path has not been smoke-tested on a device and no
-rollback drill has been run.
+**Status: Partly built.** Island addressing and the check trigger are in
+place: the runtime version derives from the MAJOR version (the Clanker
+model, issue #64), MINOR and PATCH updates address every installed binary
+on the current MAJOR, and the app checks only when the user asks, via
+the Settings trigger (issue #68, shipped in 3.0.1). The delivery path
+has not been smoke-tested on a device and no rollback drill has been
+run.
 
 ### 11. The user picks a privacy mode, and strict privacy means nothing leaves the device
 
@@ -270,8 +268,8 @@ strict privacy who wants a new model steps out of strict privacy on
 purpose, gets the model, and steps back; the app never makes that trip
 for them. A device left in strict privacy receives no over-the-air
 updates, including security fixes; updates arrive once the user steps out
-of strict privacy and runs the explicit update-check trigger (#68), or
-installs a new binary — and automatic launch-time checks return only as a
+of strict privacy and runs the Settings update-check trigger, or installs
+a new binary — and automatic launch-time checks return only as a
 privacy-mode unlock (rule 12), if at all. Files the user explicitly
 hands to an OS picker or share sheet are the user's chosen destination,
 not the app's network access. Everything the journal does (rule 1) keeps

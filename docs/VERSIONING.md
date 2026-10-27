@@ -35,14 +35,10 @@ moves on a MAJOR, so this test behaves as originally intended —
 
 ## Release train (per release)
 
-0. **3.0.0 gate:** the 3.0.0 *release* (the tag and APK — not this PR's
-   merge to `main`) is gated on #68 (the explicit update-check trigger)
-   landing first — without a trigger, published bundles are never fetched
-   by any phone. Consequence: **no `v3.0.0` tag ever exists.** The first
-   OTA-capable release is the first PR that lands after #68 (per the
-   same-PR-bump rule that makes it **v3.0.1**); tag that PR's merge
-   commit and attach the stranding note there. Interim PRs bump straight
-   to 3.0.1 as well — the 3.0.0 number is simply skipped.
+0. **3.0.1 is the first OTA-capable release** — the explicit
+   update-check trigger (#68) shipped there; 3.0.0 was merged but never
+   tagged, and no `v3.0.0` tag will ever exist. Releases before 3.0.1
+   could publish bundles no installed phone would ever fetch.
 1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
    for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
