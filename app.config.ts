@@ -13,9 +13,14 @@
  * must hold from app start). Update checks become an explicit app decision.
  */
 import appJson from './app.json'
+import { ExpoConfig } from 'expo/config'
+
+// app.json is authored against ExpoConfig; the JSON import only widens
+// its literal types, so recover them here once.
+const base = appJson.expo as ExpoConfig
 
 export function deriveRuntimeVersion(version: string): string {
-  if (!/^\d+\.\d+\.\d+/.test(version)) {
+  if (!/^(0|[1-9]\d*)\.\d+\.\d+$/.test(version)) {
     throw new Error(`Cannot derive runtime version from "${version}"`)
   }
   return `${version.split('.')[0]}.0.0`
@@ -25,11 +30,11 @@ const runtimeVer = deriveRuntimeVersion(appJson.expo.version)
 
 export default {
   expo: {
-    ...appJson.expo,
+    ...base,
     updates: {
-      ...appJson.expo.updates,
+      ...base.updates,
       checkAutomatically: 'NEVER' as const,
     },
     runtimeVersion: runtimeVer,
   },
-}
+} satisfies { expo: ExpoConfig }

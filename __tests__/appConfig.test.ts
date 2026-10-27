@@ -11,6 +11,8 @@ describe('deriveRuntimeVersion', () => {
     expect(() => deriveRuntimeVersion('')).toThrow();
     expect(() => deriveRuntimeVersion('abc')).toThrow();
     expect(() => deriveRuntimeVersion('3.')).toThrow();
+    expect(() => deriveRuntimeVersion('3.x.y')).toThrow();
+    expect(() => deriveRuntimeVersion('03.1.0')).toThrow();
   });
 
   it('guards against the retired appVersion policy returning to app.json', () => {

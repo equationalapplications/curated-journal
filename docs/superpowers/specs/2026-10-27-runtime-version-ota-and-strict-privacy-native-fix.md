@@ -26,20 +26,27 @@ from app start by any JS-only toggle (Tier-3 review MAJOR-3).
 
 ```ts
 import appJson from './app.json'
+import { ExpoConfig } from 'expo/config'
+
 export function deriveRuntimeVersion(version: string): string {
-  if (!/^\d+\./.test(version)) {
+  if (!/^(0|[1-9]\d*)\.\d+\.\d+$/.test(version)) {
     throw new Error(`Cannot derive runtime version from "${version}"`)
   }
   return `${version.split('.')[0]}.0.0`
 }
 
+const runtimeVer = deriveRuntimeVersion(appJson.expo.version)
+
 export default {
   expo: {
     ...appJson.expo,
-    updates: { ...appJson.expo.updates, checkAutomatically: 'NEVER' },
-    runtimeVersion: deriveRuntimeVersion(appJson.expo.version), // e.g. "3.0.0"
+    updates: {
+      ...appJson.expo.updates,
+      checkAutomatically: 'NEVER' as const,
+    },
+    runtimeVersion: runtimeVer,
   },
-}
+} satisfies { expo: ExpoConfig }
 ```
 
 - The runtime version is an explicit string derived from the MAJOR: it
