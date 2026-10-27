@@ -1,6 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
-import { useState } from 'react';
 import { useWikiExport } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';

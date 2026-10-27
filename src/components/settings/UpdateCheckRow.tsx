@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -21,8 +21,13 @@ export function UpdateCheckRow() {
   const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(
     null,
   );
+  const inFlight = useRef(false);
 
   const runUpdateCheck = async () => {
+    // Disabled renders one frame late; guard against a double-tap firing
+    // two concurrent checks.
+    if (inFlight.current) return;
+    inFlight.current = true;
     setCheckState('checking');
     try {
       const result = await checkForAppUpdates();
@@ -35,6 +40,8 @@ export function UpdateCheckRow() {
       );
       setCheckResult(null);
       setCheckState('failed');
+    } finally {
+      inFlight.current = false;
     }
   };
 

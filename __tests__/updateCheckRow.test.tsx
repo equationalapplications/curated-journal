@@ -81,4 +81,22 @@ describe('UpdateCheckRow', () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  // Runs LAST: this test leaves the RNTL render root poisoned (a pending
+  // check resolved without act), which empties the tree of any test that
+  // renders after it. Self-contained, so nothing follows it.
+  it('does not start a second check on a double-tap', async () => {
+    let resolve!: (v: 'up-to-date') => void;
+    mockCheck.mockReturnValue(
+      new Promise<'up-to-date'>((r) => {
+        resolve = r;
+      }),
+    );
+    await render(<UpdateCheckRow />);
+    const button = screen.getByRole('button', { name: 'Check' });
+    fireEvent.press(button);
+    fireEvent.press(button);
+    resolve('up-to-date');
+    await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
+  });
 });
