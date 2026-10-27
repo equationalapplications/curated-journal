@@ -10,11 +10,7 @@ import { Screen } from '@/components/screen';
 import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
 import { useJournal } from '@/contexts/JournalContext';
 import { useNightShiftGates } from '@/hooks/useNightShiftGates';
-import {
-  checkForAppUpdates,
-  describeUpdateCheckResult,
-  type UpdateCheckResult,
-} from '@/lib/updateCheck';
+import { UpdateCheckRow } from '@/components/settings/UpdateCheckRow';
 import { Space } from '@/constants/theme';
 
 export default function SettingsScreen() {
@@ -23,29 +19,6 @@ export default function SettingsScreen() {
   const { canStart } = useNightShiftGates();
   const { execute: exportDump } = useWikiExport();
   const { confirm, confirmElement } = useConfirmSheet();
-
-  const [checkState, setCheckState] = useState<
-    'idle' | 'checking' | 'done' | 'failed'
-  >('idle');
-  const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(
-    null,
-  );
-
-  const runUpdateCheck = async () => {
-    setCheckState('checking');
-    try {
-      const result = await checkForAppUpdates();
-      setCheckResult(result);
-      setCheckState('done');
-    } catch (error) {
-      setCheckResult(null);
-      setCheckState('failed');
-      confirm({
-        title: 'Update check failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
 
   const performChangeModel = () => {
     router.push('/model-hub' as Href);
@@ -138,24 +111,7 @@ export default function SettingsScreen() {
         <ThemedText type="label" style={styles.label}>
           App updates
         </ThemedText>
-        <ListGroup>
-          <Row style={styles.row} divider={false}>
-            <ThemedText type="strong" style={styles.rowLabel}>
-              {checkState === 'done' && checkResult
-                ? describeUpdateCheckResult(checkResult)
-                : checkState === 'checking'
-                  ? 'Checking…'
-                  : checkState === 'failed'
-                    ? 'Check failed. Try again.'
-                    : 'Check for an app update'}
-            </ThemedText>
-            <Button
-              label={checkState === 'checking' ? '…' : 'Check'}
-              disabled={checkState === 'checking'}
-              onPress={() => void runUpdateCheck()}
-            />
-          </Row>
-        </ListGroup>
+        <UpdateCheckRow />
 
         <ThemedText type="label" style={styles.label}>
           Model

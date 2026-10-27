@@ -13,20 +13,22 @@ jest.mock('expo-updates', () => ({
 }));
 
 const mockedList = Updates as jest.Mocked<typeof Updates>;
+const realDev = (global as { __DEV__?: boolean }).__DEV__;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockedList.isEnabled = true;
+  (global as { __DEV__?: boolean }).__DEV__ = false;
+});
+
+afterEach(() => {
+  (global as { __DEV__?: boolean }).__DEV__ = realDev;
 });
 
 describe('checkForAppUpdates', () => {
   it('is unavailable in dev builds', async () => {
     (global as { __DEV__?: boolean }).__DEV__ = true;
-    try {
-      await expect(checkForAppUpdates()).resolves.toBe('unavailable');
-    } finally {
-      (global as { __DEV__?: boolean }).__DEV__ = false;
-    }
+    await expect(checkForAppUpdates()).resolves.toBe('unavailable');
     expect(mockedList.checkForUpdateAsync).not.toHaveBeenCalled();
   });
 
