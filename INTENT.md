@@ -353,5 +353,5 @@ first.
    arrive in the same pull request as the behavior change.
 5. **Releases follow the train** in `docs/VERSIONING.md`: version-bump PR,
    prebuild, verify the generated version stamps before building, then
-   build the release artifact on the build machine (which runs builds
+   build the release artifact on this machine (which runs builds
    through a resource-discipline wrapper — see `docs/VERSIONING.md`).
