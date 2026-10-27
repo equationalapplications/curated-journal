@@ -56,11 +56,11 @@ phone accepts it. Later a native change lands; version 3.0.0, runtime
 old policy the first step already failed: the update was tagged "2.0.1"
 and no phone ever ran 2.0.1.
 
-**Transition note:** 2.0.1 installs are stranded: their old
-appVersion-derived label "2.0.1" matches nothing the new scheme publishes,
-so they get the fixes only through the 3.0.0 store install. (2.0.0
-installs happen to share the derived MAJOR-2 label "2.0.0" and stay
-reachable.) The stranding is the accepted cost of the one-time MAJOR.
+**Transition note:** all pre-3.0.0 installs are effectively stranded: a
+2.0.1 label matches nothing the new scheme publishes, and reaching 2.0.0
+installs would need a maintained 2.x branch, which does not exist. They
+get the fixes through the 3.0.0 store install. The stranding is the
+accepted cost of the one-time MAJOR.
 
 ## Bump & doc consequences (this PR)
 

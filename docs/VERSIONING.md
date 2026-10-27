@@ -14,7 +14,7 @@ already in the field?
 | Change | Bump | Why |
 |---|---|---|
 | Anything that breaks OTA compatibility for shipped binaries (native module add/remove/change, SDK upgrade, `app.json` plugin/config changes that regenerate native projects, permission changes, target API bumps) | **MAJOR** | Fielded binaries can never receive the update; only a new install carries it. The major signals "new binary required". |
-| New feature that does **not** break OTA (JS/TS-only: new screens, components, machines, pure-JS libs) | **MINOR** | Shippable to existing binaries via EAS Update: the runtime version derives from the MAJOR (#64), so MINOR bumps stay on the island installed phones are already on. |
+| New feature that does **not** break OTA (JS/TS-only: new screens, components, machines, pure-JS libs) | **MINOR** | Shippable to existing binaries via EAS Update: the runtime version derives from the MAJOR (#64), so MINOR bumps stay on the island installed phones are already on. (Delivery pending #68 — no update checks run until the explicit trigger exists.) |
 | Bug fix or patch (JS/TS-only fixes, test-only changes, docs, CI) | **PATCH** | Same as MINOR. |
 
 ## How to decide
@@ -29,8 +29,9 @@ When in doubt between MAJOR and MINOR: run `npx expo-doctor`, diff the
 regenerated `android/` tree (`npx expo prebuild --platform android --no-install`)
 on a scratch branch **before and after applying the bump** — if the
 regenerated tree differs beyond the version stamps themselves, it's a
-MAJOR. (Since the #64 runtime-version fix the stamps only move on a
-MAJOR, so this test behaves as originally intended.)
+MAJOR. (Since the #64 runtime-version fix `expo_runtime_version` only
+moves on a MAJOR, so this test behaves as originally intended —
+`versionName`/`versionCode` still change on every bump.)
 
 ## Release train (per release)
 
@@ -53,5 +54,5 @@ MAJOR, so this test behaves as originally intended.)
    files for what shipped.
 5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
    GitHub release with the APK attached, and read back the asset byte-size from
-   the release API. Release notes for 3.0.0 must carry the ≤ 2.0.1 stranding
+   the release API. Release notes for 3.0.0 must carry the pre-3.0.0 stranding
    note (old-island binaries need this store install).

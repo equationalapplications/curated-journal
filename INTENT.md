@@ -219,7 +219,10 @@ tracked in issue #68.)
 
 That behavior is also the app's default mode: the everyday setting needs
 no switch, and it consists of model downloads the user starts — nothing
-else runs on its own. The privacy modes in rules 11 through 14
+else runs on its own. Over-the-air update checks are **paused** until the
+explicit update-check trigger (#68) lands; they return as a
+user-started action, and any further check automation is a privacy-mode
+unlock (rule 12), never a default. The privacy modes in rules 11 through 14
 are the one sanctioned way for user data to go anywhere else, and each of
 them starts from an explicit choice by the user. Strict privacy will
 tighten today's behavior further, not loosen it: in that mode nothing
@@ -264,8 +267,10 @@ true today is expected to ship as a native, MAJOR change). A user in
 strict privacy who wants a new model steps out of strict privacy on
 purpose, gets the model, and steps back; the app never makes that trip
 for them. A device left in strict privacy receives no over-the-air
-updates, including security fixes; updates arrive when the user steps out
-of strict privacy or installs a new binary. Files the user explicitly
+updates, including security fixes; updates arrive once the user steps out
+of strict privacy and runs the explicit update-check trigger (#68), or
+installs a new binary — and automatic launch-time checks return only as a
+privacy-mode unlock (rule 12), if at all. Files the user explicitly
 hands to an OS picker or share sheet are the user's chosen destination,
 not the app's network access. Everything the journal does (rule 1) keeps
 working in strict privacy.
