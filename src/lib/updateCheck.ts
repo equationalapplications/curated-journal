@@ -29,11 +29,18 @@ export async function checkForAppUpdates(): Promise<UpdateCheckResult> {
   }
   try {
     const check = await Updates.checkForUpdateAsync();
-    if (!check.isAvailable) {
+    // A rollback directive (server says: revert to the embedded bundle) is
+    // actionable even though isAvailable/isNew are false — with launch-time
+    // checks off, this trigger is the only path that delivers it.
+    const checkRollback =
+      'isRollBackToEmbedded' in check && check.isRollBackToEmbedded;
+    if (!check.isAvailable && !checkRollback) {
       return 'up-to-date';
     }
     const fetched = await Updates.fetchUpdateAsync();
-    if (!fetched.isNew) {
+    const fetchRollback =
+      'isRollBackToEmbedded' in fetched && fetched.isRollBackToEmbedded;
+    if (!fetched.isNew && !fetchRollback) {
       return 'up-to-date';
     }
     return 'update-downloaded';

@@ -1,5 +1,8 @@
 import * as Updates from 'expo-updates';
 
+// See updateCheckRow.test.tsx: React 19 needs the act-environment flag.
+(global as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 import {
   checkForAppUpdates,
   describeUpdateCheckResult,
@@ -54,6 +57,31 @@ describe('checkForAppUpdates', () => {
     });
     await expect(checkForAppUpdates()).resolves.toBe('update-downloaded');
     expect(mockedList.fetchUpdateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a rollback directive as actionable', async () => {
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: false,
+      isRollBackToEmbedded: true,
+    });
+    (mockedList.fetchUpdateAsync as jest.Mock).mockResolvedValue({
+      isNew: false,
+      isRollBackToEmbedded: true,
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('update-downloaded');
+    expect(mockedList.fetchUpdateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetches when the check reports a rollback even with isNew false', async () => {
+    (mockedList.checkForUpdateAsync as jest.Mock).mockResolvedValue({
+      isAvailable: true,
+      isRollBackToEmbedded: false,
+    });
+    (mockedList.fetchUpdateAsync as jest.Mock).mockResolvedValue({
+      isNew: false,
+      isRollBackToEmbedded: true,
+    });
+    await expect(checkForAppUpdates()).resolves.toBe('update-downloaded');
   });
 
   it('reports up-to-date when a found update is already fetched', async () => {

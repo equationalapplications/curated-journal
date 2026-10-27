@@ -1,6 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as Updates from 'expo-updates';
 
+// React 19 requires this flag for act() to be honored; jest-expo does not
+// set it, and without it async state updates from pending promises warn
+// and flush outside the test's act envelope (cross-test bleed).
+(global as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 import { UpdateCheckRow } from '@/components/settings/UpdateCheckRow';
 import { checkForAppUpdates } from '@/lib/updateCheck';
 
@@ -46,7 +51,7 @@ describe('UpdateCheckRow', () => {
         /Checking…/,
       ),
     );
-    expect(screen.getByRole('button', { name: '…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Checking for updates/ })).toBeDisabled();
     resolve('up-to-date');
     await waitFor(() =>
       expect(screen.getByTestId('update-check-label')).toHaveTextContent(
@@ -97,6 +102,14 @@ describe('UpdateCheckRow', () => {
     fireEvent.press(button);
     fireEvent.press(button);
     resolve('up-to-date');
+    // Settle fully inside this test: the resolved check updates state
+    // without act, and leaving that update pending bleeds into any test
+    // that renders after this one.
+    await waitFor(() =>
+      expect(screen.getByTestId('update-check-label')).toHaveTextContent(
+        /up to date/i,
+      ),
+    );
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
   });
 });

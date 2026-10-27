@@ -35,8 +35,9 @@ button with idle / checking / result / failed states and honest copy.
 - `INTENT.md` rule 10 status: island addressing + check trigger in place;
   device smoke test + rollback drill remain open.
 - `INTENT.md` rule 11 / `README` / `docs/VERSIONING.md` step 0: the
-  trigger exists since 3.0.1, so the first OTA-capable release is 3.0.1.
-- PATCH bump 3.0.0 → 3.0.1 (JS/TS-only).
+  trigger ships in 3.1.0, so the first OTA-capable release is 3.1.0.
+- MINOR bump 3.0.0 → 3.1.0 (JS/TS-only): new user-visible Settings
+  section, OTA-safe per the bump table.
 
 ## Out of scope
 

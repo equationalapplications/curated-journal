@@ -214,7 +214,7 @@ All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind. From 3.0.0
 binaries onward, the network traffic the app starts is model downloads
 the user starts and update checks the user starts from Settings. (The
-explicit check trigger exists since 3.0.1 — issue #68; checks never run
+explicit check trigger exists since 3.1.0 — issue #68; checks never run
 automatically. Fielded pre-3.0.0 binaries still carry the old
 launch-time check until the store install reaches them.)
 
@@ -251,7 +251,7 @@ the version number is how the app tells them apart.
 place: the runtime version derives from the MAJOR version (the Clanker
 model, issue #64), MINOR and PATCH updates address every installed binary
 on the current MAJOR, and the app checks only when the user asks, via
-the Settings trigger (issue #68, shipped in 3.0.1). The delivery path
+the Settings trigger (issue #68, shipped in 3.1.0). The delivery path
 has not been smoke-tested on a device and no rollback drill has been
 run.
 

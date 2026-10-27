@@ -35,10 +35,11 @@ moves on a MAJOR, so this test behaves as originally intended —
 
 ## Release train (per release)
 
-0. **3.0.1 is the first OTA-capable release** — the explicit
-   update-check trigger (#68) shipped there; 3.0.0 was merged but never
-   tagged, and no `v3.0.0` tag will ever exist. Releases before 3.0.1
-   could publish bundles no installed phone would ever fetch.
+0. **3.1.0 is the first OTA-capable release** — the explicit
+   update-check trigger (#68) ships there as a MINOR (new user-visible
+   Settings section, JS/TS-only). 3.0.0 was merged but never tagged, and
+   no `v3.0.0` tag will ever exist. Releases before 3.1.0 could publish
+   bundles no installed phone would ever fetch.
 1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
    for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
@@ -59,6 +60,6 @@ moves on a MAJOR, so this test behaves as originally intended —
    not show manifest meta-data).
 5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
    GitHub release with the APK attached, and read back the asset byte-size from
-   the release API. Release notes for the first post-#68 release (3.0.1+) must
+   the release API. Release notes for the first post-#68 release (3.1.0+) must
    carry the pre-3.0.0 stranding
    note (old-island binaries need this store install).

@@ -60,11 +60,17 @@ export function UpdateCheckRow() {
   return (
     <ListGroup>
       <Row style={styles.row} divider={false}>
-        <ThemedText type="strong" style={styles.rowLabel} testID="update-check-label">
+        <ThemedText
+          type="strong"
+          style={styles.rowLabel}
+          testID="update-check-label"
+          accessibilityLiveRegion="polite"
+        >
           {label}
         </ThemedText>
         <Button
           label={busy ? '…' : 'Check'}
+          accessibilityLabel={busy ? 'Checking for updates' : undefined}
           disabled={busy}
           onPress={() => void runUpdateCheck()}
         />
