@@ -31,14 +31,17 @@ on a scratch branch **before and after applying the bump** — if the
 regenerated tree differs beyond the version stamps themselves, it's a
 MAJOR. (Since the #64 runtime-version fix `expo_runtime_version` only
 moves on a MAJOR, so this test behaves as originally intended —
-`versionName`/`versionCode` still change on every bump.)
+`versionName` still changes on every bump.)
 
 ## Release train (per release)
 
 0. **3.0.0 gate:** the 3.0.0 *release* (the tag and APK — not this PR's
    merge to `main`) is gated on #68 (the explicit update-check trigger)
    landing first — without a trigger, published bundles are never fetched
-   by any phone. Do not tag `v3.0.0` before #68 merges.
+   by any phone. Consequence: **no `v3.0.0` tag ever exists.** The first
+   OTA-capable release is the first PR that lands after #68 (per the
+   same-PR-bump rule that makes it **v3.0.1**); tag that PR's merge
+   commit and attach the stranding note there.
 1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
    for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
@@ -55,5 +58,6 @@ moves on a MAJOR, so this test behaves as originally intended —
    files for what shipped.
 5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
    GitHub release with the APK attached, and read back the asset byte-size from
-   the release API. Release notes for 3.0.0 must carry the pre-3.0.0 stranding
+   the release API. Release notes for the first post-#68 release (3.0.1+) must
+   carry the pre-3.0.0 stranding
    note (old-island binaries need this store install).

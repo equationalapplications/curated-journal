@@ -10,6 +10,11 @@ describe('deriveRuntimeVersion', () => {
   it('rejects malformed version strings', () => {
     expect(() => deriveRuntimeVersion('')).toThrow();
     expect(() => deriveRuntimeVersion('abc')).toThrow();
+    expect(() => deriveRuntimeVersion('3.')).toThrow();
+  });
+
+  it('guards against the retired appVersion policy returning to app.json', () => {
+    expect(appJson.expo.runtimeVersion).toBeUndefined();
   });
 
   it('maps MINOR and PATCH bumps to the same runtime version', () => {

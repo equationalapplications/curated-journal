@@ -212,10 +212,12 @@ model claims.
 
 All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind, and the only
-network traffic is model downloads the user starts. (Over-the-air update
+network traffic the current app starts is model downloads the user
+starts. (Over-the-air update
 checks no longer run automatically — they were disabled as the native
 gate for rule 11's strict privacy, and an explicit check trigger is
-tracked in issue #68.)
+tracked in issue #68. Fielded pre-3.0.0 binaries still carry the old
+launch-time check until the 3.0.0 store install reaches them.)
 
 That behavior is also the app's default mode: the everyday setting needs
 no switch, and it consists of model downloads the user starts — nothing
