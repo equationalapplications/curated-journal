@@ -15,6 +15,9 @@
 import appJson from './app.json'
 
 export function deriveRuntimeVersion(version: string): string {
+  if (!/^\d+\./.test(version)) {
+    throw new Error(`Cannot derive runtime version from "${version}"`)
+  }
   return `${version.split('.')[0]}.0.0`
 }
 

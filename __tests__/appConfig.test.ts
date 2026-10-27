@@ -7,6 +7,11 @@ describe('deriveRuntimeVersion', () => {
     expect(deriveRuntimeVersion('2.0.1')).toBe('2.0.0');
   });
 
+  it('rejects malformed version strings', () => {
+    expect(() => deriveRuntimeVersion('')).toThrow();
+    expect(() => deriveRuntimeVersion('abc')).toThrow();
+  });
+
   it('maps MINOR and PATCH bumps to the same runtime version', () => {
     expect(deriveRuntimeVersion('3.0.0')).toBe(deriveRuntimeVersion('3.1.7'));
     expect(deriveRuntimeVersion('3.1.7')).toBe(deriveRuntimeVersion('3.2.0'));

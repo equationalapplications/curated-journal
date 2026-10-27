@@ -26,14 +26,18 @@ from app start by any JS-only toggle (Tier-3 review MAJOR-3).
 
 ```ts
 import appJson from './app.json'
-const breakingChangeVersion = appJson.expo.version.split('.')[0] // "2"
-const runtimeVer = `${breakingChangeVersion}.0.0`                // "2.0.0"
+export function deriveRuntimeVersion(version: string): string {
+  if (!/^\d+\./.test(version)) {
+    throw new Error(`Cannot derive runtime version from "${version}"`)
+  }
+  return `${version.split('.')[0]}.0.0`
+}
 
 export default {
   expo: {
     ...appJson.expo,
     updates: { ...appJson.expo.updates, checkAutomatically: 'NEVER' },
-    runtimeVersion: runtimeVer,
+    runtimeVersion: deriveRuntimeVersion(appJson.expo.version), // e.g. "3.0.0"
   },
 }
 ```

@@ -35,9 +35,10 @@ moves on a MAJOR, so this test behaves as originally intended —
 
 ## Release train (per release)
 
-0. **3.0.0 gate:** the first release advertising over-the-air delivery is
-   gated on #68 (the explicit update-check trigger) landing first —
-   without a trigger, published bundles are never fetched by any phone.
+0. **3.0.0 gate:** the 3.0.0 *release* (the tag and APK — not this PR's
+   merge to `main`) is gated on #68 (the explicit update-check trigger)
+   landing first — without a trigger, published bundles are never fetched
+   by any phone. Do not tag `v3.0.0` before #68 merges.
 1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
    for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
