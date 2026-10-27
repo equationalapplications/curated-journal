@@ -12,7 +12,8 @@ Each rule has a **Status** line saying how much of it the code does today:
 - **Planned** — decided, but not in the code yet.
 - **Open decision** — not decided yet.
 
-Statuses were checked against the code on 2026-10-27. Every **Built** and
+Statuses were checked against the code at commit `42b7fc2` on 2026-10-27.
+Every **Built** and
 **Partly built** line below reflects that check. Rules 11 through 14 were
 added afterwards to carry a newly ruled extension of the product's
 intention; they are **Planned**, and nothing in the code implements them
@@ -212,12 +213,13 @@ model claims.
 
 All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind, and the only
-network traffic is model downloads the user starts and OTA update checks
-and downloads, on every launch.
+network traffic is model downloads the user starts, OTA update checks on
+every launch, and update downloads when one is available.
 
 That behavior is also the app's default mode: the everyday setting needs
-no switch, and it consists of model downloads the user starts and OTA
-update checks — nothing else. The privacy modes in rules 11 through 14
+no switch, and it consists of model downloads the user starts, OTA update
+checks on every launch, and update downloads when one is available —
+nothing else. The privacy modes in rules 11 through 14
 are the one sanctioned way for user data to go anywhere else, and each of
 them starts from an explicit choice by the user. Strict privacy will
 tighten today's behavior further, not loosen it: in that mode nothing
@@ -234,8 +236,9 @@ framing is **Planned** under rules 11 through 14.
 A change that breaks over-the-air updates for installed binaries is a
 MAJOR bump; an OTA-safe user-visible feature is MINOR; a fix is PATCH.
 The full policy and release train live in `docs/VERSIONING.md`. When in
-doubt, regenerate the native project on a scratch branch — if it changes
-at all, the bump is MAJOR.
+doubt, regenerate the native project on a scratch branch before and after
+applying the bump — if the regenerated tree differs beyond the version
+stamps themselves, the bump is MAJOR.
 
 *Why:* installed phones can only receive updates their binary can run;
 the version number is how the app tells them apart.
@@ -326,16 +329,16 @@ while the user is running it, and it carries only the in-mission data the
 mode's description names. Writing to or refreshing a Solo replica is sync
 under rule 13 and needs its own explicit choice. Anything from a session
 that persists into the journal after the session ends is sync under rule
-13 and needs its own explicit choice. What the phone may
-spend — battery, RAM, a model's attention — during a mission is an open
-decision.
+13 and needs its own explicit choice. What the phone may spend — battery,
+RAM, inference time — during a mission is an open decision.
 
 *Why:* the family's hardware is only useful with a phone-side partner,
 and that partner must honor the same privacy rules as the journal — a
 drone accessory must not become the back door to the user's notes.
 
 **Status: Planned.** The app has no hardware pairing of any kind in the
-code, and the resource budget for phone-side inference in a mission is an
+code; pairing will need new native permissions, a MAJOR change; and the
+resource budget for phone-side inference in a mission is an
 **Open decision**.
 
 ## Out of scope (don't build these here)

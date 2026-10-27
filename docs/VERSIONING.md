@@ -26,8 +26,11 @@ already in the field?
 3. Otherwise → **PATCH**.
 
 When in doubt between MAJOR and MINOR: run `npx expo-doctor`, diff the
-regenerated `android/` tree (`npx expo prebuild --platform android --no-install`
-on a scratch branch), and if the native project changes at all, it's a MAJOR.
+regenerated `android/` tree (`npx expo prebuild --platform android --no-install`)
+on a scratch branch **before and after applying the bump** — if the
+regenerated tree differs beyond the version stamps themselves, it's a
+MAJOR. (Under the current `appVersion` runtime policy the stamps always
+change; compare against the intended post-fix policy, or wait for #64.)
 
 ## Release train (per release)
 
