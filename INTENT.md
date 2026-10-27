@@ -70,8 +70,9 @@ inference, and maintenance passes that respect real hardware limits.
 - **Night Shift** — the full-screen maintenance mode that runs the heavy
   librarian and heal passes in the foreground while the device charges.
 - **Librarian / heal pass** — the engine's two upkeep jobs: organizing
-  entries into notes and connections (librarian), and repairing or retiring
-  stale ones (heal).
+  entries into notes and connections (librarian), and repairing or
+  retiring stale ones (heal). The engine also offers re-embedding and
+  prune operations; the app has wired but never queues them.
 - **Emergent ontology** — the default mode in which the model invents its
   own note categories and link types, instead of following a fixed schema.
 - **OKF** — the Open Knowledge Format, the zip bundle used for import and
@@ -84,10 +85,13 @@ inference, and maintenance passes that respect real hardware limits.
   intended behavior, in which only native changes split the island, is
   not yet in place (see rule 10).
 - **Privacy mode** — a setting the user picks that decides whether and how
-  the app may communicate beyond the device. The strictest mode, **strict
-  privacy**, allows no off-device communication of any kind — no internet,
-  no Bluetooth, no local network. Each less strict mode unlocks a
-  further, named set of connectivity settings. Not yet in the code.
+  the app itself may communicate beyond the device. The strictest mode,
+  **strict privacy**, allows no off-device communication by the app of any
+  kind — no internet, no Bluetooth, no local network. (Files the user
+  explicitly hands to an OS picker or share sheet move at the user's
+  chosen destination; that is the user's action, not the app's network
+  access.) Each less strict mode unlocks a further, named set of
+  connectivity settings. Not yet in the code.
 - **Curated Thoughts** — the family's desktop app, and the sibling whose
   privacy-mode pattern Curated Journal adopts.
 - **SynapseTree** — the family's cloud knowledge service. A user who
@@ -164,9 +168,10 @@ inference.
 *Why:* RAM and battery on a phone are finite; running a second model next
 to the inference model is the design error this rule exists to prevent.
 
-**Status: Built.** The engine still exposes a re-embedding operation and
-the maintenance screen's copy still mentions it, but the app never queues
-it; removing that dead path is tracked cleanup.
+**Status: Built.** The engine exposes re-embedding and prune operations
+and the app has wired them (`journalWikiMachine.ts`, `useJournalWiki`,
+`nightShiftCopy.ts`) but never queues them; removing those dead paths is
+tracked cleanup (issue #64).
 
 ### 6. Knowledge is portable in the open format
 
@@ -207,7 +212,8 @@ model claims.
 
 All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind, and the only
-network traffic is model downloads the user starts and OTA update checks.
+network traffic is model downloads the user starts and OTA update checks
+and downloads, on every launch.
 
 That behavior is also the app's default mode: the everyday setting needs
 no switch, and it consists of model downloads the user starts and OTA
@@ -219,8 +225,9 @@ reaches beyond the device, update checks included.
 
 *Why:* privacy is the product, not a feature flag.
 
-**Status: Built** for today's behavior, which has no privacy modes and no
-sync. The second paragraph describes rules 11 through 14, which are
+**Status: Built** for today's behavior in paragraph 1 and for the
+default-mode naming that opens paragraph 2; the privacy-mode machinery
+the rest of that paragraph describes (rules 11 through 14) is
 **Planned**.
 
 ### 10. Every change to main carries a version bump, decided by OTA compatibility
@@ -238,9 +245,9 @@ the version number is how the app tells them apart.
 production channel), but under the current app-version runtime policy
 every version bump starts a new runtime island, so updates do not yet
 reach installed binaries the way the bump classes intend. Changing that
-policy is planned native work and will be a MAJOR change. The delivery
-path has not been smoke-tested on a device and no rollback drill has been
-run.
+policy is planned native work and will be a MAJOR change (issue #64). The
+delivery path has not been smoke-tested on a device and no rollback drill
+has been run.
 
 ### 11. The user picks a privacy mode, and strict privacy means nothing leaves the device
 
@@ -253,8 +260,12 @@ that can reach outside may act before the mode is honored (making that
 true today is expected to ship as a native, MAJOR change). A user in
 strict privacy who wants a new model steps out of strict privacy on
 purpose, gets the model, and steps back; the app never makes that trip
-for them. Everything the journal does (rule 1) keeps working in strict
-privacy.
+for them. A device left in strict privacy receives no over-the-air
+updates, including security fixes; updates arrive when the user steps out
+of strict privacy or installs a new binary. Files the user explicitly
+hands to an OS picker or share sheet are the user's chosen destination,
+not the app's network access. Everything the journal does (rule 1) keeps
+working in strict privacy.
 
 *Why:* a privacy promise with an exception is a promise with a hole, and
 the user cannot see how big the hole is. A mode that means "nothing, ever"
@@ -309,8 +320,11 @@ holds. When a user has unlocked hardware pairing through a privacy mode
 (rule 12), Curated Journal is the app that pairs with the device and
 serves as its phone-side brain, in a pairing session the user starts and
 runs. An active pairing session is not sync (rule 13): it exists only
-while the user is running it. What the phone may spend — battery, RAM, a
-model's attention — during a mission is an open decision.
+while the user is running it, and it carries only the in-mission data the
+mode's description names. Writing to or refreshing a Solo replica is sync
+under rule 13 and needs its own explicit choice. What the phone may
+spend — battery, RAM, a model's attention — during a mission is an open
+decision.
 
 *Why:* the family's hardware is only useful with a phone-side partner,
 and that partner must honor the same privacy rules as the journal — a
