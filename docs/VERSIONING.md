@@ -40,9 +40,12 @@ MAJOR, so this test behaves as originally intended.)
 1. Bump the three synced files in the change's own PR (see the 1.3.0/1.4.0 bumps
    for the exact shape).
 2. Merge → `npx expo prebuild --platform android --no-install` → grep-verify
-   `versionName`, `expo_runtime_version`, and the `expo-channel-name` header in
-   the generated tree **before** building. A stale stamp means the APK bakes
-   the old version regardless of the tag. `expo_runtime_version` must equal
+   `versionName`, `expo_runtime_version`, `expo-channel-name`, **and**
+   `EXPO_UPDATES_CHECK_ON_LAUNCH` = `NEVER` in the generated tree **before**
+   building. A stale stamp means the APK bakes
+   the old version regardless of the tag — and an un-regenerated `android/`
+   tree ships with the old launch-time native check, breaking the strict
+   privacy gate. `expo_runtime_version` must equal
    `<MAJOR>.0.0` (the derived runtime version, `app.config.ts`).
 3. Production build: `./gradlew assembleRelease` (from `android/`) through the
    `heavy-build` wrapper — never bare gradle on this machine.

@@ -22,17 +22,19 @@ describe('app config privacy + OTA gate', () => {
     expect(appConfig.expo.updates.checkAutomatically).toBe('NEVER');
   });
 
-  it('keeps the OTA url and production channel from app.json', () => {
-    expect(appConfig.expo.updates.url).toBe(appJson.expo.updates.url);
-    expect(appConfig.expo.updates.requestHeaders).toEqual(
-      appJson.expo.updates.requestHeaders,
+  it('keeps the OTA url and production channel literal', () => {
+    expect(appConfig.expo.updates.url).toBe(
+      'https://u.expo.dev/7bfd46bc-09d3-40d0-a3af-1ea0ea77304b',
     );
+    expect(appConfig.expo.updates.requestHeaders).toEqual({
+      'expo-channel-name': 'production',
+    });
   });
 
   it('derives the runtime version from the app version MAJOR', () => {
     expect(appConfig.expo.runtimeVersion).toBe(
       deriveRuntimeVersion(appJson.expo.version),
     );
-    expect(appConfig.expo.runtimeVersion).toBe('3.0.0');
+    expect(appConfig.expo.runtimeVersion).toMatch(/^\d+\.0\.0$/);
   });
 });

@@ -166,7 +166,7 @@ JS-level fixes and assets can be published over-the-air without a native rebuild
 
 - Release builds do **not** check for updates automatically (`checkAutomatically: 'NEVER'` — the strict-privacy gate, INTENT rule 11); an explicit in-app check trigger is tracked in [#68](https://github.com/equationalapplications/curated-journal/issues/68).
 - Runtime compatibility is keyed to a **derived runtime version** — `<MAJOR>.0.0` (`app.config.ts`) — so a published bundle reaches every binary on the same MAJOR; only a MAJOR bump starts a new island.
-- Note: binaries shipped before the runtime-version fix (≤ 2.0.1) are stranded on their old island — they receive nothing over-the-air and need the 3.0.0 store install.
+- Note: 2.0.1 installs are stranded on their old island (their appVersion label "2.0.1" matches nothing the new scheme publishes) — they need the 3.0.0 store install. 2.0.0 installs happen to share the derived MAJOR-2 label.
 - Release APKs are built **locally** (Gradle wrapper + heavy-build procedure), so the update channel is embedded from `expo.updates.requestHeaders` at prebuild — the `eas.json` `production` profile's `channel` field is only consumed by `eas build`.
 - The server-side `production` channel is created once with `eas channel:create production`.
 

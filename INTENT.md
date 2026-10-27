@@ -276,9 +276,10 @@ is one the user can trust without reading the code.
 
 **Status: Planned.** There is no privacy mode setting in the code. Today
 the app's network behavior is fixed as rule 9 describes. The native-side
-gate exists as of this change: the launch-time update check is disabled
-(`checkAutomatically: 'NEVER'`), so nothing network-capable runs before
-the app decides; the mode system itself is still to be built.
+gate is configured and takes effect at the next native prebuild: the
+launch-time update check is disabled (`checkAutomatically: 'NEVER'`), so
+nothing network-capable will run before the app decides; the mode system
+itself is still to be built.
 
 ### 12. Each privacy mode away from strict unlocks connectivity step by step
 
