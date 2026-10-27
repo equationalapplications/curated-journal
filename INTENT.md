@@ -63,7 +63,9 @@ inference, and maintenance passes that respect real hardware limits.
 
 After a model is installed, every feature — writing, organizing, asking,
 exploring the graph, importing and exporting — works in airplane mode. No
-feature may require a backend call.
+feature may require a backend call. (On web, OKF import is a native-only
+capability and is unavailable — a platform limitation, not a network
+dependency.)
 
 *Why:* the product's promise is privacy and reliability; a journal that
 stops working in a basement or a flight is not a journal.
@@ -120,7 +122,8 @@ to the inference model is the design error this rule exists to prevent.
 
 The app imports and exports OKF (Open Knowledge Format) zip bundles, and
 imports legacy v0.1 bundles. Export writes what the engine actually
-stores; import is resumable and cancellable, and reports honest progress.
+stores; import persists partial progress (chunks already imported stay
+imported), is cancellable, and reports honest progress.
 
 *Why:* the user's knowledge must not be held hostage by the app.
 
@@ -209,4 +212,5 @@ not been smoke-tested on a device and no rollback drill has been run.
    arrive in the same pull request as the behavior change.
 5. **Releases follow the train** in `docs/VERSIONING.md`: version-bump PR,
    prebuild, verify the generated version stamps before building, then
-   build the artifact through the machine's heavy-build wrapper.
+   build the release artifact on the build machine (which runs builds
+   through a resource-discipline wrapper — see `docs/VERSIONING.md`).
