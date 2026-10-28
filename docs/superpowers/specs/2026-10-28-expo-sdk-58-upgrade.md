@@ -40,7 +40,7 @@ runtime island starts; the pending OTA smoke test + rollback drill (spec
 - Dev: `jest-expo` → ~58.0.12, `eslint-config-expo` → ~58.0.4, `jest` 29.7 →
   ~30.5.2, `@types/jest` → ~30.0.0, new peer `@react-native/jest-preset@~0.88.0`
   (jest-expo 58 moved the RN preset to a separate package).
-- New explicit dep `react-native-nitro-modules@^0.37.0` (peer of
+- New explicit dep `react-native-nitro-modules@^0.37.1` (peer of
   `react-native-nitro-unzip`; was previously satisfied only by npm peer
   auto-install, which `--legacy-peer-deps` disables — see §5).
 
@@ -73,11 +73,15 @@ exists in the installed 4.30.0 source. Patch deleted, not re-based.
 
 - `.npmrc` with `legacy-peer-deps=true` added — **temporary**, see §5.
   Remove when expo-llm-wiki ≥7.13.1 publishes and CJ consumes it.
-- R8 minify is ON by default in SDK 58 release builds
-  (`android.enableMinifyInReleaseBuilds=true`, verified in the regenerated
-  tree). Release-train checkpoint: the 4.0.0 `assembleRelease` APK must be
-  smoke-tested on device (drill covers it) — JNI-heavy deps (llama.rn,
-  nitro-unzip) are the ones to watch for keep-rule needs.
+- R8 minify: SDK 58 defaults it ON
+  (`android.enableMinifyInReleaseBuilds=true`). **Decision (T4 PR review,
+  2026-10-28): pinned OFF in this PR** via the expo-build-properties block in
+  `app.json` (`enableMinifyInReleaseBuilds: false`) — the SDK bump changes
+  one thing at a time, and a stripped llama.rn class in a new-island binary
+  (no OTA repair possible) would cost a store reinstall. Enabling R8 is a
+  separate deliberate change with its own on-device proof. Verified: the
+  regenerated `android/gradle.properties` carries
+  `android.enableMinifyInReleaseBuilds=false`.
 - `expo-doctor` 1.21.5: 19/20 checks pass. The failing "app.config.ts is not
   using app.json" check is a false positive — the checker doesn't recognize
   ESM `import appJson from './app.json'` + spread; `npx expo config --type
@@ -88,8 +92,9 @@ exists in the installed 4.30.0 source. Patch deleted, not re-based.
 
 | ID | Follow-up |
 |----|-----------|
-| F1 | `@equationalapplications/expo-llm-wiki` peer range caps `expo-sqlite` at `^57` (even at 7.13.0). Peer-widening PR rides in that repo (PATCH 7.13.1). Until it publishes and CJ consumes it, `npm ci` needs the `.npmrc` legacy-peer-deps flag. |
-| F2 | Remove `.npmrc` after F1 lands here. |
+| F1 | `@equationalapplications/expo-llm-wiki` peer range caps `expo-sqlite` at `^57` (even at 7.13.0). Peer-widening PR rides in that repo ([#298](https://github.com/equationalapplications/expo-llm-wiki/pull/298), PATCH 7.13.1). Until it publishes and CJ consumes it, `npm ci` needs the `.npmrc` legacy-peer-deps flag. |
+| F1a | **CJ stays exact-pinned at 7.7.5 for the wiki packages** despite the "latest compatible" directive — 7.13.1 (the first SDK-58-installable release) does not exist until #298 merges, and 7.13.0 cannot resolve cleanly. Adoption of 7.13.1 is owned by this lane, scheduled immediately after #298 publishes (same-session follow-up, small PR). |
+| F2 | Remove `.npmrc` after F1 lands here. The removal is VERIFIED, not assumed: delete the file, `rm -rf node_modules package-lock.json && npm install` fresh, then `npm ls --all >/dev/null` (exit 0, no peer warnings) and `npx expo-doctor` before trusting the tree. |
 | F3 | OTA drill re-targets the 4.0.0 binary; on-device proof row must read **4.0.0**. |
 | F4 | llama.rn stays 0.12.5 (SDK 58 compat unverified upstream; NG2 of the 57 spec still applies). |
 | F5 | Dependabot PRs #61/#66/#67 rebase after this merges (they target the 57 tree). |
@@ -104,4 +109,5 @@ exists in the installed 4.30.0 source. Patch deleted, not re-based.
   NEVER (AndroidManifest.xml:18), channel production (:21).
 - `npx expo config --type public`: runtimeVersion `4.0.0`,
   checkAutomatically `NEVER`.
-- screens 4.30.0 source contains the null-stack guard (verbatim).
+- screens 4.30.1 source contains the null-stack guard (verbatim; lockfile
+  resolves ~4.30.0 → 4.30.1).

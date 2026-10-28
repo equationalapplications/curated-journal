@@ -3,6 +3,9 @@ import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
 const mockZip = jest.fn(async () => {});
 const mockShareAsync = jest.fn(async () => {});
 const mockIsAvailable = jest.fn(async () => true);
+// Delegated per-instance so tests can defer/inspect write resolution
+// (the SDK 58 async-write ordering regression guard below).
+const mockFileWrite = jest.fn(async (..._args: unknown[]) => {});
 
 jest.mock('react-native-zip-archive', () => ({
   zip: (...args: unknown[]) => mockZip(...(args as [])),
@@ -40,7 +43,7 @@ jest.mock('expo-file-system', () => {
   class File {
     uri: string;
     create = jest.fn();
-    write = jest.fn();
+    write = jest.fn((...args: unknown[]) => mockFileWrite(...(args as [unknown])));
     base64 = jest.fn(async () => 'UEsDBA==');
     constructor(parent: { uri: string } | string, name?: string) {
       const base = typeof parent === 'string' ? parent : parent.uri;
@@ -83,6 +86,40 @@ describe('exportOkfFromDump zip target', () => {
     // and Android failed with EROFS (read-only file system).
     expect(String(target)).toMatch(/^file:\/\/.+\/export-test-uuid-1234\.zip$/);
     expect(String(target)).not.toContain('[object Object]');
+  });
+});
+
+describe('exportOkfFromDump write/zip ordering', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('awaits each File.write before zipping (SDK 58: File.write is async)', async () => {
+    const order: string[] = [];
+    let resolveWrite!: () => void;
+    mockZip.mockImplementationOnce(async () => {
+      order.push('zip');
+    });
+    mockFileWrite.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = () => {
+            order.push('write');
+            resolve();
+          };
+        }),
+    );
+
+    const done = exportOkfFromDump({ entities: [] } as never);
+    // Let the export loop reach the write call; with the await in place it
+    // then blocks until we release the deferred write.
+    await Promise.resolve();
+    resolveWrite();
+    await done;
+
+    // A dropped `await out.write(...)` lets zip run first — the exact race
+    // the SDK 58 async-write change would reintroduce.
+    expect(order).toEqual(['write', 'zip']);
   });
 });
 
