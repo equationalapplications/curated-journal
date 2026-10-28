@@ -3,8 +3,8 @@
   "main": "expo-router/entry",
   "version": "4.0.0",
   "dependencies": {
-    "@equationalapplications/core-llm-wiki": "7.7.5",
-    "@equationalapplications/expo-llm-wiki": "7.7.5",
+    "@equationalapplications/core-llm-wiki": "7.13.1",
+    "@equationalapplications/expo-llm-wiki": "7.13.1",
     "@expo/ui": "~58.0.24",
     "@shopify/react-native-skia": "2.14.0",
     "@xstate/react": "^5.0.5",

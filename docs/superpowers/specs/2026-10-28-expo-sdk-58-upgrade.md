@@ -40,6 +40,10 @@ runtime island starts; the pending OTA smoke test + rollback drill (spec
 - Dev: `jest-expo` → ~58.0.12, `eslint-config-expo` → ~58.0.4, `jest` 29.7 →
   ~30.5.2, `@types/jest` → ~30.0.0, new peer `@react-native/jest-preset@~0.88.0`
   (jest-expo 58 moved the RN preset to a separate package).
+- EA wiki packages `core-llm-wiki` / `expo-llm-wiki` 7.7.5 → **7.13.1**
+  (exact-pinned, lockstep per the 57 spec's G2) — adopted in this PR after
+  the ^58 peer widening shipped as 7.13.1 (expo-llm-wiki#298, published
+  during this PR's review cycle).
 - New explicit dep `react-native-nitro-modules@^0.37.1` (peer of
   `react-native-nitro-unzip`; was previously satisfied only by npm peer
   auto-install, which `--legacy-peer-deps` disables — see §5).
@@ -92,9 +96,9 @@ exists in the installed 4.30.0 source. Patch deleted, not re-based.
 
 | ID | Follow-up |
 |----|-----------|
-| F1 | `@equationalapplications/expo-llm-wiki` peer range caps `expo-sqlite` at `^57` (even at 7.13.0). Peer-widening PR rides in that repo ([#298](https://github.com/equationalapplications/expo-llm-wiki/pull/298), PATCH 7.13.1). Until it publishes and CJ consumes it, `npm ci` needs the `.npmrc` legacy-peer-deps flag. |
-| F1a | **CJ stays exact-pinned at 7.7.5 for the wiki packages** despite the "latest compatible" directive — 7.13.1 (the first SDK-58-installable release) does not exist until #298 merges, and 7.13.0 cannot resolve cleanly. Adoption of 7.13.1 is owned by this lane, scheduled immediately after #298 publishes (same-session follow-up, small PR). |
-| F2 | Remove `.npmrc` after F1 lands here. The removal is VERIFIED, not assumed: delete the file, `rm -rf node_modules package-lock.json && npm install` fresh, then `npm ls --all >/dev/null` (exit 0, no peer warnings) and `npx expo-doctor` before trusting the tree. |
+| F1 | ~~Pending~~ **DONE in this PR**: expo-llm-wiki#298 merged, 7.13.1 published (peer range now includes `^58.0.0`, registry-verified), and CJ consumes it. |
+| F1a | ~~Hold~~ **RESOLVED in this PR**: wiki packages exact-pinned at 7.13.1; full suite passes on the six-minor jump. |
+| F2 | ~~Pending~~ **DONE in this PR**: `.npmrc` deleted; removal VERIFIED per the steps below — fresh resolve (`rm -rf node_modules package-lock.json && npm install`, NO legacy flag), `npm ls --all` exit 0, `npx expo-doctor` 19/20 (only the documented config-heuristic false positive). |
 | F3 | OTA drill re-targets the 4.0.0 binary; on-device proof row must read **4.0.0**. |
 | F4 | llama.rn stays 0.12.5 (SDK 58 compat unverified upstream; NG2 of the 57 spec still applies). |
 | F5 | Dependabot PRs #61/#66/#67 rebase after this merges (they target the 57 tree). |
