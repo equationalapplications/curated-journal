@@ -10,7 +10,7 @@ design around an INTENT rule silently.
 
 ## Expo has changed
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/
+Read the exact versioned docs at https://docs.expo.dev/versions/v58.0.0/
 before writing any code. APIs that exist in docs prose may not be public
 in the installed package version — verify against the installed types.
 
@@ -32,12 +32,12 @@ Update an `INTENT.md` status line in the same PR that changes behavior.
 ## Known platform gotchas (each cost a debug round)
 
 - **Android 15+ edge-to-edge keyboards:** `adjustResize` is dead and
-  `KeyboardAvoidingView` is unreliable on SDK 57. Use
+  `KeyboardAvoidingView` is unreliable on SDK 57 (Android 15 edge-to-edge — OS-level behavior, carried into 58). Use
   `react-native-keyboard-controller` (`KeyboardProvider` in the root
   layout + `KeyboardAwareScrollView` for scrollables); for fixed layouts
   use keyboard-height padding with `marginTop: 'auto'`.
 - **SAF file writes:** `expo-file-system`'s StorageAccessFramework (from
-  `expo-file-system/legacy` on SDK 57) defaults `writeAsStringAsync` to
+  `expo-file-system/legacy`, still the supported path on SDK 58) defaults `writeAsStringAsync` to
   UTF-8 — passing base64 content REQUIRES `{ encoding:
   EncodingType.Base64 }`, or the zip writes as literal text and corrupts.
 - **SAF directory picker:** it reopens at the last-used provider unless

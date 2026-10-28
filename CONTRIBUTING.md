@@ -16,7 +16,7 @@ open. This file covers what you need to work on it.
 ## Development setup
 
 Prerequisites: Node.js ≥ 22 (CI runs Node 26) and npm. For device work,
-Android Studio and/or Xcode per the standard [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/)
+Android Studio and/or Xcode per the standard [Expo SDK 58](https://docs.expo.dev/versions/v58.0.0/)
 toolchain — read the versioned Expo docs, not generic tutorials; Expo has
 changed.
 

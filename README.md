@@ -1,12 +1,12 @@
 # Curated Journal
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
+[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2058-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v58.0.0/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 **[GitHub](https://github.com/equationalapplications/curated-journal)** · **[Technical Spec](./docs/superpowers/specs/2026-06-24-curated-journal-demo-app.md)** · **[Issues](https://github.com/equationalapplications/curated-journal/issues)** · **[expo-llm-wiki](https://github.com/equationalapplications/expo-llm-wiki)** · **[ScopeLab](https://equationalapplications.github.io/expo-llm-wiki/scopelab/)** · **[WikiDemo](https://equationalapplications.github.io/expo-llm-wiki/wiki-demo/)**
 
-A privacy-first, **100% offline** mobile second brain built with [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/). Curated Journal is the flagship reference app for the [`@equationalapplications/expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) ecosystem — a practical personal journal and a developer cookbook for on-device LLM memory on iOS and Android.
+A privacy-first, **100% offline** mobile second brain built with [Expo SDK 58](https://docs.expo.dev/versions/v58.0.0/). Curated Journal is the flagship reference app for the [`@equationalapplications/expo-llm-wiki`](https://github.com/equationalapplications/expo-llm-wiki) ecosystem — a practical personal journal and a developer cookbook for on-device LLM memory on iOS and Android.
 
 > Inspired by [Andrej Karpathy's LLM Wiki memory spec](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
@@ -81,7 +81,7 @@ v1 retrieval: MiniSearch keyword search (no second embedding model)
 
 | Layer | Packages |
 |-------|----------|
-| **Framework** | Expo SDK 57, React Native 0.86, expo-router |
+| **Framework** | Expo SDK 58, React Native 0.88, expo-router |
 | **Memory engine** | `@equationalapplications/expo-llm-wiki`, `expo-sqlite` |
 | **Inference** | `llama.rn` (BYOI GGUF) |
 | **Knowledge interchange** | `@equationalapplications/core-okf` |
@@ -117,7 +117,7 @@ npx expo prebuild
 npm test
 ```
 
-Dependencies include `@equationalapplications/expo-llm-wiki`, `llama.rn`, Skia, and OKF zip tooling. Use `npx expo install` for Expo-managed packages so the version resolver picks builds compatible with SDK 57.
+Dependencies include `@equationalapplications/expo-llm-wiki`, `llama.rn`, Skia, and OKF zip tooling. Use `npx expo install` for Expo-managed packages so the version resolver picks builds compatible with SDK 58.
 
 ### Run (development build)
 
@@ -191,7 +191,7 @@ eas update:list --branch production   # verify it landed on the expected runtime
 | [expo-llm-wiki — Emergent ontology](https://github.com/equationalapplications/expo-llm-wiki/blob/main/docs/superpowers/specs/2026-06-23-per-entity-seeded-ontology-design.md) | Strict, Emergent, and Off ontology modes |
 | [expo-llm-wiki — Graph traversal](https://github.com/equationalapplications/expo-llm-wiki/blob/main/docs/superpowers/specs/2026-06-23-graph-traversal-api-design.md) | `traverseGraph` and `formatGraphContext` |
 | [OKF v0.2 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) | Open Knowledge Format bundle layout |
-| [Expo SDK 57 docs](https://docs.expo.dev/versions/v57.0.0/) | Platform APIs used by this app |
+| [Expo SDK 58 docs](https://docs.expo.dev/versions/v58.0.0/) | Platform APIs used by this app |
 | [llama.rn](https://github.com/mybigday/llama.rn) | On-device GGUF inference for React Native |
 
 ---
@@ -237,7 +237,7 @@ This repository is intended as an open-source reference implementation. Before o
 
 1. Read the [technical specifications](./docs/superpowers/specs/)
 2. Follow existing code conventions in `src/`
-3. Consult [Expo SDK 57 docs](https://docs.expo.dev/versions/v57.0.0/) for platform APIs
+3. Consult [Expo SDK 58 docs](https://docs.expo.dev/versions/v58.0.0/) for platform APIs
 
 Issues and PRs welcome at [github.com/equationalapplications/curated-journal](https://github.com/equationalapplications/curated-journal).
 
