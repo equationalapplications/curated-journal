@@ -11,7 +11,7 @@ import {
   type HealStepSummary,
 } from '@/lib/healLoop';
 
-export type NightShiftOperation = 'librarian' | 'heal';
+export type NightShiftOperation = 'librarian' | 'heal' | 'prune';
 
 export type QueueItem = { operation: NightShiftOperation; entityId: string };
 
@@ -71,6 +71,12 @@ async function runQueueStep(
       return;
     case 'heal':
       return runHealToCompletion(maintenance.runHeal, item.entityId, { shouldContinue });
+    case 'prune':
+      // Opt-in pass (Settings toggle): permanent on-device cleanup of
+      // soft-deleted entries past their retention window and old events.
+      // No model involvement, so it cannot trip the rule-5 second-model ban.
+      await maintenance.runPrune(item.entityId);
+      return;
   }
 }
 

@@ -1,11 +1,29 @@
 import {
   nightShiftDetailLabel,
+  nightShiftOperationTitle,
   nightShiftPhaseLabel,
   nightShiftStepLabel,
   NIGHT_SHIFT_DONE_PHASE,
 } from '@/lib/nightShiftCopy';
 
 const idleStatus = { ingesting: false, librarian: false, heal: false };
+
+describe('prune pass copy', () => {
+  it('titles the prune pass', () => {
+    expect(nightShiftOperationTitle('prune')).toBe('Prune pass');
+  });
+
+  it('describes prune honestly as permanent cleanup, no AI', () => {
+    expect(nightShiftDetailLabel('prune')).toMatch(/permanently/i);
+    expect(nightShiftDetailLabel('prune')).toMatch(/deleted/i);
+  });
+
+  it('shows a prune phase label', () => {
+    expect(
+      nightShiftPhaseLabel('prune', idleStatus),
+    ).toContain('Cleaning up');
+  });
+});
 
 describe('nightShiftPhaseLabel', () => {
   it('shows AI generation while tokens are streaming', () => {

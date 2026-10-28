@@ -58,6 +58,32 @@ describe('journalWikiMachine', () => {
     actor.stop();
   });
 
+  it('runs an opt-in prune item and records it in order', async () => {
+    const order: string[] = [];
+    maintenance.runHeal.mockImplementation(async () => {
+      order.push('heal');
+      return makeHealResult();
+    });
+    maintenance.runPrune.mockImplementation(async () => {
+      order.push('prune');
+    });
+    const actor = createActor(journalWikiMachine, {
+      input: { wiki: makeWiki() as never, maintenance },
+    }).start();
+    actor.send({
+      type: 'START_NIGHT_SHIFT',
+      queue: [
+        { operation: 'heal', entityId: 'e1' },
+        { operation: 'prune', entityId: 'e1' },
+      ],
+    });
+    await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
+    expect(order).toEqual(['heal', 'prune']);
+    expect(maintenance.runPrune).toHaveBeenCalledWith('e1');
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
+    actor.stop();
+  });
+
   it('drains a heal item across multiple batches', async () => {
     const remainingSequence = [2, 1, 0];
     maintenance.runHeal.mockImplementation(async () =>

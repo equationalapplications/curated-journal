@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
 import { resetNightShiftLlmProgress, setNightShiftActive } from '@/lib/llamaProvider';
+import { getNightShiftPruneEnabled } from '@/lib/entityStorage';
 import {
   nightShiftDetailLabel,
   nightShiftOperationTitle,
@@ -68,14 +69,24 @@ export function NightShiftScreen() {
     activateKeepAwakeAsync('night-shift').catch(() => {});
     setNightShiftActive(true);
     setHasStartedNightShift(true);
-    send({
-      type: 'START_NIGHT_SHIFT',
-      queue: [
-        { operation: 'librarian', entityId },
-        { operation: 'heal', entityId },
-      ],
+    let cancelled = false;
+    // The prune pass is opt-in (Settings). It runs last: cleanup only
+    // makes sense after librarian/heal have produced their changes.
+    void getNightShiftPruneEnabled().then((pruneEnabled) => {
+      if (cancelled) return;
+      send({
+        type: 'START_NIGHT_SHIFT',
+        queue: [
+          { operation: 'librarian', entityId },
+          { operation: 'heal', entityId },
+          ...(pruneEnabled
+            ? [{ operation: 'prune' as const, entityId }]
+            : []),
+        ],
+      });
     });
     return () => {
+      cancelled = true;
       deactivateKeepAwake('night-shift');
       setNightShiftActive(false);
     };

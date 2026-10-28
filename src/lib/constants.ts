@@ -17,3 +17,4 @@ export const ENTITY_ID_KEY = 'curated_journal_entity_id';
 export const MODEL_PATH_KEY = 'curated_journal_model_path';
 export const MODEL_ID_KEY = 'curated_journal_model_id';
 export const DISPLAY_NAME_KEY = 'curated_journal_display_name';
+export const NIGHT_SHIFT_PRUNE_KEY = 'curated_journal_night_shift_prune';
