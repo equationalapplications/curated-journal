@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
+import Constants from 'expo-constants';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { ListGroup, Row } from '@/components/ui/card';
@@ -59,7 +60,7 @@ export function UpdateCheckRow() {
 
   return (
     <ListGroup>
-      <Row style={styles.row} divider={false}>
+      <Row style={styles.row} divider>
         <ThemedText
           type="strong"
           style={styles.rowLabel}
@@ -74,6 +75,14 @@ export function UpdateCheckRow() {
           disabled={busy}
           onPress={() => void runUpdateCheck()}
         />
+      </Row>
+      <Row style={styles.row} divider={false}>
+        {/* Sourced from the running manifest, not the native binary: after
+            an EAS Update applies, expoConfig.version reflects the OTA
+            bundle, which is the on-device proof the new bundle is live. */}
+        <ThemedText type="meta" testID="app-version-label">
+          {`App version ${Constants.expoConfig?.version ?? 'unknown'}`}
+        </ThemedText>
       </Row>
     </ListGroup>
   );
