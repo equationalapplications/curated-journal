@@ -3,8 +3,8 @@
   "main": "expo-router/entry",
   "version": "3.3.0",
   "dependencies": {
-    "@equationalapplications/core-llm-wiki": "7.7.5",
-    "@equationalapplications/expo-llm-wiki": "7.7.5",
+    "@equationalapplications/core-llm-wiki": "7.13.0",
+    "@equationalapplications/expo-llm-wiki": "7.13.0",
     "@expo/ui": "~57.0.20",
     "@shopify/react-native-skia": "2.6.2",
     "@xstate/react": "^5.0.5",
@@ -42,7 +42,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
-    "react-native-keyboard-controller": "1.21.9",
+    "react-native-keyboard-controller": "1.22.7",
     "react-native-markdown-display": "^7.0.2",
     "react-native-nitro-unzip": "^0.6.0",
     "react-native-reanimated": "4.5.1",
@@ -50,7 +50,7 @@
     "react-native-screens": "4.26.2",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
-    "react-native-zip-archive": "^9.5.1",
+    "react-native-zip-archive": "^9.5.3",
     "xstate": "^5.32.2"
   },
   "overrides": {
@@ -60,7 +60,7 @@
     "decode-uri-component": "^0.5.0"
   },
   "devDependencies": {
-    "@testing-library/react-native": "^14.0.1",
+    "@testing-library/react-native": "^14.1.0",
     "@types/d3-force": "^3.0.10",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
