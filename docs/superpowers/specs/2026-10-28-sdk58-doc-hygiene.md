@@ -33,11 +33,12 @@ Docs-only, no code:
    SDK-level; not device-re-verified); mark `expo-file-system/legacy` as
    still the supported SAF path on 58 (verified against `src/lib/okfExport.ts`
    imports at `e4db7a9`).
-3. `INTENT.md` status stamp: refresh to `e4db7a9` with an honest delta
-   list (#73 test-only, #74 Settings version row, #75 SDK upgrade) after
-   re-verifying the Built claims live (app.config.ts derivation +
-   `checkAutomatically: 'NEVER'`, `src/lib/updateCheck.ts`, night-shift
-   prune opt-in, wiki packages 7.13.1).
+3. `INTENT.md` status stamp: refresh to `e4db7a9` with the full delta
+   list since the previous stamp (`42b7fc2`, written by #63): #63, #69,
+   #70/#71, #72, #73, #74, #75 — after re-verifying the Built claims
+   live (app.config.ts derivation + `checkAutomatically: 'NEVER'`,
+   `src/lib/updateCheck.ts`, night-shift prune opt-in, wiki packages
+   7.13.1).
 4. Version bump 4.0.0 → 4.0.1 in the three synced files
    (`package.json`, `app.json`, `package-lock.json`) — docs-only changes
    are PATCH-class but still bump (`docs/VERSIONING.md`).

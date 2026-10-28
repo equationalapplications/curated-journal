@@ -13,9 +13,13 @@ Each rule has a **Status** line saying how much of it the code does today:
 - **Open decision** — not decided yet.
 
 Statuses were checked against the code at commit `e4db7a9` (main, 4.0.0)
-on 2026-10-28. Deltas since the previous check (`42b7fc2`, 2026-10-27) —
-#73 (test-only), #74 (Settings running-version row), #75 (Expo SDK 58
-upgrade) — invalidate no Built claim; CI and CodeQL are green on `e4db7a9`.
+on 2026-10-28. Every Built claim was re-verified live at that commit.
+Changes since the previous stamp (`42b7fc2`, written by #63 on
+2026-10-27), all re-verified here: #63 (charter/doc SOP alignment), #69
+(runtime-version derivation + launch-time check gate), #70/#71 (Settings
+update-check trigger; dead re-embed/prune path removal), #72 (opt-in
+night-shift prune), #73 (test-only), #74 (Settings running-version row),
+#75 (Expo SDK 58 upgrade). CI and CodeQL are green on `e4db7a9`.
 Every **Built** and
 **Partly built** line below reflects that check. Rules 11 through 14 were
 added afterwards to carry a newly ruled extension of the product's
