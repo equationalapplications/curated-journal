@@ -15,6 +15,11 @@ jest.mock('expo-updates', () => ({
   fetchUpdateAsync: jest.fn(),
 }));
 
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: { version: '3.3.0' } },
+}));
+
 jest.mock('expo-updates', () => ({
   isEnabled: true,
   checkForUpdateAsync: jest.fn(),
@@ -94,6 +99,14 @@ describe('UpdateCheckRow', () => {
     expect(screen.queryByText(/secret/)).toBeNull();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('shows the running app version from the expo config', async () => {
+    mockCheck.mockResolvedValue('up-to-date');
+    await render(<UpdateCheckRow />);
+    expect(screen.getByTestId('app-version-label')).toHaveTextContent(
+      'App version 3.3.0',
+    );
   });
 
   it('does not start a second check on a double-tap', async () => {
