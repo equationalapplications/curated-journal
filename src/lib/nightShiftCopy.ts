@@ -76,7 +76,7 @@ export function nightShiftDetailLabel(
     case 'heal':
       return 'The heal pass reviews the graph for orphans and weak links, then asks the model which entries to merge, downgrade, or remove.';
     case 'prune':
-      return 'The prune pass permanently removes content you deleted and trims old event history. This is ordinary database cleanup — no AI is involved, and nothing leaves your device.';
+      return 'The prune pass permanently removes content you deleted, after a 7-day grace period. Your event history is never touched. Ordinary database cleanup — no AI is involved, and nothing leaves your device.';
     default:
       return 'Heavy maintenance runs on your device while this screen stays open.';
   }

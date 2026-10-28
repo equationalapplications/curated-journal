@@ -26,10 +26,14 @@ export function startNightShift(
   send: (event: { type: 'START_NIGHT_SHIFT'; queue: QueueItem[] }) => void,
   entityId: string,
   getPruneEnabled: () => Promise<boolean> = () => Promise.resolve(false),
+  shouldSend: () => boolean = () => true,
 ): Promise<void> {
   return getPruneEnabled()
     .catch(() => false)
     .then((pruneEnabled) => {
+      // An unmount during the flag read must not start a hidden run with
+      // no screen, no keep-awake, and no user watching.
+      if (!shouldSend()) return;
       send({
         type: 'START_NIGHT_SHIFT',
         queue: buildNightShiftQueue(entityId, pruneEnabled),

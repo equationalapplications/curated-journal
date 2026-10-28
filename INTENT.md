@@ -69,7 +69,8 @@ inference, and maintenance passes that respect real hardware limits.
 - **BYOI** — "bring your own inference": the app ships no model and calls
   no hosted AI service; you install the model you want.
 - **Night Shift** — the full-screen maintenance mode that runs the heavy
-  librarian and heal passes in the foreground while the device charges.
+  librarian and heal passes (plus the opt-in prune pass) in the
+  foreground while the device charges.
 - **Librarian / heal / prune pass** — the engine's upkeep jobs: organizing
   entries into notes and connections (librarian), repairing or
   retiring stale ones (heal), and permanently removing soft-deleted
@@ -176,6 +177,9 @@ no future change can queue an embedding pass and silently violate this
 rule. Prune is different: it is plain on-device database cleanup with no
 model involvement, so it ships as an opt-in Night Shift pass (Settings
 toggle, off by default) — permanent deletion stays in the user's hands.
+Prune in this app removes only content the user deleted (after the
+engine's 7-day soft-delete grace window); the event log, which is the
+librarian's raw source material, is never pruned.
 
 ### 6. Knowledge is portable in the open format
 

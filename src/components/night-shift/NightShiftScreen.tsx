@@ -74,7 +74,7 @@ export function NightShiftScreen() {
     // to off. The stale-outcome guard arms only after the START send —
     // the START event resets a leftover 'completed' outcome, and arming
     // the guard before it fires flashes "Complete" on re-entry.
-    void startNightShift(send, entityId, getNightShiftPruneEnabled).then(
+    void startNightShift(send, entityId, getNightShiftPruneEnabled, () => !cancelled).then(
       () => {
         if (!cancelled) setHasStartedNightShift(true);
       },

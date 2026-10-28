@@ -46,8 +46,8 @@ export function NightShiftPruneRow() {
           Prune during Night Shift
         </ThemedText>
         <ThemedText type="small" themeColor="onSurfaceVar">
-          Permanently remove content you deleted and trim old events. Off by
-          default.
+          Permanently remove content you deleted (7-day grace period). Your
+          event history is never touched. Off by default.
         </ThemedText>
       </View>
       <Switch

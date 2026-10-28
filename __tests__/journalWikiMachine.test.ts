@@ -65,6 +65,17 @@ describe('startNightShift', () => {
       ],
     });
   });
+
+  it('does not send when shouldSend reports the screen is gone', async () => {
+    const send = makeSend();
+    await startNightShift(
+      send,
+      'e1',
+      () => Promise.resolve(true),
+      () => false,
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
 });
 
 describe('buildNightShiftQueue', () => {
