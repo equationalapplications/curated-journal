@@ -38,7 +38,10 @@ export async function exportOkfFromDump(
       const parent = parts.length ? ensureDirectory(exportDir, parts.join('/')) : exportDir;
       const out = new File(parent, fileName);
       out.create({ overwrite: true });
-      out.write(file.content);
+      // SDK 58: File.write() is async (expo/expo#45992). Awaiting it keeps
+      // the write ordered before the zip below — in SDK 57 the sync call
+      // made the ordering implicit.
+      await out.write(file.content);
     }
 
     const zipFile = new File(Paths.cache, `export-${id}.zip`);

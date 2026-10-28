@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, ScrollViewInstance, StyleSheet } from 'react-native';
 import type { MemoryBundle } from '@equationalapplications/core-llm-wiki';
 import Markdown from 'react-native-markdown-display';
 import { ThemedText } from '@/components/themed-text';
@@ -17,7 +17,7 @@ type JournalPaneProps = {
 export function JournalPane({ facts }: JournalPaneProps) {
   const { selectedFactId } = useJournal();
   const { target, clearTarget } = useCitationNavigation();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const markdown = useMarkdownStyles();
 
   const factId = target?.factId ?? selectedFactId;

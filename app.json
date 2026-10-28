@@ -2,7 +2,7 @@
   "expo": {
     "name": "curated-journal",
     "slug": "curated-journal",
-    "version": "3.3.0",
+    "version": "4.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cur",
@@ -34,7 +34,8 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "enableMinifyInReleaseBuilds": false
           }
         }
       ],
