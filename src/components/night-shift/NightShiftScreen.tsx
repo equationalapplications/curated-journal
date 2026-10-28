@@ -15,7 +15,7 @@ import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
 import { resetNightShiftLlmProgress, setNightShiftActive } from '@/lib/llamaProvider';
 import { getNightShiftPruneEnabled } from '@/lib/entityStorage';
-import { buildNightShiftQueue } from '@/machines/journalWikiMachine';
+import { startNightShift } from '@/machines/journalWikiMachine';
 import {
   nightShiftDetailLabel,
   nightShiftOperationTitle,
@@ -70,22 +70,15 @@ export function NightShiftScreen() {
     activateKeepAwakeAsync('night-shift').catch(() => {});
     setNightShiftActive(true);
     let cancelled = false;
-    // The prune pass is opt-in (Settings). A failed flag read must never
-    // block the core passes, so it defaults to off (prune deletes data —
-    // fail closed).
-    void getNightShiftPruneEnabled()
-      .catch(() => false)
-      .then((pruneEnabled) => {
-        if (cancelled) return;
-        send({
-          type: 'START_NIGHT_SHIFT',
-          queue: buildNightShiftQueue(entityId, pruneEnabled),
-        });
-        // Key the stale-outcome guard on the actual start, not the effect
-        // run: the START event resets a leftover 'completed' outcome, and
-        // arming the guard before it fires flashes "Complete" on re-entry.
-        setHasStartedNightShift(true);
-      });
+    // The prune pass is opt-in (Settings); startNightShift fails closed
+    // to off. The stale-outcome guard arms only after the START send —
+    // the START event resets a leftover 'completed' outcome, and arming
+    // the guard before it fires flashes "Complete" on re-entry.
+    void startNightShift(send, entityId, getNightShiftPruneEnabled).then(
+      () => {
+        if (!cancelled) setHasStartedNightShift(true);
+      },
+    );
     return () => {
       cancelled = true;
       deactivateKeepAwake('night-shift');

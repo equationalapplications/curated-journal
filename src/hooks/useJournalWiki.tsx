@@ -41,9 +41,9 @@ export function JournalWikiProvider({
   entityId: string;
   children: ReactNode;
 }) {
-  const { runLibrarian, runHeal, runPrune, runReembed } = useWikiMaintenance();
-  const maintenanceRef = useRef({ runLibrarian, runHeal, runPrune, runReembed });
-  maintenanceRef.current = { runLibrarian, runHeal, runPrune, runReembed };
+  const { runLibrarian, runHeal, runPrune } = useWikiMaintenance();
+  const maintenanceRef = useRef({ runLibrarian, runHeal, runPrune });
+  maintenanceRef.current = { runLibrarian, runHeal, runPrune };
 
   const actor = useMemo(
     () =>
@@ -53,9 +53,6 @@ export function JournalWikiProvider({
           maintenance: {
             runLibrarian: (entityId: string) => maintenanceRef.current.runLibrarian(entityId),
             runHeal: (entityId: string) => maintenanceRef.current.runHeal(entityId),
-            runReembed: async (id?: string) => {
-              await maintenanceRef.current.runReembed(id);
-            },
             runPrune: async (id: string) => {
               await maintenanceRef.current.runPrune(id);
             },

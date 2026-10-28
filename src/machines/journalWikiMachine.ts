@@ -16,6 +16,28 @@ export type NightShiftOperation = 'librarian' | 'heal' | 'prune';
 export type QueueItem = { operation: NightShiftOperation; entityId: string };
 
 /**
+ * Starts Night Shift: reads the opt-in prune flag and sends the queue.
+ * The flag read fails CLOSED to off — prune permanently deletes data, so
+ * a keystore failure must never guess "on", and must never block the
+ * core librarian/heal passes either. Extracted so the fail-closed path
+ * is testable without the screen's provider stack.
+ */
+export function startNightShift(
+  send: (event: { type: 'START_NIGHT_SHIFT'; queue: QueueItem[] }) => void,
+  entityId: string,
+  getPruneEnabled: () => Promise<boolean> = () => Promise.resolve(false),
+): Promise<void> {
+  return getPruneEnabled()
+    .catch(() => false)
+    .then((pruneEnabled) => {
+      send({
+        type: 'START_NIGHT_SHIFT',
+        queue: buildNightShiftQueue(entityId, pruneEnabled),
+      });
+    });
+}
+
+/**
  * The Night Shift queue: librarian, then heal, then the opt-in prune pass
  * last (cleanup only makes sense after the model passes have run).
  */
@@ -45,7 +67,6 @@ export type MaintenanceApi = {
   runLibrarian: (entityId: string) => Promise<void>;
   /** One library heal batch. The machine loops batches via runHealToCompletion. */
   runHeal: HealBatchRunner;
-  runReembed: (entityId?: string) => Promise<void>;
   runPrune: (entityId: string) => Promise<void>;
 };
 

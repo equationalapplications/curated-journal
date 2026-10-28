@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Row } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import {
  */
 export function NightShiftPruneRow() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const latestWrite = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,10 +31,11 @@ export function NightShiftPruneRow() {
 
   const toggle = (value: boolean) => {
     setEnabled(value);
-    // Optimistic, but never lie: if the write fails, revert the switch so
-    // the displayed state matches what is actually persisted.
+    // Last-write-wins: a late failure from a superseded write must not
+    // clobber what the user has since chosen.
+    const seq = ++latestWrite.current;
     setNightShiftPruneEnabled(value).catch(() => {
-      setEnabled(!value);
+      if (latestWrite.current === seq) setEnabled(!value);
     });
   };
 
