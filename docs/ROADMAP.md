@@ -72,9 +72,12 @@ the feature exists.
 Write the spec for the privacy-mode setting itself and for its two
 modes that the charter has already fully decided:
 
-- **Strict privacy** (rule 11): nothing leaves the device for any reason
-  — no internet, no Bluetooth, no local network; no update checks, no
-  model downloads, no pairing. It holds from the moment the app starts.
+- **Strict privacy** (rule 11): the app initiates no off-device
+  communication for any reason — no internet, no Bluetooth, no local
+  network; no update checks, no model downloads, no pairing. (The
+  charter's exception stands: a file the user hands to an OS picker or
+  share sheet goes where the user sends it.) It holds from the moment
+  the app starts.
   A user who wants a model steps out on purpose, gets it, and steps back.
 - **The default mode** (rule 9, paragraph 2): today's behavior, given a
   name. Model downloads the user starts and update checks the user starts
@@ -240,16 +243,12 @@ pairing session, under rule 14 in full:
   description names. Nothing from a session persists into the journal
   afterwards except by a separate, explicit sync choice (rule 13).
 - **The transport is the hardware line's contract, not ours to re-decide.**
-  First pairing happens over a short-range link with a secret the user
-  carries out of band and needs no internet; the working link is a
-  direct local connection, mutually authenticated, with small bounded
-  message frames the phone never has to allocate large buffers for. A
-  heartbeat keeps the device told that its brain is alive, and keeps
-  running while the app is in the background. Losing the phone never
-  stops the vehicle: pending intents are revoked and the vehicle's own
-  controller carries on. The phone never holds the vehicle's command
-  signing key. The spec implements these; it cites the hardware line's
-  engineering documents for the details and does not restate them.
+  The spec adopts the hardware line's pairing and transport engineering
+  documents as they stand — authentication, framing, liveness, and
+  loss-of-phone behavior are theirs to define and change. This step
+  carries only this app's side of that contract: running the brain loop
+  inside those bounds, the session lifecycle, and the resource budget.
+  It cites those documents for every detail and does not restate them.
 - **The index discipline from Step 4 applies here too.** The hardware
   line indexes with its own embedding model. Nothing from this app merges
   into a hardware graph without an explicit conversion on the hardware
