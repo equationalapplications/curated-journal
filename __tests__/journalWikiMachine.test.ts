@@ -1,7 +1,10 @@
 import { createActor, waitFor } from 'xstate';
 import { WikiBusyError } from '@equationalapplications/expo-llm-wiki';
 import type { HealResult } from '@equationalapplications/core-llm-wiki';
-import { journalWikiMachine } from '@/machines/journalWikiMachine';
+import {
+  buildNightShiftQueue,
+  journalWikiMachine,
+} from '@/machines/journalWikiMachine';
 
 const makeWiki = () => ({
   importDump: jest.fn(async () => undefined),
@@ -26,6 +29,20 @@ const maintenance = {
   runReembed: jest.fn(async () => undefined),
   runPrune: jest.fn(async () => undefined),
 };
+
+describe('buildNightShiftQueue', () => {
+  it('appends prune last only when opted in', () => {
+    expect(buildNightShiftQueue('e1', false)).toEqual([
+      { operation: 'librarian', entityId: 'e1' },
+      { operation: 'heal', entityId: 'e1' },
+    ]);
+    expect(buildNightShiftQueue('e1', true)).toEqual([
+      { operation: 'librarian', entityId: 'e1' },
+      { operation: 'heal', entityId: 'e1' },
+      { operation: 'prune', entityId: 'e1' },
+    ]);
+  });
+});
 
 describe('journalWikiMachine', () => {
   beforeEach(() => {

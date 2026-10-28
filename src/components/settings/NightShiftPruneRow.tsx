@@ -16,9 +16,13 @@ export function NightShiftPruneRow() {
 
   useEffect(() => {
     let cancelled = false;
-    getNightShiftPruneEnabled().then((value) => {
-      if (!cancelled) setEnabled(value);
-    });
+    // A failed read falls back to off — the switch must not sit disabled
+    // forever, and prune deletes data, so fail closed.
+    getNightShiftPruneEnabled()
+      .catch(() => false)
+      .then((value) => {
+        if (!cancelled) setEnabled(value);
+      });
     return () => {
       cancelled = true;
     };
@@ -26,7 +30,11 @@ export function NightShiftPruneRow() {
 
   const toggle = (value: boolean) => {
     setEnabled(value);
-    void setNightShiftPruneEnabled(value);
+    // Optimistic, but never lie: if the write fails, revert the switch so
+    // the displayed state matches what is actually persisted.
+    setNightShiftPruneEnabled(value).catch(() => {
+      setEnabled(!value);
+    });
   };
 
   return (
@@ -41,6 +49,7 @@ export function NightShiftPruneRow() {
         </ThemedText>
       </View>
       <Switch
+        testID="night-shift-prune-switch"
         value={enabled === true}
         disabled={enabled === null}
         onValueChange={toggle}

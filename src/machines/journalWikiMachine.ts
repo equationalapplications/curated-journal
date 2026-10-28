@@ -15,6 +15,21 @@ export type NightShiftOperation = 'librarian' | 'heal' | 'prune';
 
 export type QueueItem = { operation: NightShiftOperation; entityId: string };
 
+/**
+ * The Night Shift queue: librarian, then heal, then the opt-in prune pass
+ * last (cleanup only makes sense after the model passes have run).
+ */
+export function buildNightShiftQueue(
+  entityId: string,
+  includePrune: boolean,
+): QueueItem[] {
+  return [
+    { operation: 'librarian', entityId },
+    { operation: 'heal', entityId },
+    ...(includePrune ? [{ operation: 'prune' as const, entityId }] : []),
+  ];
+}
+
 /** How the last Night Shift run ended. `'none'` while running or after an IMPORT interrupt. */
 export type NightShiftOutcome = 'none' | 'completed' | 'aborted';
 
