@@ -1,7 +1,11 @@
 import { createActor, waitFor } from 'xstate';
 import { WikiBusyError } from '@equationalapplications/expo-llm-wiki';
 import type { HealResult } from '@equationalapplications/core-llm-wiki';
-import { journalWikiMachine } from '@/machines/journalWikiMachine';
+import {
+  buildNightShiftQueue,
+  journalWikiMachine,
+  startNightShift,
+} from '@/machines/journalWikiMachine';
 
 const makeWiki = () => ({
   importDump: jest.fn(async () => undefined),
@@ -23,9 +27,70 @@ const makeHealResult = (overrides: Partial<HealResult> = {}): HealResult => ({
 const maintenance = {
   runLibrarian: jest.fn(async () => undefined),
   runHeal: jest.fn(async (): Promise<HealResult> => makeHealResult()),
-  runReembed: jest.fn(async () => undefined),
   runPrune: jest.fn(async () => undefined),
 };
+
+describe('startNightShift', () => {
+  const makeSend = () => jest.fn();
+
+  it('sends a queue without prune when the flag is off', async () => {
+    const send = makeSend();
+    await startNightShift(send, 'e1', () => Promise.resolve(false));
+    expect(send).toHaveBeenCalledWith({
+      type: 'START_NIGHT_SHIFT',
+      queue: [
+        { operation: 'librarian', entityId: 'e1' },
+        { operation: 'heal', entityId: 'e1' },
+      ],
+    });
+  });
+
+  it('sends a queue with prune last when the flag is on', async () => {
+    const send = makeSend();
+    await startNightShift(send, 'e1', () => Promise.resolve(true));
+    const { queue } = send.mock.calls[0][0];
+    expect(queue[queue.length - 1]).toEqual({ operation: 'prune', entityId: 'e1' });
+  });
+
+  it('fails closed: a rejected flag read sends a prune-free queue', async () => {
+    const send = makeSend();
+    await startNightShift(send, 'e1', () =>
+      Promise.reject(new Error('keystore locked')),
+    );
+    expect(send).toHaveBeenCalledWith({
+      type: 'START_NIGHT_SHIFT',
+      queue: [
+        { operation: 'librarian', entityId: 'e1' },
+        { operation: 'heal', entityId: 'e1' },
+      ],
+    });
+  });
+
+  it('does not send when shouldSend reports the screen is gone', async () => {
+    const send = makeSend();
+    await startNightShift(
+      send,
+      'e1',
+      () => Promise.resolve(true),
+      () => false,
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildNightShiftQueue', () => {
+  it('appends prune last only when opted in', () => {
+    expect(buildNightShiftQueue('e1', false)).toEqual([
+      { operation: 'librarian', entityId: 'e1' },
+      { operation: 'heal', entityId: 'e1' },
+    ]);
+    expect(buildNightShiftQueue('e1', true)).toEqual([
+      { operation: 'librarian', entityId: 'e1' },
+      { operation: 'heal', entityId: 'e1' },
+      { operation: 'prune', entityId: 'e1' },
+    ]);
+  });
+});
 
 describe('journalWikiMachine', () => {
   beforeEach(() => {
@@ -54,6 +119,32 @@ describe('journalWikiMachine', () => {
     });
     await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
     expect(order).toEqual(['librarian', 'heal']);
+    expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
+    actor.stop();
+  });
+
+  it('runs an opt-in prune item and records it in order', async () => {
+    const order: string[] = [];
+    maintenance.runHeal.mockImplementation(async () => {
+      order.push('heal');
+      return makeHealResult();
+    });
+    maintenance.runPrune.mockImplementation(async () => {
+      order.push('prune');
+    });
+    const actor = createActor(journalWikiMachine, {
+      input: { wiki: makeWiki() as never, maintenance },
+    }).start();
+    actor.send({
+      type: 'START_NIGHT_SHIFT',
+      queue: [
+        { operation: 'heal', entityId: 'e1' },
+        { operation: 'prune', entityId: 'e1' },
+      ],
+    });
+    await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
+    expect(order).toEqual(['heal', 'prune']);
+    expect(maintenance.runPrune).toHaveBeenCalledWith('e1');
     expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
     actor.stop();
   });

@@ -11,9 +11,50 @@ import {
   type HealStepSummary,
 } from '@/lib/healLoop';
 
-export type NightShiftOperation = 'librarian' | 'heal';
+export type NightShiftOperation = 'librarian' | 'heal' | 'prune';
 
 export type QueueItem = { operation: NightShiftOperation; entityId: string };
+
+/**
+ * Starts Night Shift: reads the opt-in prune flag and sends the queue.
+ * The flag read fails CLOSED to off — prune permanently deletes data, so
+ * a keystore failure must never guess "on", and must never block the
+ * core librarian/heal passes either. Extracted so the fail-closed path
+ * is testable without the screen's provider stack.
+ */
+export function startNightShift(
+  send: (event: { type: 'START_NIGHT_SHIFT'; queue: QueueItem[] }) => void,
+  entityId: string,
+  getPruneEnabled: () => Promise<boolean> = () => Promise.resolve(false),
+  shouldSend: () => boolean = () => true,
+): Promise<void> {
+  return getPruneEnabled()
+    .catch(() => false)
+    .then((pruneEnabled) => {
+      // An unmount during the flag read must not start a hidden run with
+      // no screen, no keep-awake, and no user watching.
+      if (!shouldSend()) return;
+      send({
+        type: 'START_NIGHT_SHIFT',
+        queue: buildNightShiftQueue(entityId, pruneEnabled),
+      });
+    });
+}
+
+/**
+ * The Night Shift queue: librarian, then heal, then the opt-in prune pass
+ * last (cleanup only makes sense after the model passes have run).
+ */
+export function buildNightShiftQueue(
+  entityId: string,
+  includePrune: boolean,
+): QueueItem[] {
+  return [
+    { operation: 'librarian', entityId },
+    { operation: 'heal', entityId },
+    ...(includePrune ? [{ operation: 'prune' as const, entityId }] : []),
+  ];
+}
 
 /** How the last Night Shift run ended. `'none'` while running or after an IMPORT interrupt. */
 export type NightShiftOutcome = 'none' | 'completed' | 'aborted';
@@ -30,7 +71,6 @@ export type MaintenanceApi = {
   runLibrarian: (entityId: string) => Promise<void>;
   /** One library heal batch. The machine loops batches via runHealToCompletion. */
   runHeal: HealBatchRunner;
-  runReembed: (entityId?: string) => Promise<void>;
   runPrune: (entityId: string) => Promise<void>;
 };
 
@@ -71,6 +111,12 @@ async function runQueueStep(
       return;
     case 'heal':
       return runHealToCompletion(maintenance.runHeal, item.entityId, { shouldContinue });
+    case 'prune':
+      // Opt-in pass (Settings toggle): permanent on-device cleanup of
+      // soft-deleted entries past their retention window and old events.
+      // No model involvement, so it cannot trip the rule-5 second-model ban.
+      await maintenance.runPrune(item.entityId);
+      return;
   }
 }
 

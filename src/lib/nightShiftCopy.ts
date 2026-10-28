@@ -11,6 +11,7 @@ const idleLlm: NightShiftLlmProgress = {
 const OPERATION_TITLES: Record<NightShiftOperation, string> = {
   librarian: 'Librarian pass',
   heal: 'Heal pass',
+  prune: 'Prune pass',
 };
 
 export function nightShiftOperationTitle(operation: NightShiftOperation | null): string {
@@ -56,6 +57,8 @@ export function nightShiftPhaseLabel(
 
   if (operation === 'heal') return healPhaseLabel(llm);
 
+  if (operation === 'prune') return 'Cleaning up deleted content…';
+
   if (status.ingesting) return 'Reading your notes…';
   if (status.librarian) return 'Synthesizing insights…';
   if (status.heal) return 'Healing memory graph…';
@@ -72,6 +75,8 @@ export function nightShiftDetailLabel(
       return 'The librarian reads your imported notes, asks the local model for new inferred facts, tasks, and graph edges, then updates search indexes.';
     case 'heal':
       return 'The heal pass reviews the graph for orphans and weak links, then asks the model which entries to merge, downgrade, or remove.';
+    case 'prune':
+      return 'The prune pass permanently removes content you deleted, after a 7-day grace period. Your event history is never touched. Ordinary database cleanup — no AI is involved, and nothing leaves your device.';
     default:
       return 'Heavy maintenance runs on your device while this screen stays open.';
   }

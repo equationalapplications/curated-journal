@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
 import { resetNightShiftLlmProgress, setNightShiftActive } from '@/lib/llamaProvider';
+import { getNightShiftPruneEnabled } from '@/lib/entityStorage';
+import { startNightShift } from '@/machines/journalWikiMachine';
 import {
   nightShiftDetailLabel,
   nightShiftOperationTitle,
@@ -67,15 +69,18 @@ export function NightShiftScreen() {
     // Best-effort: browsers may deny the Wake Lock (e.g. hidden tab).
     activateKeepAwakeAsync('night-shift').catch(() => {});
     setNightShiftActive(true);
-    setHasStartedNightShift(true);
-    send({
-      type: 'START_NIGHT_SHIFT',
-      queue: [
-        { operation: 'librarian', entityId },
-        { operation: 'heal', entityId },
-      ],
-    });
+    let cancelled = false;
+    // The prune pass is opt-in (Settings); startNightShift fails closed
+    // to off. The stale-outcome guard arms only after the START send —
+    // the START event resets a leftover 'completed' outcome, and arming
+    // the guard before it fires flashes "Complete" on re-entry.
+    void startNightShift(send, entityId, getNightShiftPruneEnabled, () => !cancelled).then(
+      () => {
+        if (!cancelled) setHasStartedNightShift(true);
+      },
+    );
     return () => {
+      cancelled = true;
       deactivateKeepAwake('night-shift');
       setNightShiftActive(false);
     };

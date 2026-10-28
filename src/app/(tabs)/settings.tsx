@@ -10,6 +10,7 @@ import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
 import { useJournal } from '@/contexts/JournalContext';
 import { useNightShiftGates } from '@/hooks/useNightShiftGates';
 import { UpdateCheckRow } from '@/components/settings/UpdateCheckRow';
+import { NightShiftPruneRow } from '@/components/settings/NightShiftPruneRow';
 import { Space } from '@/constants/theme';
 
 export default function SettingsScreen() {
@@ -81,6 +82,7 @@ export default function SettingsScreen() {
               onPress={() => router.push('/night-shift')}
             />
           </Row>
+          <NightShiftPruneRow />
         </ListGroup>
 
         <ThemedText type="label" style={styles.label}>

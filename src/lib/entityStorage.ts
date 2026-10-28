@@ -5,6 +5,7 @@ import {
   MODEL_PATH_KEY,
   MODEL_ID_KEY,
   DISPLAY_NAME_KEY,
+  NIGHT_SHIFT_PRUNE_KEY,
 } from '@/lib/constants';
 
 export async function getOrCreateEntityId(): Promise<string> {
@@ -37,6 +38,15 @@ export async function getDisplayName(): Promise<string | null> {
 
 export async function setDisplayName(name: string): Promise<void> {
   await SecureStore.setItemAsync(DISPLAY_NAME_KEY, name);
+}
+
+/** Opt-in Night Shift prune pass. Off by default: prune permanently deletes. */
+export async function getNightShiftPruneEnabled(): Promise<boolean> {
+  return (await SecureStore.getItemAsync(NIGHT_SHIFT_PRUNE_KEY)) === 'true';
+}
+
+export async function setNightShiftPruneEnabled(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(NIGHT_SHIFT_PRUNE_KEY, enabled ? 'true' : 'false');
 }
 
 export async function clearModelPath(): Promise<void> {

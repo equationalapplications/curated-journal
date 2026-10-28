@@ -69,12 +69,13 @@ inference, and maintenance passes that respect real hardware limits.
 - **BYOI** — "bring your own inference": the app ships no model and calls
   no hosted AI service; you install the model you want.
 - **Night Shift** — the full-screen maintenance mode that runs the heavy
-  librarian and heal passes in the foreground while the device charges.
-- **Librarian / heal pass** — the engine's two upkeep jobs: organizing
-  entries into notes and connections (librarian), and repairing or
-  retiring stale ones (heal). These are the only maintenance passes the
-  app queues; the engine's re-embedding and prune operations are unused
-  by this app.
+  librarian and heal passes (plus the opt-in prune pass) in the
+  foreground while the device charges.
+- **Librarian / heal / prune pass** — the engine's upkeep jobs: organizing
+  entries into notes and connections (librarian), repairing or
+  retiring stale ones (heal), and permanently removing soft-deleted
+  content past its retention window (prune, opt-in via Settings). The
+  engine's re-embedding operation is the one pass this app never runs.
 - **Emergent ontology** — the default mode in which the model invents its
   own note categories and link types, instead of following a fixed schema.
 - **OKF** — the Open Knowledge Format, the zip bundle used for import and
@@ -169,10 +170,16 @@ inference.
 *Why:* RAM and battery on a phone are finite; running a second model next
 to the inference model is the design error this rule exists to prevent.
 
-**Status: Built.** The engine still exposes re-embedding and prune
-operations; the app's dead wiring for them was removed in this PR
-(issue #65) so no future change can queue an embedding pass and silently
-violate this rule.
+**Status: Built.** Retrieval is keyword-only: the app configures no
+embed function, so the engine's re-embedding operation has nothing to
+recompute here. The dead wiring for it was removed (issue #65, 3.1.1) so
+no future change can queue an embedding pass and silently violate this
+rule. Prune is different: it is plain on-device database cleanup with no
+model involvement, so it ships as an opt-in Night Shift pass (Settings
+toggle, off by default) — permanent deletion stays in the user's hands.
+Prune in this app removes only content the user deleted (after the
+engine's 7-day soft-delete grace window); the event log, which is the
+librarian's raw source material, is never pruned.
 
 ### 6. Knowledge is portable in the open format
 

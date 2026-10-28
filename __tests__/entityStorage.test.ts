@@ -7,9 +7,11 @@ import {
   setModelId,
   getDisplayName,
   setDisplayName,
+  getNightShiftPruneEnabled,
+  setNightShiftPruneEnabled,
   clearModelPath,
 } from '@/lib/entityStorage';
-import { ENTITY_ID_KEY, MODEL_PATH_KEY, MODEL_ID_KEY, DISPLAY_NAME_KEY } from '@/lib/constants';
+import { ENTITY_ID_KEY, MODEL_PATH_KEY, MODEL_ID_KEY, DISPLAY_NAME_KEY, NIGHT_SHIFT_PRUNE_KEY } from '@/lib/constants';
 
 jest.mock('expo-secure-store');
 jest.mock('expo-crypto', () => ({
@@ -61,5 +63,19 @@ describe('entityStorage', () => {
     await clearModelPath();
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(MODEL_PATH_KEY);
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(MODEL_ID_KEY);
+  });
+
+  it('defaults the night shift prune flag to false when unset', async () => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce(null);
+    await expect(getNightShiftPruneEnabled()).resolves.toBe(false);
+  });
+
+  it('round-trips the night shift prune flag', async () => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce('true');
+    await expect(getNightShiftPruneEnabled()).resolves.toBe(true);
+    await setNightShiftPruneEnabled(true);
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(NIGHT_SHIFT_PRUNE_KEY, 'true');
+    await setNightShiftPruneEnabled(false);
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(NIGHT_SHIFT_PRUNE_KEY, 'false');
   });
 });
