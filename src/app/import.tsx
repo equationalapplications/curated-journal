@@ -3,12 +3,10 @@ import { Alert, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
-import { useRouter } from 'expo-router';
+import { useRouter, usePreventRemove } from 'expo-router';
 import { useMachine } from '@xstate/react';
-// Not in expo-router's public API (only its bundled react-navigation core
-// exports it). If a router bump moves this path, re-point it here — the only
-// consumer is this screen.
-import { usePreventRemove } from 'expo-router/build/react-navigation/core';
+// Public in SDK 58 (previously only reachable via the non-public
+// expo-router/build/react-navigation/core path).
 import { parseOkfBundle, useSetOntologyManifest, useWiki } from '@equationalapplications/expo-llm-wiki';
 import { getUnzip } from 'react-native-nitro-unzip';
 import { ThemedText } from '@/components/themed-text';

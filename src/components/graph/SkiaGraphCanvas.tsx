@@ -284,8 +284,10 @@ export function SkiaGraphCanvas({
   const hairline = useDerivedValue(() => 1 / sc.get());
 
   const [edgePath, focusEdgePath] = useMemo(() => {
-    const base = Skia.Path.Make();
-    const focus = Skia.Path.Make();
+    // Skia 2.x: SkPath is immutable; mutation goes through SkPathBuilder and
+    // build() produces the finished path.
+    const base = Skia.PathBuilder.Make();
+    const focus = Skia.PathBuilder.Make();
     for (const e of edges) {
       const a = positions.get(e.sourceId);
       const b = positions.get(e.targetId);
@@ -294,7 +296,7 @@ export function SkiaGraphCanvas({
       target.moveTo(a.x, a.y);
       target.lineTo(b.x, b.y);
     }
-    return [base, focus];
+    return [base.build(), focus.build()];
   }, [edges, positions, highlight]);
 
   const labels = useMemo(() => new Map(nodes.map((n) => [n.id, shortLabel(n.title)])), [nodes]);
