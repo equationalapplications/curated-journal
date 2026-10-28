@@ -26,14 +26,18 @@ describe('NightShiftPruneRow', () => {
   });
 
   it('renders off by default with honest copy', async () => {
-    render(<NightShiftPruneRow />);
+    // RNTL v14's render() is async: `screen` re-points only once the render
+    // promise resolves, so an unawaited render leaves these queries hitting
+    // the (unmounted) warmup renderer from jest.setup.ts. Await before
+    // querying — the working pattern in updateCheckRow.test.tsx.
+    await render(<NightShiftPruneRow />);
     await waitFor(() => expect(mockedGet).toHaveBeenCalled());
     expect(screen.getByText(/Permanently remove/i)).toBeTruthy();
     expect(switchEl().props.value).toBe(false);
   });
 
   it('persists the optimistic toggle', async () => {
-    render(<NightShiftPruneRow />);
+    await render(<NightShiftPruneRow />);
     await waitFor(() => expect(switchEl().props.disabled).toBe(false));
     fireEvent(switchEl(), 'valueChange', true);
     await waitFor(() => expect(mockedSet).toHaveBeenCalledWith(true));
@@ -42,7 +46,7 @@ describe('NightShiftPruneRow', () => {
 
   it('reverts the switch when the write fails', async () => {
     mockedSet.mockRejectedValueOnce(new Error('keystore locked'));
-    render(<NightShiftPruneRow />);
+    await render(<NightShiftPruneRow />);
     await waitFor(() => expect(switchEl().props.disabled).toBe(false));
     fireEvent(switchEl(), 'valueChange', true);
     await waitFor(() => expect(switchEl().props.value).toBe(false));
