@@ -11,8 +11,6 @@ const idleLlm: NightShiftLlmProgress = {
 const OPERATION_TITLES: Record<NightShiftOperation, string> = {
   librarian: 'Librarian pass',
   heal: 'Heal pass',
-  reembed: 'Re-embed pass',
-  prune: 'Prune pass',
 };
 
 export function nightShiftOperationTitle(operation: NightShiftOperation | null): string {
@@ -58,9 +56,6 @@ export function nightShiftPhaseLabel(
 
   if (operation === 'heal') return healPhaseLabel(llm);
 
-  if (operation === 'reembed') return 'Rebuilding search embeddings…';
-  if (operation === 'prune') return 'Pruning old events and soft-deleted entries…';
-
   if (status.ingesting) return 'Reading your notes…';
   if (status.librarian) return 'Synthesizing insights…';
   if (status.heal) return 'Healing memory graph…';
@@ -77,10 +72,6 @@ export function nightShiftDetailLabel(
       return 'The librarian reads your imported notes, asks the local model for new inferred facts, tasks, and graph edges, then updates search indexes.';
     case 'heal':
       return 'The heal pass reviews the graph for orphans and weak links, then asks the model which entries to merge, downgrade, or remove.';
-    case 'reembed':
-      return 'Refreshing vector embeddings so chat search stays accurate.';
-    case 'prune':
-      return 'Cleaning up old events and deleted records.';
     default:
       return 'Heavy maintenance runs on your device while this screen stays open.';
   }
