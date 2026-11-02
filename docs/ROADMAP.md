@@ -74,14 +74,16 @@ modes that the charter has already fully decided:
 
 - **Strict privacy** (rule 11): the app initiates no off-device
   communication for any reason — no internet, no Bluetooth, no local
-  network; no update checks, no model downloads, no pairing. (The
+  network; no update checks, no model downloads, no tips, no pairing.
+  (The tip jar shows an alert explaining why instead.) (The
   charter's exception stands: a file the user hands to an OS picker or
   share sheet goes where the user sends it.) It holds from the moment
   the app starts.
   A user who wants a model steps out on purpose, gets it, and steps back.
 - **The default mode** (rule 9, paragraph 2): today's behavior, given a
-  name. Model downloads the user starts and update checks the user starts
-  from Settings; nothing else runs on its own.
+  name. Model downloads the user starts, update checks the user starts
+  from Settings, and tip purchases the user starts from the Settings tip
+  jar; nothing else runs on its own.
 
 The spec must say, in the plain language the user will read on the
 screen, exactly what each mode allows and with whom. It must say what
@@ -102,7 +104,9 @@ strictest one exists to be unlocked from.
 
 Implement Step 1: the setting, the two modes, and the gate that makes
 every network-capable code path in the app ask the mode before acting —
-the update-check trigger, the model hub, and anything added later. The
+the update-check trigger, the model hub, and anything added later. (The
+tip jar already asks: it calls `src/lib/privacyMode.ts`, which this step
+makes real.) The
 native side of "strict from launch" is already configured (the
 launch-time update check is set to never run) and takes effect in the
 first 4.0.0 binary; this step adds the app-side mode that the native

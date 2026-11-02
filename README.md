@@ -35,7 +35,7 @@ Curated Journal shows how to build a **Google NotebookLM-style experience entire
 - **Foreground maintenance:** Auto-librarian and auto-heal are disabled; **Night Shift** runs heavy passes only while charging, with keep-awake enabled.
 - **Namespace safe:** Journal memory uses the wiki engine's prefixed tables (`llm_wiki_` by default) — no collisions with app-owned SQLite (e.g. `chat_messages`).
 - **Emergent ontology:** Default mode lets the LLM invent `node_types` and `edge_types` during librarian passes; the graph explorer visualizes what the engine discovers.
-- **Privacy by design:** All data stays in the app sandbox. No analytics SDK, no cloud sync in v1.
+- **Privacy by design:** All data stays in the app sandbox. No analytics SDK, no cloud sync in v1. The optional tip jar in Settings ("Buy me a coffee") talks to the App Store or Google Play only after you tap to open it, and sends no journal data.
 
 ---
 
