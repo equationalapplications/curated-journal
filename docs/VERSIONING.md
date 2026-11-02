@@ -63,3 +63,27 @@ moves on a MAJOR, so this test behaves as originally intended —
    the release API. Release notes for the first post-#68 release (3.1.0+) must
    carry the pre-3.0.0 stranding
    note (old-island binaries need this store install).
+
+## Store releases (EAS, from 5.0.0)
+
+Store builds run on EAS, not this machine, so the `heavy-build` and bare-gradle
+rules above don't apply to them. Steps 3–5 of the release train above stay as
+they are for the sideload APK on GitHub releases (or use the `github-apk` EAS
+profile).
+
+1. Merge the PR that carries the bump, then tag `vX.Y.Z` as in step 5.
+2. Run the **EAS store build and submit** workflow (Actions tab, platform
+   `all`). The `production` profile builds an AAB and an IPA on the
+   `production` channel. The build number is managed remotely by EAS
+   (`appVersionSource: remote`, `autoIncrement`), so it never needs a manual
+   bump. The marketing version is `app.json`'s `version`.
+3. EAS auto-submits: Android goes to the Play **internal** track as a draft,
+   and iOS goes to App Store Connect / TestFlight. Promote to production in
+   each console after a device smoke test of the store build.
+4. Verify the store artifact the same way as step 4 (download the AAB from
+   the EAS build page, then `bundletool dump manifest`), checking that
+   `EXPO_UPDATES_CHECK_ON_LAUNCH` is `NEVER`. Strict privacy from launch has to
+   hold in store builds too.
+
+The very first Android upload for a new Play app must be done by hand in
+Play Console. Google rejects API uploads until one exists.

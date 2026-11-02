@@ -1,15 +1,18 @@
 {
   "expo": {
-    "name": "curated-journal",
+    "name": "Curated Journal",
     "slug": "curated-journal",
-    "version": "4.0.2",
+    "version": "5.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cur",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.equationalapplicationsllc.curatedjournal"
+      "bundleIdentifier": "com.equationalapplicationsllc.curatedjournal",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
