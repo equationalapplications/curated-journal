@@ -20,8 +20,8 @@ export function isTipProductId(id: string): id is TipProductId {
 }
 
 /**
- * The web build's "Support" link (PayPal). Empty until the owner creates
- * it; the link renders only when this is non-empty, and only on web — the
- * iOS and Android apps take tips through their store's in-app purchase.
+ * The web build's "Support" link: Equational Applications LLC's PayPal
+ * donation page. It renders only on web — the iOS and Android apps take
+ * tips through their store's in-app purchase.
  */
-export const SUPPORT_PAYPAL_URL = '';
+export const SUPPORT_PAYPAL_URL = 'https://www.paypal.com/donate/?hosted_button_id=HEWS6MSKENAA6';

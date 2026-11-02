@@ -24,8 +24,8 @@ describe('support config', () => {
   });
 
   it('shows the web link only once a real https URL is set', () => {
-    expect(SUPPORT_PAYPAL_URL).toBe('');
-    expect(webSupportLink()).toBeNull();
+    expect(SUPPORT_PAYPAL_URL).toBe('https://www.paypal.com/donate/?hosted_button_id=HEWS6MSKENAA6');
+    expect(webSupportLink()).toBe(SUPPORT_PAYPAL_URL);
     expect(webSupportLink('   ')).toBeNull();
     expect(webSupportLink('javascript:alert(1)')).toBeNull();
     expect(webSupportLink('https://www.paypal.com/x')).toBe('https://www.paypal.com/x');
