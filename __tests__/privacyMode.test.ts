@@ -16,7 +16,7 @@ describe('privacy mode (modes not built yet)', () => {
 
 describe('support config', () => {
   it('uses the same three product IDs on both stores', () => {
-    expect(TIP_PRODUCT_IDS).toEqual(['tip_coffee_299', 'tip_coffee_499', 'tip_coffee_999']);
+    expect(TIP_PRODUCT_IDS).toEqual(['cj_tip_coffee_299', 'cj_tip_coffee_499', 'cj_tip_coffee_999']);
   });
 
   it('never shows the web link on native', () => {

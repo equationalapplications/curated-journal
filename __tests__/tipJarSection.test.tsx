@@ -34,9 +34,9 @@ const mockSupported = isTipJarSupported as jest.Mock;
 const mockOpen = openTipJar as jest.Mock;
 
 const offers = [
-  { id: 'tip_coffee_299', name: 'Coffee', displayPrice: '$2.99' },
-  { id: 'tip_coffee_499', name: 'Big coffee', displayPrice: '$4.99' },
-  { id: 'tip_coffee_999', name: 'Coffee for the team', displayPrice: '$9.99' },
+  { id: 'cj_tip_coffee_299', name: 'Coffee', displayPrice: '$2.99' },
+  { id: 'cj_tip_coffee_499', name: 'Big coffee', displayPrice: '$4.99' },
+  { id: 'cj_tip_coffee_999', name: 'Coffee for the team', displayPrice: '$9.99' },
 ];
 
 let emit: (e: TipEvent) => void = () => {};
@@ -60,7 +60,7 @@ beforeEach(() => {
 async function openJar() {
   await render(<TipJarSection />);
   await fireEvent.press(screen.getByTestId('tip-jar-open'));
-  await waitFor(() => expect(screen.getByTestId('tip-tip_coffee_299')).toBeTruthy());
+  await waitFor(() => expect(screen.getByTestId('tip-cj_tip_coffee_299')).toBeTruthy());
 }
 
 describe('TipJarSection (native)', () => {
@@ -93,38 +93,38 @@ describe('TipJarSection (native)', () => {
   it('re-checks the mode on each tip tap', async () => {
     await openJar();
     mockCanBuy.mockReturnValue(false);
-    await fireEvent.press(screen.getByTestId('tip-tip_coffee_499'));
+    await fireEvent.press(screen.getByTestId('tip-cj_tip_coffee_499'));
     await waitFor(() => expect(screen.getByText(STRICT_PRIVACY_TIP_TITLE)).toBeTruthy());
     expect(requestTip).not.toHaveBeenCalled();
   });
 
   it('buys a tip and thanks the user', async () => {
     await openJar();
-    await fireEvent.press(screen.getByTestId('tip-tip_coffee_499'));
-    await waitFor(() => expect(requestTip).toHaveBeenCalledWith('tip_coffee_499'));
-    await act(async () => emit({ kind: 'thanks', productId: 'tip_coffee_499' }));
+    await fireEvent.press(screen.getByTestId('tip-cj_tip_coffee_499'));
+    await waitFor(() => expect(requestTip).toHaveBeenCalledWith('cj_tip_coffee_499'));
+    await act(async () => emit({ kind: 'thanks', productId: 'cj_tip_coffee_499' }));
     await waitFor(() => expect(screen.getByText('Thank you!')).toBeTruthy());
   });
 
   it('stays silent when the user cancels', async () => {
     await openJar();
-    await fireEvent.press(screen.getByTestId('tip-tip_coffee_299'));
+    await fireEvent.press(screen.getByTestId('tip-cj_tip_coffee_299'));
     await act(async () => emit({ kind: 'cancelled' }));
     expect(screen.queryByTestId('tip-jar-status')).toBeNull();
     expect(screen.queryByText('Thank you!')).toBeNull();
-    expect(screen.getByTestId('tip-tip_coffee_299')).toBeEnabled();
+    expect(screen.getByTestId('tip-cj_tip_coffee_299')).toBeEnabled();
   });
 
   it('explains a pending tip', async () => {
     await openJar();
-    await fireEvent.press(screen.getByTestId('tip-tip_coffee_299'));
-    await act(async () => emit({ kind: 'pending', productId: 'tip_coffee_299' }));
+    await fireEvent.press(screen.getByTestId('tip-cj_tip_coffee_299'));
+    await act(async () => emit({ kind: 'pending', productId: 'cj_tip_coffee_299' }));
     expect(screen.getByTestId('tip-jar-status')).toHaveTextContent(/pending/);
   });
 
   it('shows fixed copy for store errors', async () => {
     await openJar();
-    await fireEvent.press(screen.getByTestId('tip-tip_coffee_299'));
+    await fireEvent.press(screen.getByTestId('tip-cj_tip_coffee_299'));
     await act(async () => emit({ kind: 'error', reason: 'network' }));
     expect(screen.getByTestId('tip-jar-status')).toHaveTextContent(/Couldn’t reach the store/);
   });

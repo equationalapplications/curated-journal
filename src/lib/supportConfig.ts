@@ -6,9 +6,9 @@
  * localized, when the user opens the tip jar.
  */
 export const TIP_PRODUCTS = [
-  { id: 'tip_coffee_299', name: 'Coffee' },
-  { id: 'tip_coffee_499', name: 'Big coffee' },
-  { id: 'tip_coffee_999', name: 'Coffee for the team' },
+  { id: 'cj_tip_coffee_299', name: 'Coffee' },
+  { id: 'cj_tip_coffee_499', name: 'Big coffee' },
+  { id: 'cj_tip_coffee_999', name: 'Coffee for the team' },
 ] as const;
 
 export type TipProductId = (typeof TIP_PRODUCTS)[number]['id'];

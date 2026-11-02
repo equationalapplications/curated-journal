@@ -35,15 +35,15 @@ const iap = Iap as unknown as Record<string, jest.Mock>;
 const products = [
   // Deliberately out of order and with an unrelated SKU: the jar keeps our
   // order and only our products.
-  { id: 'tip_coffee_999', displayPrice: '9,99 €' },
+  { id: 'cj_tip_coffee_999', displayPrice: '9,99 €' },
   { id: 'unrelated', displayPrice: '$1.00' },
-  { id: 'tip_coffee_299', displayPrice: '2,99 €' },
-  { id: 'tip_coffee_499', displayPrice: '4,99 €' },
+  { id: 'cj_tip_coffee_299', displayPrice: '2,99 €' },
+  { id: 'cj_tip_coffee_499', displayPrice: '4,99 €' },
 ];
 
 const purchase = (over: Record<string, unknown> = {}) => ({
   id: 'txn-1',
-  productId: 'tip_coffee_299',
+  productId: 'cj_tip_coffee_299',
   purchaseState: 'purchased',
   ...over,
 });
@@ -74,24 +74,24 @@ describe('tip jar store bridge', () => {
     const session = await openTipJar(jest.fn());
     expect(iap.initConnection).toHaveBeenCalledTimes(1);
     expect(iap.fetchProducts).toHaveBeenCalledWith({
-      skus: ['tip_coffee_299', 'tip_coffee_499', 'tip_coffee_999'],
+      skus: ['cj_tip_coffee_299', 'cj_tip_coffee_499', 'cj_tip_coffee_999'],
       type: 'in-app',
     });
     expect(iap.initConnection.mock.invocationCallOrder[0]).toBeLessThan(
       iap.fetchProducts.mock.invocationCallOrder[0],
     );
     expect(session.offers).toEqual([
-      { id: 'tip_coffee_299', name: 'Coffee', displayPrice: '2,99 €' },
-      { id: 'tip_coffee_499', name: 'Big coffee', displayPrice: '4,99 €' },
-      { id: 'tip_coffee_999', name: 'Coffee for the team', displayPrice: '9,99 €' },
+      { id: 'cj_tip_coffee_299', name: 'Coffee', displayPrice: '2,99 €' },
+      { id: 'cj_tip_coffee_499', name: 'Big coffee', displayPrice: '4,99 €' },
+      { id: 'cj_tip_coffee_999', name: 'Coffee for the team', displayPrice: '9,99 €' },
     ]);
   });
 
   it('requests the purchase for both stores', async () => {
     const session = await openTipJar(jest.fn());
-    await session.requestTip('tip_coffee_499');
+    await session.requestTip('cj_tip_coffee_499');
     expect(iap.requestPurchase).toHaveBeenCalledWith({
-      request: { apple: { sku: 'tip_coffee_499' }, google: { skus: ['tip_coffee_499'] } },
+      request: { apple: { sku: 'cj_tip_coffee_499' }, google: { skus: ['cj_tip_coffee_499'] } },
       type: 'in-app',
     });
   });
@@ -105,7 +105,7 @@ describe('tip jar store bridge', () => {
       purchase: expect.objectContaining({ id: 'txn-1' }),
       isConsumable: true,
     });
-    expect(events).toEqual([{ kind: 'thanks', productId: 'tip_coffee_299' }]);
+    expect(events).toEqual([{ kind: 'thanks', productId: 'cj_tip_coffee_299' }]);
   });
 
   it('finishes the same transaction only once', async () => {
@@ -124,7 +124,7 @@ describe('tip jar store bridge', () => {
     onPurchase?.(purchase({ purchaseState: 'pending' }));
     await flush();
     expect(iap.finishTransaction).not.toHaveBeenCalled();
-    expect(events).toEqual([{ kind: 'pending', productId: 'tip_coffee_299' }]);
+    expect(events).toEqual([{ kind: 'pending', productId: 'cj_tip_coffee_299' }]);
   });
 
   it('ignores purchases that are not tips', async () => {
@@ -141,7 +141,7 @@ describe('tip jar store bridge', () => {
     const events: TipEvent[] = [];
     await openTipJar((e) => events.push(e));
     expect(iap.finishTransaction).toHaveBeenCalledTimes(1);
-    expect(events).toEqual([{ kind: 'thanks', productId: 'tip_coffee_299' }]);
+    expect(events).toEqual([{ kind: 'thanks', productId: 'cj_tip_coffee_299' }]);
   });
 
   it('reports a failed finish so the store can replay it', async () => {
@@ -173,7 +173,7 @@ describe('tip jar store bridge', () => {
     iap.requestPurchase.mockRejectedValue({ code: 'user-cancelled' });
     const events: TipEvent[] = [];
     const session = await openTipJar((e) => events.push(e));
-    await session.requestTip('tip_coffee_299');
+    await session.requestTip('cj_tip_coffee_299');
     expect(events).toEqual([{ kind: 'cancelled' }]);
   });
 
@@ -207,8 +207,8 @@ describe('missing native module', () => {
 
 describe('helpers', () => {
   it('drops tips the store did not return', () => {
-    expect(toOffers([{ id: 'tip_coffee_499', displayPrice: '$4.99' }])).toEqual([
-      { id: 'tip_coffee_499', name: 'Big coffee', displayPrice: '$4.99' },
+    expect(toOffers([{ id: 'cj_tip_coffee_499', displayPrice: '$4.99' }])).toEqual([
+      { id: 'cj_tip_coffee_499', name: 'Big coffee', displayPrice: '$4.99' },
     ]);
   });
 
