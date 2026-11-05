@@ -1,5 +1,6 @@
 import * as Iap from 'expo-iap';
 
+import { canUseStorePurchases } from '@/lib/privacyMode';
 import {
   normalizeTipErrorCode,
   openTipJar,
@@ -32,6 +33,11 @@ jest.mock('expo-iap', () => ({
 
 const iap = Iap as unknown as Record<string, jest.Mock>;
 
+jest.mock('@/lib/privacyMode', () => ({
+  canUseStorePurchases: jest.fn(() => true),
+}));
+const canUse = canUseStorePurchases as unknown as jest.Mock;
+
 const products = [
   // Deliberately out of order and with an unrelated SKU: the jar keeps our
   // order and only our products.
@@ -53,6 +59,7 @@ const flush = () => new Promise((r) => setImmediate(r));
 beforeEach(() => {
   jest.clearAllMocks();
   resetTipJarModuleForTests();
+  canUse.mockReturnValue(true);
   onPurchase = null;
   onError = null;
   iap.initConnection.mockResolvedValue(true);
@@ -94,6 +101,43 @@ describe('tip jar store bridge', () => {
       request: { apple: { sku: 'cj_tip_coffee_499' }, google: { skus: ['cj_tip_coffee_499'] } },
       type: 'in-app',
     });
+  });
+
+  it('refuses to open the store in strict privacy', async () => {
+    canUse.mockReturnValue(false);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(openTipJar(jest.fn())).rejects.toBeInstanceOf(TipJarUnavailableError);
+    expect(iap.initConnection).not.toHaveBeenCalled();
+    expect(iap.purchaseUpdatedListener).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('reports unavailable instead of purchasing after the mode flips to strict', async () => {
+    const events: TipEvent[] = [];
+    const session = await openTipJar((e) => events.push(e));
+    canUse.mockReturnValue(false);
+    await session.requestTip('cj_tip_coffee_299');
+    expect(iap.requestPurchase).not.toHaveBeenCalled();
+    expect(events).toEqual([{ kind: 'error', reason: 'unavailable' }]);
+  });
+
+  it('recovers a leftover tip on duplicate-purchase', async () => {
+    const events: TipEvent[] = [];
+    await openTipJar((e) => events.push(e));
+    iap.getAvailablePurchases.mockResolvedValue([purchase({ id: 'old' })]);
+    onError?.({ code: 'duplicate-purchase' });
+    await flush();
+    expect(iap.finishTransaction).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([{ kind: 'thanks', productId: 'cj_tip_coffee_299' }]);
+  });
+
+  it('reports an outcome on duplicate-purchase with nothing to recover', async () => {
+    const events: TipEvent[] = [];
+    await openTipJar((e) => events.push(e));
+    onError?.({ code: 'duplicate-purchase' });
+    await flush();
+    expect(iap.finishTransaction).not.toHaveBeenCalled();
+    expect(events).toEqual([{ kind: 'error', reason: 'failed' }]);
   });
 
   it('finishes a completed tip as a consumable, then thanks the user', async () => {
@@ -140,6 +184,8 @@ describe('tip jar store bridge', () => {
     iap.getAvailablePurchases.mockResolvedValue([purchase({ id: 'old' })]);
     const events: TipEvent[] = [];
     await openTipJar((e) => events.push(e));
+    // Recovery runs alongside the open now, not before it resolves.
+    await flush();
     expect(iap.finishTransaction).toHaveBeenCalledTimes(1);
     expect(events).toEqual([{ kind: 'thanks', productId: 'cj_tip_coffee_299' }]);
   });

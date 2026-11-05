@@ -4,7 +4,9 @@
  *
  * Nothing here runs at import or app launch. `expo-iap` is required lazily
  * inside `openTipJar`, which the tip jar UI calls only after the user taps
- * to open it and `canUseStorePurchases()` has said yes. That is the first
+ * to open it and `canUseStorePurchases()` has said yes — and the bridge
+ * checks the gate itself, so the strict-privacy invariant does not depend
+ * on call sites asking first. That is the first
  * moment the app talks to the store: connect, then fetch the localized
  * prices. Tips are consumables, so every completed purchase is finished
  * with `isConsumable: true` (otherwise Google refunds it after 3 days and
@@ -18,6 +20,7 @@
 import { Platform } from 'react-native';
 import type { Product, Purchase } from 'expo-iap';
 
+import { canUseStorePurchases } from '@/lib/privacyMode';
 import { TIP_PRODUCTS, TIP_PRODUCT_IDS, isTipProductId } from '@/lib/supportConfig';
 import {
   TipJarUnavailableError,
@@ -109,6 +112,11 @@ export function toOffers(products: readonly Pick<Product, 'id' | 'displayPrice'>
 }
 
 export async function openTipJar(onEvent: (event: TipEvent) => void): Promise<TipJarSession> {
+  // Enforced here, not just in the UI: the bridge owns store traffic, so the
+  // strict-privacy invariant must not depend on call sites asking first.
+  if (!canUseStorePurchases()) {
+    throw new TipJarUnavailableError('Store purchases are unavailable in strict privacy.');
+  }
   const mod = loadExpoIap();
   if (!mod) throw new TipJarUnavailableError('In-app purchases are not available in this build.');
 
@@ -142,27 +150,35 @@ export async function openTipJar(onEvent: (event: TipEvent) => void): Promise<Ti
 
   // Completed-but-unfinished tips (app closed mid-purchase, or a pending
   // payment that cleared later) are finished the next time the user opens
-  // the tip jar — never in the background.
-  const recoverUnfinished = async () => {
+  // the tip jar — never in the background. Returns whether any tip purchase
+  // was found, so callers can fall back to an explicit event when the store
+  // refused a request but there was nothing to recover.
+  const recoverUnfinished = async (): Promise<boolean> => {
     try {
       const purchases = await mod.getAvailablePurchases();
-      for (const purchase of purchases) await handlePurchase(purchase);
+      const tipPurchases = purchases.filter((p) => isTipProductId(p.productId));
+      if (tipPurchases.length === 0) return false;
+      for (const purchase of tipPurchases) await handlePurchase(purchase);
+      return true;
     } catch (error) {
       console.warn(
         '[tipJar] getAvailablePurchases failed:',
         error instanceof Error ? error.message : String(error),
       );
+      return false;
     }
   };
 
-  const handleError = (error: unknown) => {
+  const handleError = async (error: unknown) => {
     const code = normalizeTipErrorCode(error);
     if (code === 'user-cancelled') return onEvent({ kind: 'cancelled' });
-    if (code === 'duplicate-purchase') return;
     if (code === 'pending' || code === 'deferred-payment') return onEvent({ kind: 'pending' });
-    if (code === 'already-owned') {
-      // An earlier tip of this size was never consumed; finish it now.
-      void recoverUnfinished();
+    if (code === 'duplicate-purchase' || code === 'already-owned') {
+      // An earlier tip of this size was never consumed; finish it now. If
+      // recovery finds nothing, the store refused this request outright —
+      // say so rather than leaving the tap without an outcome.
+      const recovered = await recoverUnfinished();
+      if (!recovered) onEvent({ kind: 'error', reason: 'failed' });
       return;
     }
     if (UNAVAILABLE_CODES.has(code)) return onEvent({ kind: 'error', reason: 'unavailable' });
@@ -192,18 +208,26 @@ export async function openTipJar(onEvent: (event: TipEvent) => void): Promise<Ti
     connected = true;
     const products = await mod.fetchProducts({ skus: [...TIP_PRODUCT_IDS], type: 'in-app' });
     const offers = toOffers((products ?? []) as Product[]);
-    await recoverUnfinished();
+    // Leftover recovery runs alongside the open, not before it: the jar can
+    // show prices as soon as fetchProducts returns, and any recovered tip
+    // still reaches the same listeners (deduped by `finished`).
+    void recoverUnfinished();
     return {
       offers,
       close,
       requestTip: async (id) => {
+        // The mode may have flipped while the jar sat open.
+        if (!canUseStorePurchases()) {
+          onEvent({ kind: 'error', reason: 'unavailable' });
+          return;
+        }
         try {
           await mod.requestPurchase({
             request: { apple: { sku: id }, google: { skus: [id] } },
             type: 'in-app',
           });
         } catch (error) {
-          handleError(error);
+          await handleError(error);
         }
       },
     };

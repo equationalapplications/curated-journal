@@ -110,6 +110,12 @@ export function TipJarSection() {
     setPhase('opening');
     setStatus(null);
     try {
+      // Retry after an unavailable open: close the previous session first so
+      // its listeners and store connection don't leak (and so endConnection
+      // cannot race the new initConnection).
+      const prev = session.current;
+      session.current = null;
+      if (prev) await prev.close();
       const next = await openTipJar(onEvent);
       if (!mounted.current) {
         void next.close();
@@ -138,18 +144,34 @@ export function TipJarSection() {
     if (!session.current || busyId) return;
     setBusyId(id);
     setStatus(null);
-    await session.current.requestTip(id);
+    try {
+      await session.current.requestTip(id);
+    } finally {
+      // The store bridge resolves without an event on some paths (e.g. a
+      // duplicate purchase it can't recover); never leave the row on '…'.
+      // Outcomes still arrive through onEvent and set the status text.
+      if (mounted.current) setBusyId(null);
+    }
   };
 
   if (!isTipJarSupported()) {
     const url = getSupportLinkUrl();
     if (!url) return null;
-    const openLink = () => {
+    const openLink = async () => {
       if (!canOpenSupportLink()) {
         showStrictPrivacyAlert(STRICT_PRIVACY_LINK_MESSAGE);
         return;
       }
-      void Linking.openURL(url);
+      try {
+        await Linking.openURL(url);
+      } catch {
+        // Popup blockers and sandboxed frames refuse the navigation; say so
+        // instead of leaving the tap with no feedback.
+        confirm({
+          title: 'Couldn’t open the page',
+          message: 'Your browser blocked the link. Copy the address from our site to reach the support page.',
+        });
+      }
     };
     return (
       <>
@@ -162,7 +184,7 @@ export function TipJarSection() {
             <ThemedText type="strong" style={styles.rowLabel}>
               Buy me a coffee
             </ThemedText>
-            <Button label="Support" testID="support-link-button" onPress={openLink} />
+            <Button label="Support" testID="support-link-button" onPress={() => void openLink()} />
           </Row>
         </ListGroup>
       </>
