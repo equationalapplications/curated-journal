@@ -1,0 +1,36 @@
+diff --git a/node_modules/llama.rn/ios/RNLlama.mm b/node_modules/llama.rn/ios/RNLlama.mm
+index 6039042..b9f180e 100644
+--- a/node_modules/llama.rn/ios/RNLlama.mm
++++ b/node_modules/llama.rn/ios/RNLlama.mm
+@@ -73,6 +73,16 @@ MetalAvailability getMetalAvailability(bool skipGpuDevices) {
+ }
+ } // namespace rnllama_jsi
+ 
++// Backport of llama.rn 0.13.0-rc.9: RCTCxxBridge was removed in RN 0.88
++// (bridgeless). The object modules receive as their "bridge" is an
++// RCTBridgeProxy (NSProxy) that responds to `runtime` and `jsCallInvoker`
++// at runtime but declares neither in public headers, so cast through a
++// local protocol instead of the concrete type.
++@protocol RNLlamaBridgeRuntimeAccess <NSObject>
++@property (nonatomic, readonly) void *runtime;
++@property (nonatomic, readonly) std::shared_ptr<facebook::react::CallInvoker> jsCallInvoker;
++@end
++
+ @implementation RNLlama {
+     __unsafe_unretained RCTBridge *_bridge;
+ }
+@@ -96,11 +106,11 @@ RCT_EXPORT_METHOD(install:(RCTPromiseResolveBlock)resolve
+         return;
+     }
+ 
+-    RCTCxxBridge *cxxBridge = (RCTCxxBridge *)bridge.batchedBridge;
++    id<RNLlamaBridgeRuntimeAccess> cxxBridge = (id<RNLlamaBridgeRuntimeAccess>)bridge.batchedBridge;
+     if (!cxxBridge) {
+-        cxxBridge = (RCTCxxBridge *)bridge;
++        cxxBridge = (id<RNLlamaBridgeRuntimeAccess>)bridge;
+     }
+-    auto callInvoker = cxxBridge.jsCallInvoker ?: bridge.jsCallInvoker;
++    auto callInvoker = cxxBridge.jsCallInvoker;
+     if (!cxxBridge.runtime) {
+         resolve(@false);
+         return;

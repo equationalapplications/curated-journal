@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-zip-archive/RNZipArchive.podspec b/node_modules/react-native-zip-archive/RNZipArchive.podspec
+index 88efbd7..07903fc 100644
+--- a/node_modules/react-native-zip-archive/RNZipArchive.podspec
++++ b/node_modules/react-native-zip-archive/RNZipArchive.podspec
+@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
+   else
+     s.dependency 'React-Core'
+   end
+-  s.dependency 'SSZipArchive', '~>2.5.5'
++  s.dependency 'SSZipArchive', '~> 2.6.0'
+   s.pod_target_xcconfig = {
+     'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_ROOT)/SSZipArchive" "$(PODS_ROOT)/SSZipArchive/SSZipArchive/minizip"'
+   }

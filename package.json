@@ -1,7 +1,7 @@
 {
   "name": "cur",
   "main": "expo-router/entry",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "dependencies": {
     "@equationalapplications/core-llm-wiki": "7.13.1",
     "@equationalapplications/expo-llm-wiki": "7.13.1",
@@ -37,7 +37,7 @@
     "expo-system-ui": "~58.0.6",
     "expo-updates": "~58.0.18",
     "expo-web-browser": "~58.0.7",
-    "llama.rn": "^0.12.5",
+    "llama.rn": "0.12.9",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.0",
@@ -51,7 +51,7 @@
     "react-native-screens": "~4.30.0",
     "react-native-web": "^0.21.4",
     "react-native-worklets": "0.13.0",
-    "react-native-zip-archive": "^9.5.1",
+    "react-native-zip-archive": "9.5.3",
     "xstate": "^5.32.2"
   },
   "overrides": {
