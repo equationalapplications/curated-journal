@@ -18,6 +18,9 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# EAS credentials bundle (service-account key, cert/profile references)
+/credentials.json
+
 # Metro
 .metro-health-check*
 
