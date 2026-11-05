@@ -7,7 +7,7 @@ index 88efbd7..07903fc 100644
      s.dependency 'React-Core'
    end
 -  s.dependency 'SSZipArchive', '~>2.5.5'
-+  s.dependency 'SSZipArchive', '~> 2.6'
++  s.dependency 'SSZipArchive', '~> 2.6.0'
    s.pod_target_xcconfig = {
      'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_ROOT)/SSZipArchive" "$(PODS_ROOT)/SSZipArchive/SSZipArchive/minizip"'
    }
