@@ -111,5 +111,8 @@ profile).
    non-interactive submit hard-fails.
 6. Verify the store artifact the same way as step 4 (download the AAB from
    the EAS build page, then `bundletool dump manifest`), checking that
-   `EXPO_UPDATES_CHECK_ON_LAUNCH` is `NEVER`. Strict privacy from launch has to
-   hold in store builds too.
+   `EXPO_UPDATES_CHECK_ON_LAUNCH` is `NEVER`, and verify the IPA too:
+   download it from the same build page, unzip the `Payload/*.app`, and
+   read its Info.plist with `plutil -p` — `EXUpdatesCheckOnLaunch` must be
+   `Never` (the iOS spelling of the same gate). Strict privacy from launch
+   has to hold in store builds too.

@@ -36,6 +36,9 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: EAS build and submit
+        # No --no-wait: the job must stay green only if the builds actually
+        # finish and the auto-submits (Play / TestFlight) are accepted. A
+        # queued-and-forgotten release would otherwise show a passing check.
         run: >-
           eas build --platform ${{ inputs.platform }} --profile production
-          --non-interactive --auto-submit --no-wait
+          --non-interactive --auto-submit

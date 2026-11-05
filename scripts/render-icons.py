@@ -9,6 +9,7 @@ Requires rsvg-convert (librsvg) and Pillow. Run from the repo root:
     python3 scripts/render-icons.py
 """
 import os
+import shutil
 import subprocess
 
 from PIL import Image
@@ -62,12 +63,17 @@ SOURCES = {
 OUTPUTS = [
     ("icon", "assets/images/icon.png", 1024, "rgb"),
     ("icon", "assets/images/favicon.png", 48, "rgb"),
-    ("icon", "store/app-store/icon-1024.png", 1024, "rgb"),
     ("icon", "store/google-play/icon-512.png", 512, "alpha-opaque"),
     ("adaptive-foreground", "assets/images/android-icon-foreground.png", 1024, "keep"),
     ("adaptive-background", "assets/images/android-icon-background.png", 1024, "rgb"),
     ("monochrome", "assets/images/android-icon-monochrome.png", 1024, "keep"),
     ("splash", "assets/images/splash-icon.png", 512, "keep"),
+]
+
+# Byte-identical twins of an OUTPUTS entry — copied, not rendered again, so
+# the two files cannot drift apart.
+COPIES = [
+    ("assets/images/icon.png", "store/app-store/icon-1024.png"),
 ]
 
 
@@ -89,6 +95,10 @@ def main():
                 im.putalpha(Image.new("L", im.size, 255))
             im.save(out, optimize=True)
         print(out, size)
+    for src, dst in COPIES:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(src, dst)
+        print(dst, "copied from", src)
 
 
 if __name__ == "__main__":
