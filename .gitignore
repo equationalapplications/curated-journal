@@ -48,3 +48,6 @@ example
 # Scale-test journals from `N=<count> npm run seed:night-shift`
 /fixtures/seed-*
 .superpowers/
+
+# store credentials (Google Play service account key, etc.)
+/credentials.json

@@ -1,5 +1,5 @@
 import { useRouter, type Href } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { useWikiExport } from '@equationalapplications/expo-llm-wiki';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { useJournal } from '@/contexts/JournalContext';
 import { useNightShiftGates } from '@/hooks/useNightShiftGates';
 import { UpdateCheckRow } from '@/components/settings/UpdateCheckRow';
 import { NightShiftPruneRow } from '@/components/settings/NightShiftPruneRow';
+import { TipJarSection } from '@/components/settings/TipJarSection';
 import { Space } from '@/constants/theme';
 
 export default function SettingsScreen() {
@@ -64,7 +65,7 @@ export default function SettingsScreen() {
   return (
     // No top edge: the navigator header already owns the status-bar inset.
     <Screen edges={['left', 'right', 'bottom']}>
-      <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.container}>
         {confirmElement}
 
         <ThemedText type="label" style={styles.label}>
@@ -125,13 +126,15 @@ export default function SettingsScreen() {
             <Button label="Change" variant="danger" onPress={changeModel} />
           </Row>
         </ListGroup>
-      </View>
+
+        <TipJarSection />
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Space[4], gap: Space[2] },
+  container: { flexGrow: 1, padding: Space[4], gap: Space[2] },
   label: { marginTop: Space[2], marginBottom: Space[1] },
   row: { flexDirection: 'row', alignItems: 'center', gap: Space[3] },
   rowLabel: { flex: 1 },
