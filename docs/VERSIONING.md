@@ -72,15 +72,28 @@ they are for the sideload APK on GitHub releases (or use the `github-apk` EAS
 profile).
 
 1. Merge the PR that carries the bump, then tag `vX.Y.Z` as in step 5.
-2. Run the **EAS store build and submit** workflow (Actions tab, platform
-   `all`). The `production` profile builds an AAB and an IPA on the
-   `production` channel. The build number is managed remotely by EAS
-   (`appVersionSource: remote`, `autoIncrement`), so it never needs a manual
-   bump. The marketing version is `app.json`'s `version`.
-3. EAS auto-submits: Android goes to the Play **internal** track as a draft,
+2. Run the **EAS store build and submit** workflow **at the tag** — in the
+   Actions tab's "Run workflow" ref picker choose `vX.Y.Z`, or run
+   `gh workflow run eas-store-release.yml --ref vX.Y.Z`. Dispatching from a
+   branch head builds whatever `main` has become since the tag, not the
+   tagged release. Platform: `all`.
+3. **Before the first store release only**: compare the signing certificate
+   of the fielded sideload APKs with the keystore EAS will sign the store
+   build with (`eas credentials` on the expo.dev project, `keytool -printcert`
+   against the existing APK). Android refuses to update an installed app
+   whose signature changes — a mismatch means every sideload user must
+   uninstall and reinstall, wiping their local journal unless they exported
+   an OKF backup first. If the certificates differ, upload the existing
+   keystore to EAS so the store build keeps the same signature. Later store
+   releases inherit this alignment; only the first one can get it wrong.
+4. The `production` profile builds an AAB and an IPA on the `production`
+   channel. The build number is managed remotely by EAS (`appVersionSource:
+   remote`, `autoIncrement`), so it never needs a manual bump. The marketing
+   version is `app.json`'s `version`.
+5. EAS auto-submits: Android goes to the Play **internal** track as a draft,
    and iOS goes to App Store Connect / TestFlight. Promote to production in
    each console after a device smoke test of the store build.
-4. Verify the store artifact the same way as step 4 (download the AAB from
+6. Verify the store artifact the same way as step 4 (download the AAB from
    the EAS build page, then `bundletool dump manifest`), checking that
    `EXPO_UPDATES_CHECK_ON_LAUNCH` is `NEVER`. Strict privacy from launch has to
    hold in store builds too.

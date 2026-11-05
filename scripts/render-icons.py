@@ -55,16 +55,19 @@ SOURCES = {
     "splash": svg(glyph(PAPER, INK, AMBER)),
 }
 
-# (source, output path, size, flatten to opaque RGB)
+# (source, output path, size, pixel format)
+# "rgb" flattens to opaque RGB — App Store icons must have no alpha channel.
+# "alpha-opaque" flattens but keeps a fully opaque alpha channel — Google Play
+# requires a 32-bit PNG with an alpha channel. "keep" leaves rsvg output.
 OUTPUTS = [
-    ("icon", "assets/images/icon.png", 1024, True),
-    ("icon", "assets/images/favicon.png", 48, True),
-    ("icon", "store/app-store/icon-1024.png", 1024, True),
-    ("icon", "store/google-play/icon-512.png", 512, True),
-    ("adaptive-foreground", "assets/images/android-icon-foreground.png", 1024, False),
-    ("adaptive-background", "assets/images/android-icon-background.png", 1024, True),
-    ("monochrome", "assets/images/android-icon-monochrome.png", 1024, False),
-    ("splash", "assets/images/splash-icon.png", 512, False),
+    ("icon", "assets/images/icon.png", 1024, "rgb"),
+    ("icon", "assets/images/favicon.png", 48, "rgb"),
+    ("icon", "store/app-store/icon-1024.png", 1024, "rgb"),
+    ("icon", "store/google-play/icon-512.png", 512, "alpha-opaque"),
+    ("adaptive-foreground", "assets/images/android-icon-foreground.png", 1024, "keep"),
+    ("adaptive-background", "assets/images/android-icon-background.png", 1024, "rgb"),
+    ("monochrome", "assets/images/android-icon-monochrome.png", 1024, "keep"),
+    ("splash", "assets/images/splash-icon.png", 512, "keep"),
 ]
 
 
@@ -73,12 +76,18 @@ def main():
     for name, text in SOURCES.items():
         with open(f"assets/branding/{name}.svg", "w") as f:
             f.write(text)
-    for name, out, size, opaque in OUTPUTS:
+    for name, out, size, mode in OUTPUTS:
         os.makedirs(os.path.dirname(out), exist_ok=True)
         subprocess.run(["rsvg-convert", "-w", str(size), "-h", str(size),
                         f"assets/branding/{name}.svg", "-o", out], check=True)
-        if opaque:  # App Store icons must have no alpha channel
-            Image.open(out).convert("RGB").save(out, optimize=True)
+        if mode != "keep":
+            im = Image.open(out)
+            if mode == "rgb":
+                im = im.convert("RGB")
+            elif mode == "alpha-opaque":
+                im = im.convert("RGBA")
+                im.putalpha(Image.new("L", im.size, 255))
+            im.save(out, optimize=True)
         print(out, size)
 
 
