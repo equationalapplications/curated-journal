@@ -67,6 +67,10 @@ into `app.json` properly.
 - `assets/images/icon.png` (replaced)
 - `assets/store/*` (6 files)
 - `AGENTS.md` (one block + pointer update)
+- `INTENT.md` (static-INTENT rule codified; amended 2026-11-06: this
+  list originally omitted INTENT.md and the version files — see
+  `specs/2026-11-06-sideload-signing-brand-followup/`)
+- `app.json`, `package.json`, `package-lock.json` (6.0.0 MAJOR bump)
 
 ## Test plan
 

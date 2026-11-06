@@ -56,7 +56,9 @@ workflow section below).
 
 - Charter: `INTENT.md` (repo root).
 - Versioning/OTA policy: `docs/VERSIONING.md`.
-- Everything else: GitHub issues and PR discussions in this repo.
+- In-flight cycles: the spec folder (`specs/<name>/`).
+- Everything else: the recorded decision history — GitHub issues and PR
+  discussions in this repo.
 
 ## Spec workflow (SDD)
 
@@ -75,5 +77,3 @@ workflow section below).
   no Built/Planned status lines, no delivery progress. Implementation
   status lives in the spec's status line and LEDGER while in flight, and
   in the delivery records after merge.
-- **Where decisions live:** the spec folder while in flight; the recorded
-  decision history after merge.

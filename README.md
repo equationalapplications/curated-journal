@@ -235,7 +235,7 @@ docs/
 
 This repository is intended as an open-source reference implementation. Before opening a PR:
 
-1. Read the [technical specifications](./docs/superpowers/specs/)
+1. Read the [technical specifications](./specs/)
 2. Follow existing code conventions in `src/`
 3. Consult [Expo SDK 58 docs](https://docs.expo.dev/versions/v58.0.0/) for platform APIs
 

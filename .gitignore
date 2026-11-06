@@ -20,7 +20,6 @@ expo-env.d.ts
 
 # EAS credentials bundle (service-account key, cert/profile references)
 /credentials.json
-/credentials/
 
 # Metro
 .metro-health-check*
@@ -50,5 +49,7 @@ example
 /fixtures/seed-*
 .superpowers/
 
-# store credentials (Google Play service account key, etc.)
-/credentials.json
+# local signing credentials — EAS keystore bundle, upload keystore (keystore.jks),
+# and keystore.properties that wires release signing; NEVER committed.
+# Missing credentials/ = release builds refuse to sign (guard plugin); see docs/VERSIONING.md
+/credentials/
