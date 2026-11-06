@@ -126,8 +126,11 @@ before choosing that path).
      export → uninstall → install → OKF import) and must say so in that
      release's notes. From v7.0.0 this is the standing case for local
      builds: they sign with the EAS upload keystore via
-     `../credentials/keystore.properties`, so every GitHub APK release
-     from that version on needs the hand-migration warning.
+     `../credentials/keystore.properties` — wiring emitted by the
+     sideload-guard config plugin, since the SDK 58 template itself has
+     none (without it local release builds silently sign with the public
+     debug keystore even when `credentials/` exists) — so every GitHub
+     APK release from that version on needs the hand-migration warning.
 3. Run the **EAS store build and submit** workflow **at the tag** — in the
    Actions tab's "Run workflow" ref picker choose `vX.Y.Z`, or run
    `gh workflow run eas-store-release.yml --ref vX.Y.Z`. Dispatching from a
