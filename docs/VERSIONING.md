@@ -72,27 +72,27 @@ they are for the sideload APK on GitHub releases (or use the `github-apk` EAS
 profile).
 
 1. Merge the PR that carries the bump, then tag `vX.Y.Z` as in step 5.
-2. **Before the first store release only**: settle Android signing. Compare
-   the signing certificate of the fielded sideload APKs with the keystore
-   EAS will sign the store build with (`eas credentials` on the expo.dev
-   project, `keytool -printcert` against the existing APK), and decide the
-   Play App Signing keys. New Play apps are enrolled in Play App Signing
-   automatically: Google holds the **app-signing key** whose signature ends
-   up on every installed store build, while the key that uploads artifacts —
-   EAS's keystore — is only the **upload key**. Uploading the sideload
-   keystore to EAS therefore does not change what store installs carry.
-   To keep store updates installable over fielded sideloads, the sideload
-   keystore itself must become the app-signing key: at the first AAB
-   release, use Play Console's "export and upload a key from Java keystore"
-   flow (Release → Setup → App signing) to hand Google the sideload key,
-   and let EAS keep its own upload key. If Google generates a fresh
-   app-signing key instead, its signature won't match the sideloads —
-   Android refuses to update an installed app whose signature changes, so
-   every sideload user must uninstall and reinstall, wiping their local
-   journal unless they exported an OKF backup first. After the first
-   release, compare the app-signing certificate shown in Play Console with
-   `keytool -printcert` of the sideload APK; it must match. Later store
-   releases inherit this alignment; only the first one can get it wrong.
+2. **Before the first store release only**: settle Android signing. The
+   fielded sideload APKs (2.0.0–4.x) carry `debug.keystore`, whose private
+   half is **public** — the file is byte-identical to the template keystore
+   Expo ships in the public `expo/expo` repo (storepass `android`, SHA-256
+   `FA:C6:17:45:…:3B:9C`, verified 2026-11-05). Making it the Play
+   app-signing key would let anyone sign APKs that store installs silently
+   accept as updates, so the first release instead enrolled Play App
+   Signing with a **Google-generated app-signing key**. The sideload
+   keystore must never become a store identity. Consequences, all
+   permanent:
+   - Store builds share no signature with any fielded sideload binary.
+     Every existing sideload install must migrate by hand: OKF export →
+     uninstall → install from Play → OKF import. Store release notes — and
+     GitHub release notes published after the store release — must say so.
+   - The EAS keystore stays the **upload key** only (upload SHA-1
+     `10:F4:9C:AF:F4:78:3F:75:D8:0A:F8:E8:95:CA:C7:9C:03:1B:14:48`).
+     After the first upload, verify it under Release → Setup → App
+     integrity; the app-signing key shown there will be the new Google
+     key — record its fingerprint with the release notes.
+   - GitHub sideload APKs (EAS-key-signed from 5.0.0 on) and Play
+     installs never cross-update; each channel updates within itself.
 3. Run the **EAS store build and submit** workflow **at the tag** — in the
    Actions tab's "Run workflow" ref picker choose `vX.Y.Z`, or run
    `gh workflow run eas-store-release.yml --ref vX.Y.Z`. Dispatching from a
