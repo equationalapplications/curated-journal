@@ -143,3 +143,24 @@ recorded ruling and the PR shows the rendered results:
 - No git-history rewrite for the preview PNG blobs.
 - No new signing identity: the EAS upload keystore remains the store
   upload key and, from 7.0.0, the GitHub-APK sideload lineage of record.
+
+## Addendum — 2026-11-06 (post-merge correction, caught at the v7.0.0 train gate)
+
+R1's premise that "the template's own keystore.properties wiring does the
+signing" is **false on SDK 58**: the generated template signs release with
+the debug keystore unconditionally. EAS injects its own signing
+server-side, which is why store builds were never affected. The first
+local 7.0.0 release build produced a debug-signed release APK with the
+guard silent (the guard checks file existence only), caught by R2's
+`apksigner verify` backstop before anything shipped — the release train
+stopped at the verification gate.
+
+Correction (carried by the follow-up fix PR; R1's acceptance bullet
+"release signing config is the upload keystore" is what it always
+required): the plugin also emits **signing wiring** — when not on EAS and
+`keystore.properties` exists, parses, and its `storeFile` resolves, a
+`signingConfigs.release` is defined from it and `buildTypes.release`
+signs with it. Broken properties fail at configuration time; the
+missing-file guard is unchanged. The plugin's idempotency markers are
+independent, so trees generated pre-addendum gain the wiring at their
+next prebuild without duplication.
