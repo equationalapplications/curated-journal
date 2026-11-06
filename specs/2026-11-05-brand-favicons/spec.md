@@ -18,18 +18,24 @@ Expo app icon is replaced from the new 512px, and the web favicon from the
 
 1. `assets/images/favicon.png` ← `favicon-cj-c-v3-48.png` (Expo web
    export favicon; `app.json` `web.favicon` path unchanged).
-2. `assets/images/icon.png` ← `favicon-cj-c-v3-512.png` (Expo app icon;
-   `app.json` `icon` and `plugins.expo-router` `icon` paths unchanged).
+2. `assets/images/icon.png` ← `curated-journal-app-icon-1024.png` (the
+   1024×1024 master app icon, re-rendered at 1024; `app.json` `icon` and
+   `plugins.expo-router` `icon` paths unchanged). Satisfies Expo's
+   1024×1024 recommendation — the favicon set's 512px variant is
+   web-only, and `curated-journal-google-play-icon-512.png` is the Play
+   store listing icon, not the app icon (Kurt, 2026-11-05).
 3. **AGENTS.md** — add the SDD enforcement block per the 2026-11-05
    pattern and update its "Where decisions live" pointer from the older
    flat `docs/superpowers/{specs,plans}/` layout to `specs/<name>/` (one
    folder per cycle: `spec.md`, `plan.md`, `LEDGER.md`).
 
-### Known limitation (accepted)
+### Received but parked (store assets, 2026-11-05 second zip)
 
-Expo recommends a 1024×1024 app icon; the approved set tops out at 512.
-Accepted for now — the App Store marketing icon is supplied separately at
-release time, and no current build gate enforces 1024.
+Kurt also delivered the Play store pack: `google-play-icon-512.png`,
+`store-banner-1024x500.png`, `store-assets-preview-2400x2000.png`, and a
+`splash-1440x2560.png`. These are store-listing/design assets, out of this
+PR's scope pending a placement ruling; the existing `splash-icon.png`
+behavior is unchanged.
 
 ### Non-goals
 
