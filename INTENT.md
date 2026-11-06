@@ -24,8 +24,12 @@ Every **Built** and
 **Partly built** line below reflects that check. Rules 11 through 14 were
 added afterwards to carry a newly ruled extension of the product's
 intention; they are **Planned**, and nothing in the code implements them
-yet. Update a status line in the same pull request that changes the
-behavior.
+yet beyond the single privacy-mode check the tip jar asks (rule 11).
+The rule 9 and rule 11 lines were updated by the tip-jar pull request
+(5.0.0, on top of `aff5980`). Those were the last status-line updates:
+INTENT.md is static from here on (Kurt ruling 2026-11-04) — no new
+status lines or delivery progress; implementation status lives in the
+spec folders while in flight and in the delivery records after merge.
 
 ## Why Curated Journal exists
 
@@ -114,6 +118,9 @@ inference, and maintenance passes that respect real hardware limits.
   relies on the phone for memory.
 - **Synapse Core Solo** — the higher tier of Synapse Core hardware, with
   its own on-board memory.
+- **Tip jar** — the optional "Support Curated Journal" section in
+  Settings: small consumable in-app purchases ("Buy me a coffee") through
+  the App Store or Google Play. A tip unlocks nothing.
 
 ## The rules
 
@@ -229,25 +236,31 @@ All user data stays in the app's local storage. There is no analytics SDK
 and no account. Today there is no cloud sync of any kind. From 3.0.0
 binaries onward, the network traffic the app starts is model downloads
 the user starts; from 3.1.0 onward, update checks the user starts from
-Settings join them. (The
+Settings join them; from 5.0.0 onward, so do tip purchases the user
+starts from the Settings tip jar, handled by the OS store (Apple or
+Google) with no journal data involved. (The
 explicit check trigger exists since 3.1.0 — issue #68; checks never run
 automatically. Fielded pre-3.0.0 binaries still carry the old
 launch-time check until the store install reaches them.)
 
 That behavior is also the app's default mode: the everyday setting needs
-no switch, and it consists of model downloads the user starts and update
-checks the user starts — nothing else runs on its own. Over-the-air
+no switch, and it consists of model downloads the user starts, update
+checks the user starts, and tip purchases the user starts — nothing else
+runs on its own. Over-the-air
 update checks never run automatically; if any further check automation
 ever arrives, it is a privacy-mode unlock (rule 12), never a default.
 The privacy modes in rules 11 through 14
 are the one sanctioned way for user data to go anywhere else, and each of
 them starts from an explicit choice by the user. Strict privacy will
 tighten today's behavior further, not loosen it: in that mode nothing
-reaches beyond the device, update checks included.
+reaches beyond the device, update checks and tips included.
 
 *Why:* privacy is the product, not a feature flag.
 
-**Status: Built** for today's behavior in paragraph 1. Paragraph 2
+**Status: Built** for today's behavior in paragraph 1. The tip jar
+opens no store connection at launch or when Settings renders: it
+connects, and fetches the store's prices, only after the user taps to
+open it. Paragraph 2
 describes how that behavior will be framed once privacy modes exist; that
 framing is **Planned** under rules 11 through 14.
 
@@ -278,8 +291,10 @@ has been run.
 The user will choose a privacy mode, following the pattern of the sibling
 desktop app, Curated Thoughts. In strict privacy the app cannot
 communicate beyond the device for any reason — no internet, no Bluetooth,
-no local network; no update checks, no model downloads, no pairing; no
-exceptions. Strict privacy holds from the moment the app starts: nothing
+no local network; no update checks, no model downloads, no tips, no
+pairing; no exceptions. The tip jar is unavailable in strict privacy:
+tapping it shows an alert that explains why and how to step out of
+strict privacy, and never makes a silent network call. Strict privacy holds from the moment the app starts: nothing
 that can reach outside may act before the mode is honored (making that
 true today is expected to ship as a native, MAJOR change). A user in
 strict privacy who wants a new model steps out of strict privacy on
@@ -302,7 +317,12 @@ the app's network behavior is fixed as rule 9 describes. The native-side
 gate is configured and takes effect at the next native prebuild: the
 launch-time update check is disabled (`checkAutomatically: 'NEVER'`), so
 nothing network-capable will run before the app decides; the mode system
-itself is still to be built.
+itself is still to be built. The tip jar is wired to a single
+privacy-mode check (`src/lib/privacyMode.ts`) that it asks before it
+touches the store or opens its web link, and it shows the strict-privacy
+alert when the check says no. Today the app runs in the default mode, so
+that check always reports the default mode and the tip jar works; the
+alert path is exercised by tests only.
 
 ### 12. Each privacy mode away from strict unlocks connectivity step by step
 
@@ -387,8 +407,11 @@ first.
   runs is not sync; it is allowed only in modes that unlock hardware
   pairing — rule 14.)
 - **Any off-device communication in strict privacy.** *Permanent.* Not
-  update checks, not telemetry, not model downloads, not Bluetooth or
-  local-network pairing (rule 11). The first "just
+  update checks, not telemetry, not model downloads, not tips, not
+  Bluetooth or local-network pairing (rule 11). In strict privacy the
+  tip jar is unavailable: tapping it shows an alert explaining why and
+  how to step out of strict privacy, never a silent network call. The
+  first "just
   this one harmless request" is the hole that makes the whole mode
   untrustworthy.
 - **Background maintenance passes.** *Permanent.* They are killed or
@@ -407,7 +430,7 @@ first.
 
 ## How changes are made
 
-1. **Spec first.** Write a spec under `docs/superpowers/specs/`, based on
+1. **Spec first.** Write a spec under `specs/<name>/`, based on
    an investigation that reads the real code (not memory). Spec, plan, and
    implementation go in one pull request. Every spec is checked against
    this file before implementation begins — specs touching rules 11
@@ -420,8 +443,7 @@ first.
    CodeQL), automated and independent reviews must pass, and unresolved
    questions hold the pull request.
 4. **Tests gate behavior changes.** The test suite must pass with no
-   regressions; a change that updates a status line in this file must
-   arrive in the same pull request as the behavior change.
+   regressions.
 5. **Releases follow the train** in `docs/VERSIONING.md`: the version
    bump rides in the change's own PR (never a separate release PR); then
    merge → prebuild → verify the generated version stamps → build on this

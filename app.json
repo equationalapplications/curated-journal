@@ -1,19 +1,22 @@
 {
   "expo": {
-    "name": "curated-journal",
+    "name": "Curated Journal",
     "slug": "curated-journal",
-    "version": "4.0.2",
+    "version": "6.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cur",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.equationalapplicationsllc.curatedjournal"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.equationalapplicationsllc.curatedjournal",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#16233F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -42,15 +45,21 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
-          }
+          "backgroundColor": "#16233F",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160
         }
       ],
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-iap",
+        {
+          "android": {
+            "store": "play"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

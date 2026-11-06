@@ -18,6 +18,10 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# EAS credentials bundle (service-account key, cert/profile references)
+/credentials.json
+/credentials/
+
 # Metro
 .metro-health-check*
 
@@ -45,3 +49,6 @@ example
 # Scale-test journals from `N=<count> npm run seed:night-shift`
 /fixtures/seed-*
 .superpowers/
+
+# store credentials (Google Play service account key, etc.)
+/credentials.json
