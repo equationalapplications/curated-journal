@@ -19,7 +19,8 @@ in the installed package version — verify against the installed types.
 Every change to `main` carries a version bump: MAJOR if it breaks OTA for
 shipped binaries, MINOR for OTA-safe features, PATCH for fixes. Full
 policy and the release train: [docs/VERSIONING.md](docs/VERSIONING.md).
-Update an `INTENT.md` status line in the same PR that changes behavior.
+`INTENT.md` is static — do not add status lines to it (see the Spec
+workflow section below).
 
 ## Heavy builds and resources
 
@@ -54,6 +55,25 @@ Update an `INTENT.md` status line in the same PR that changes behavior.
 ## Where decisions live
 
 - Charter: `INTENT.md` (repo root).
-- Specs and plans: `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 - Versioning/OTA policy: `docs/VERSIONING.md`.
 - Everything else: GitHub issues and PR discussions in this repo.
+
+## Spec workflow (SDD)
+
+- **Read INTENT.md first.** INTENT wins on *intent*, specs on *detail*; a
+  spec that contradicts a rule is wrong until INTENT is amended by PR.
+- **Authority chain:** INTENT beats spec beats plan beats prompt. When the
+  spec does not answer a question, STOP and ask — never invent.
+- **Specs live in `specs/<name>/`** — one folder per cycle: `spec.md`,
+  `plan.md`, `LEDGER.md`. The folder is the unit of review and of cleanup.
+- **Lifecycle:** the spec's status line carries `Draft` → `Reviewed` →
+  `Implemented`; one PR carries spec + plan + implementation and stays
+  draft until implemented; `plan.md` + `LEDGER.md` are transient
+  scaffolding deleted in the same-PR cleanup commit — never a separate
+  cleanup PR, never written after a merge.
+- **INTENT.md is static** — not a status ledger (Kurt ruling 2026-11-04):
+  no Built/Planned status lines, no delivery progress. Implementation
+  status lives in the spec's status line and LEDGER while in flight, and
+  in the delivery records after merge.
+- **Where decisions live:** the spec folder while in flight; the recorded
+  decision history after merge.

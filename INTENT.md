@@ -26,8 +26,10 @@ added afterwards to carry a newly ruled extension of the product's
 intention; they are **Planned**, and nothing in the code implements them
 yet beyond the single privacy-mode check the tip jar asks (rule 11).
 The rule 9 and rule 11 lines were updated by the tip-jar pull request
-(5.0.0, on top of `aff5980`). Update a status line in the same pull
-request that changes the behavior.
+(5.0.0, on top of `aff5980`). Those were the last status-line updates:
+INTENT.md is static from here on (Kurt ruling 2026-11-04) — no new
+status lines or delivery progress; implementation status lives in the
+spec folders while in flight and in the delivery records after merge.
 
 ## Why Curated Journal exists
 
@@ -428,7 +430,7 @@ first.
 
 ## How changes are made
 
-1. **Spec first.** Write a spec under `docs/superpowers/specs/`, based on
+1. **Spec first.** Write a spec under `specs/<name>/`, based on
    an investigation that reads the real code (not memory). Spec, plan, and
    implementation go in one pull request. Every spec is checked against
    this file before implementation begins — specs touching rules 11
@@ -441,8 +443,7 @@ first.
    CodeQL), automated and independent reviews must pass, and unresolved
    questions hold the pull request.
 4. **Tests gate behavior changes.** The test suite must pass with no
-   regressions; a change that updates a status line in this file must
-   arrive in the same pull request as the behavior change.
+   regressions.
 5. **Releases follow the train** in `docs/VERSIONING.md`: the version
    bump rides in the change's own PR (never a separate release PR); then
    merge → prebuild → verify the generated version stamps → build on this
