@@ -1,7 +1,8 @@
 # Curated Journal brand icon + web favicon (cj-c-v3)
 
 - **Date:** 2026-11-05
-- **Status:** Draft — pending Kurt's spec approval (delivery flow Step 1)
+- **Status:** Implemented (2026-11-05: tsc PASS; lint 0 errors/31
+  pre-existing warnings; jest --ci 58 suites / 362 tests PASS)
 - **Branch:** `assets/2026-11-05-brand-favicons`
 - **Priority:** Low — cosmetic, no runtime behavior change
 
@@ -39,6 +40,15 @@ Kurt ruled the store assets are version-controlled in this repo. Copy into
 `curated-journal-splash-1440x2560.png`. The existing `splash-icon.png`
 behavior is unchanged.
 
+### Splash drift (accepted)
+
+`splash-icon.png` stays untouched this cycle, so the splash screen
+briefly shows the old placeholder art while the app icon is already
+`cj-c-v3` branded. Implementer ruling: accepted — the drift is temporary
+and cosmetic, and the replacement 1440×2560 splash art already sits
+in-repo under `assets/store/` for a fast follow-up spec that wires it
+into `app.json` properly.
+
 ### Non-goals
 
 - Android adaptive icons (foreground/background/monochrome) and
@@ -58,6 +68,10 @@ behavior is unchanged.
 - `npx tsc -p tsconfig.test.json --noEmit`, `npm run lint`, and
   `npx jest --ci` locally — read real output (all should be unaffected;
   this is a data-only change).
+- Manual smoke: `npx expo start -c` — Metro and browsers aggressively
+  cache in-place-replaced icons (the `favicon.png`/`icon.png` paths are
+  unchanged), so clear the cache or the old placeholder art masquerades
+  as a failed swap (Kurt review note, 2026-11-05).
 - CI (`ci.yml`) green on the PR.
 
 ## INTENT alignment
