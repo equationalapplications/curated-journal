@@ -58,11 +58,15 @@ moves on a MAJOR, so this test behaves as originally intended —
    with `aapt2 dump xmltree --file AndroidManifest.xml` (the
    `EXPO_UPDATES_CHECK_ON_LAUNCH` entry must say `NEVER`; `dump badging` does
    not show manifest meta-data). **And verify the signing certificate:**
-   `keytool -printcert -jarfile android/app/build/outputs/apk/release/app-release.apk`
-   must show SHA-256
+   `<sdk>/build-tools/<ver>/apksigner verify --print-certs
+   android/app/build/outputs/apk/release/app-release.apk` must show
+   SHA-256
    `E9:45:EC:20:6C:3A:03:C5:BC:99:AB:D4:BA:8F:A8:33:57:61:0E:DB:40:AF:67:9E:8C:59:0C:52:51:57:EF:70`
-   (the upload-key lineage of record, verified 2026-11-06). Any other
-   certificate — above all `FA:C6:17:45:…:3B:9C`, the public debug key — means
+   (the upload-key lineage of record, verified 2026-11-06). Use
+   `apksigner`, not `keytool -printcert -jarfile`: with minSdk 26 the
+   build is signed v2+ only and has no v1 JAR signature for keytool to
+   read. Any other certificate — above all `FA:C6:17:45:…:3B:9C`, the
+   public debug key — means
    the build fell back to the debug keystore: stop, restore
    `credentials/keystore.properties`, rebuild. (The guard plugin refuses such
    builds outright; this check is the backstop.)
@@ -96,8 +100,8 @@ before choosing that path).
    - Store builds share no signature with any fielded sideload binary.
      Every existing sideload install must migrate by hand: OKF export →
      uninstall → install from Play → OKF import. Store release notes must
-     say so. (GitHub release notes carry the hand-migration warning only
-     when that release's signing key changed — see bullet 3.)
+     say so. (Every GitHub APK release from v7.0.0 onward must carry the
+     hand-migration warning; see the sideload signing guidance in bullet 3.)
    - The EAS keystore stays the **upload key** only (upload SHA-1
      `10:F4:9C:AF:F4:78:3F:75:D8:0A:F8:E8:95:CA:C7:9C:03:1B:14:48`;
      certificate SHA-256

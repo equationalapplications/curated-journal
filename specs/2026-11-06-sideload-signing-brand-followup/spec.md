@@ -60,8 +60,13 @@ no background work, no privacy-surface change (rules 1–14 unaffected).
   verified 2026-11-06 with `keytool -list` against
   `credentials/android/keystore.jks`).
 - VERSIONING.md release train gains a mandatory post-build certificate
-  check (`keytool -printcert -jarfile`) that must match the recorded
-  SHA-256 before any release ships; mismatch = stop.
+  check via `apksigner verify --print-certs` (not `keytool -printcert
+  -jarfile`: with minSdk 26 the APK is signed v2+ only and carries no
+  v1 JAR signature — CodeRabbit finding on this PR) that must match the
+  recorded SHA-256 before any release ships; mismatch = stop.
+  Release notes: every GitHub APK release from v7.0.0 onward carries the
+  hand-migration warning (a user may have skipped any earlier version,
+  so the trigger is the release, not a key change between neighbors).
 
 ### R3 — Android adaptive set and splash carry the cj-c-v3 brand
 
