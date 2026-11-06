@@ -91,8 +91,16 @@ profile).
      After the first upload, verify it under Release → Setup → App
      integrity; the app-signing key shown there will be the new Google
      key — record its fingerprint with the release notes.
-   - GitHub sideload APKs (EAS-key-signed from 5.0.0 on) and Play
-     installs never cross-update; each channel updates within itself.
+   - GitHub sideload APKs and Play installs never cross-update. Within
+     GitHub releases, each signing key is its own update lineage: the
+     v5.0.0 GitHub APKs were built locally and signed with the legacy
+     sideload keystore (`FA:C6:…3B:9C`) — the last release that key
+     signs. A later GitHub APK built by the other path (EAS `github-apk`
+     with the EAS upload key, or a regenerated local keystore) will
+     **not** install over fielded v5.0.0 sideloads; a sideload signing
+     change means the same hand migration as the store channel (OKF
+     export → uninstall → install → OKF import) and must say so in that
+     release's notes.
 3. Run the **EAS store build and submit** workflow **at the tag** — in the
    Actions tab's "Run workflow" ref picker choose `vX.Y.Z`, or run
    `gh workflow run eas-store-release.yml --ref vX.Y.Z`. Dispatching from a
