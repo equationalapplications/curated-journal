@@ -1,6 +1,6 @@
 # Spec: sideload signing guard + brand follow-up + review-hygiene
 
-**Status: Draft** — 2026-11-06. One PR carries spec + plan + implementation
+**Status: Implemented** — 2026-11-06. One PR carries spec + plan + implementation
 + version bump; `plan.md`/`LEDGER.md` are transient and deleted in the
 same-PR cleanup commit (AGENTS.md SDD workflow).
 
