@@ -57,7 +57,19 @@ moves on a MAJOR, so this test behaves as originally intended —
    files for what shipped — and confirm the manifest meta-data on the artifact
    with `aapt2 dump xmltree --file AndroidManifest.xml` (the
    `EXPO_UPDATES_CHECK_ON_LAUNCH` entry must say `NEVER`; `dump badging` does
-   not show manifest meta-data).
+   not show manifest meta-data). **And verify the signing certificate:**
+   `<sdk>/build-tools/<ver>/apksigner verify --print-certs
+   android/app/build/outputs/apk/release/app-release.apk` must show
+   SHA-256
+   `E9:45:EC:20:6C:3A:03:C5:BC:99:AB:D4:BA:8F:A8:33:57:61:0E:DB:40:AF:67:9E:8C:59:0C:52:51:57:EF:70`
+   (the upload-key lineage of record, verified 2026-11-06). Use
+   `apksigner`, not `keytool -printcert -jarfile`: with minSdk 26 the
+   build is signed v2+ only and has no v1 JAR signature for keytool to
+   read. Any other certificate — above all `FA:C6:17:45:…:3B:9C`, the
+   public debug key — means
+   the build fell back to the debug keystore: stop, restore
+   `credentials/keystore.properties`, rebuild. (The guard plugin refuses such
+   builds outright; this check is the backstop.)
 5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
    GitHub release with the APK attached, and read back the asset byte-size from
    the release API. Release notes for the first post-#68 release (3.1.0+) must
@@ -69,10 +81,13 @@ moves on a MAJOR, so this test behaves as originally intended —
 Store builds run on EAS, not this machine, so the `heavy-build` and bare-gradle
 rules above don't apply to them. Steps 3–5 of the release train above stay as
 they are for the sideload APK on GitHub releases (or use the `github-apk` EAS
-profile).
+profile — but note an APK built through EAS is signed with the EAS upload key
+and does **not** install over the fielded debug-signed sideloads; see bullet 3
+before choosing that path).
 
 1. Merge the PR that carries the bump, then tag `vX.Y.Z` as in step 5.
-2. **Before the first store release only**: settle Android signing. The
+2. **Done once, 2026-11-05** — Android signing settled at the first store
+   release. Recorded because the consequences are permanent. The
    fielded sideload APKs (2.0.0–4.x) carry `debug.keystore`, whose private
    half is **public** — the file is byte-identical to the template keystore
    Expo ships in the public `expo/expo` repo (storepass `android`, SHA-256
@@ -84,13 +99,22 @@ profile).
    permanent:
    - Store builds share no signature with any fielded sideload binary.
      Every existing sideload install must migrate by hand: OKF export →
-     uninstall → install from Play → OKF import. Store release notes — and
-     GitHub release notes published after the store release — must say so.
+     uninstall → install from Play → OKF import. Store release notes must
+     say so. (Every GitHub APK release from v7.0.0 onward must carry the
+     hand-migration warning; see the sideload signing guidance in bullet 3.)
    - The EAS keystore stays the **upload key** only (upload SHA-1
-     `10:F4:9C:AF:F4:78:3F:75:D8:0A:F8:E8:95:CA:C7:9C:03:1B:14:48`).
-     After the first upload, verify it under Release → Setup → App
-     integrity; the app-signing key shown there will be the new Google
-     key — record its fingerprint with the release notes.
+     `10:F4:9C:AF:F4:78:3F:75:D8:0A:F8:E8:95:CA:C7:9C:03:1B:14:48`;
+     certificate SHA-256
+     `E9:45:EC:20:6C:3A:03:C5:BC:99:AB:D4:BA:8F:A8:33:57:61:0E:DB:40:AF:67:9E:8C:59:0C:52:51:57:EF:70`).
+     Verify the local copy after any EAS credentials change:
+     `keytool -list -v -keystore credentials/android/keystore.jks` with
+     the `storePassword` from `credentials/keystore.properties` — if the
+     SHA-1 differs, EAS regenerated the keystore and every lineage
+     assumption in this document is stale: stop and re-verify before any
+     release. At each Android store release, check Release → Setup → App
+     integrity (the upload key matches the SHA-1 above; the app-signing
+     key is the Google key) and record that key's fingerprint in the
+     release notes.
    - GitHub sideload APKs and Play installs never cross-update. Within
      GitHub releases, each signing key is its own update lineage: the
      v5.0.0 GitHub APKs were built locally and signed with the legacy
@@ -100,7 +124,10 @@ profile).
      **not** install over fielded v5.0.0 sideloads; a sideload signing
      change means the same hand migration as the store channel (OKF
      export → uninstall → install → OKF import) and must say so in that
-     release's notes.
+     release's notes. From v7.0.0 this is the standing case for local
+     builds: they sign with the EAS upload keystore via
+     `../credentials/keystore.properties`, so every GitHub APK release
+     from that version on needs the hand-migration warning.
 3. Run the **EAS store build and submit** workflow **at the tag** — in the
    Actions tab's "Run workflow" ref picker choose `vX.Y.Z`, or run
    `gh workflow run eas-store-release.yml --ref vX.Y.Z`. Dispatching from a
