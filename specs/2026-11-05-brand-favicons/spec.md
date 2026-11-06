@@ -30,15 +30,17 @@ Expo app icon is replaced from the new 512px, and the web favicon from the
    flat `docs/superpowers/{specs,plans}/` layout to `specs/<name>/` (one
    folder per cycle: `spec.md`, `plan.md`, `LEDGER.md`).
 
-### Store assets (2026-11-05 second zip)
+### Store assets (2026-11-05 second and third zips)
 
-Kurt ruled the store assets are version-controlled in this repo. Copy into
+Kurt ruled the store assets are version-controlled in this repo. In
 `assets/store/` (no `app.json` wiring — Play Console uploads):
 `curated-journal-google-play-icon-512.png`,
 `curated-journal-store-banner-1024x500.png`,
-`curated-journal-store-assets-preview.png` (2400×2000), and
-`curated-journal-splash-1440x2560.png`. The existing `splash-icon.png`
-behavior is unchanged.
+`curated-journal-store-assets-preview.png` (2400×2000),
+`curated-journal-splash-1440x2560.png`, and — from the third delivery,
+"new for CJ" — `curated-journal-banner.png` (2400×800 brand banner) and
+`curated-journal-banner-preview.png` (2400×2080). The existing
+`splash-icon.png` behavior is unchanged.
 
 ### Splash drift (accepted)
 
@@ -60,7 +62,7 @@ into `app.json` properly.
 
 - `assets/images/favicon.png` (replaced)
 - `assets/images/icon.png` (replaced)
-- `assets/store/*` (4 new files)
+- `assets/store/*` (6 files)
 - `AGENTS.md` (one block + pointer update)
 
 ## Test plan
