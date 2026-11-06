@@ -56,7 +56,10 @@ into `app.json` properly.
 - Android adaptive icons (foreground/background/monochrome) and
   `splash-icon.png` keep their existing art — the approved set has no
   variants for them.
-- No OTA/versioning changes.
+- No OTA policy changes. The version bump required by the versioning
+  policy still applies — MAJOR, because `assets/images/icon.png` feeds
+  native prebuild (launcher icons), so the change ships only in a new
+  binary.
 
 ## Files touched
 

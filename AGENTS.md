@@ -19,7 +19,8 @@ in the installed package version — verify against the installed types.
 Every change to `main` carries a version bump: MAJOR if it breaks OTA for
 shipped binaries, MINOR for OTA-safe features, PATCH for fixes. Full
 policy and the release train: [docs/VERSIONING.md](docs/VERSIONING.md).
-Update an `INTENT.md` status line in the same PR that changes behavior.
+`INTENT.md` is static — do not add status lines to it (see the Spec
+workflow section below).
 
 ## Heavy builds and resources
 
