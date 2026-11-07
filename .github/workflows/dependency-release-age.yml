@@ -1,0 +1,27 @@
+name: Dependency release age
+
+# Policy: every dependency in package-lock.json must be at least 14 days old,
+# to limit exposure to poisoned upstream releases. Runs before any install,
+# so a too-new package's install scripts never execute in CI.
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - scripts/check-release-age.mjs
+      - .github/workflows/dependency-release-age.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.1"
+      - name: Check minimum release age
+        run: node scripts/check-release-age.mjs --days 14
