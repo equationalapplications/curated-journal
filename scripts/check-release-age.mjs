@@ -38,7 +38,7 @@ async function worker() {
     let doc
     for (let attempt = 1; attempt <= 3 && !doc; attempt++) {
       try {
-        const res = await fetch(REGISTRY + name.replace("/", "%2f"))
+        const res = await fetch(REGISTRY + name.replace(/\//g, "%2f"))
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         doc = await res.json()
       } catch (err) {
