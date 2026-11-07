@@ -51,8 +51,10 @@ moves on a MAJOR, so this test behaves as originally intended —
    tree ships with the old launch-time native check, breaking the strict
    privacy gate. `expo_runtime_version` must equal
    `<MAJOR>.0.0` (the derived runtime version, `app.config.ts`).
-3. Production build: `./gradlew assembleRelease` (from `android/`) through the
-   `heavy-build` wrapper — never bare gradle on this machine.
+3. Production build (a **local developer sideload**, not a release artifact —
+   GitHub releases carry no binaries; see the artifact policy below):
+   `./gradlew assembleRelease` (from `android/`) through the `heavy-build`
+   wrapper — never bare gradle on this machine.
 4. Verify the **built artifact** with `aapt2 dump badging` — never trust source
    files for what shipped — and confirm the manifest meta-data on the artifact
    with `aapt2 dump xmltree --file AndroidManifest.xml` (the
@@ -70,24 +72,37 @@ moves on a MAJOR, so this test behaves as originally intended —
    the build fell back to the debug keystore: stop, restore
    `credentials/keystore.properties`, rebuild. (The guard plugin refuses such
    builds outright; this check is the backstop.)
-5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump, create the
-   GitHub release with the APK attached, and read back the asset byte-size from
-   the release API. Release notes for the first post-#68 release (3.1.0+) must
+5. Tag `vX.Y.Z` at the merge commit of the PR that carried the bump and
+   create the GitHub release — **notes only, no binary assets** (see the
+   Artifact and release-asset policy below; the 2026-11-07 policy retired
+   APK attachments). Release notes for the first post-#68 release (3.1.0+) must
    carry the pre-3.0.0 stranding
    note (old-island binaries need this store install).
 
 ## Store releases (EAS, from 5.0.0)
 
 Store builds run on EAS, not this machine, so the `heavy-build` and bare-gradle
-rules above don't apply to them. Steps 3–5 of the release train above stay as
-they are for the sideload APK on GitHub releases (or use the `github-apk` EAS
-profile — but note an APK built through EAS is signed with the EAS upload key
-and does **not** install over the fielded debug-signed sideloads; see bullet 3
-before choosing that path).
+rules above don't apply to them. Store artifacts deliver only through the
+stores (Play / App Store Connect); since the 2026-11-07 asset policy below,
+GitHub releases are source and notes only and no sideload artifact is
+published with them. Steps 3–4 of the release train remain as the recipe for
+**local developer sideload builds** (device smoke tests before promoting a
+store release) — they have no GitHub-release destination. The `github-apk` EAS
+profile likewise has no release to attach an APK to, and an APK built through
+EAS is signed with the EAS upload key and does **not** install over the
+fielded debug-signed sideloads; see bullet 3 before choosing that path.
 
 1. Merge the PR that carries the bump, then tag `vX.Y.Z` as in step 5.
-2. **Done once, 2026-11-05** — Android signing settled at the first store
-   release. Recorded because the consequences are permanent. The
+2. **Done once** — Android signing settled at Play app creation
+   (2026-11-02 19:46), not at a store release: Play auto-enrolled its
+   **Google-generated app-signing key** when the app was created —
+   SHA-256
+   `3C:F3:88:99:38:51:EE:19:5F:E4:7F:52:54:45:6C:20:7E:72:F9:EA:53:4B:B0:FC:06:74:A6:9E:B6:4A:13:DF`,
+   verified live in Release → Setup → App integrity 2026-11-07 (the
+   upload key read
+   `E9:45:EC:20:6C:3A:03:C5:BC:99:AB:D4:BA:8F:A8:33:57:61:0E:DB:40:AF:67:9E:8C:59:0C:52:51:57:EF:70`
+   there at the same check). Recorded because the consequences are
+   permanent. The
    fielded sideload APKs (2.0.0–4.x) carry `debug.keystore`, whose private
    half is **public** — the file is byte-identical to the template keystore
    Expo ships in the public `expo/expo` repo (storepass `android`, SHA-256
@@ -154,3 +169,18 @@ before choosing that path).
    read its Info.plist with `plutil -p` — `EXUpdatesCheckOnLaunch` must be
    `Never` (the iOS spelling of the same gate). Strict privacy from launch
    has to hold in store builds too.
+
+## Artifact and release-asset policy (2026-11-07)
+
+- **GitHub releases are source and notes only.** Every binary asset was
+  stripped retroactively from v1.0.0–v7.0.0 (12 files, no backup kept);
+  release notes carry removal banners. Checksums travel with the delivery
+  channel, never GitHub.
+- Lifecycle: **build → deliver → delete local.** Local Android release
+  APK/AAB exist only while a Play submission is pending; deliver, then
+  delete. Dev clients go to EAS (Android dev clients upload with
+  `eas upload` — added in eas-cli 16.3.0 and un-hidden in 16.13.4, so the
+  `>= 16.0.0` floor in `eas.json` predates the command; run eas-cli
+  ≥ 16.13.4 or raise that floor; iOS uses cloud `development` profile
+  builds — a local iOS dev client stays local). The simulator
+  `CuratedJournal.app` is the iOS dev channel and is kept.
