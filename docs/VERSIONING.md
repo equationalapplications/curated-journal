@@ -51,8 +51,10 @@ moves on a MAJOR, so this test behaves as originally intended —
    tree ships with the old launch-time native check, breaking the strict
    privacy gate. `expo_runtime_version` must equal
    `<MAJOR>.0.0` (the derived runtime version, `app.config.ts`).
-3. Production build: `./gradlew assembleRelease` (from `android/`) through the
-   `heavy-build` wrapper — never bare gradle on this machine.
+3. Production build (a **local developer sideload**, not a release artifact —
+   GitHub releases carry no binaries; see the artifact policy below):
+   `./gradlew assembleRelease` (from `android/`) through the `heavy-build`
+   wrapper — never bare gradle on this machine.
 4. Verify the **built artifact** with `aapt2 dump badging` — never trust source
    files for what shipped — and confirm the manifest meta-data on the artifact
    with `aapt2 dump xmltree --file AndroidManifest.xml` (the
@@ -80,11 +82,15 @@ moves on a MAJOR, so this test behaves as originally intended —
 ## Store releases (EAS, from 5.0.0)
 
 Store builds run on EAS, not this machine, so the `heavy-build` and bare-gradle
-rules above don't apply to them. Steps 3–5 of the release train above stay as
-they are for the sideload APK on GitHub releases (or use the `github-apk` EAS
-profile — but note an APK built through EAS is signed with the EAS upload key
-and does **not** install over the fielded debug-signed sideloads; see bullet 3
-before choosing that path).
+rules above don't apply to them. Store artifacts deliver only through the
+stores (Play / App Store Connect); since the 2026-11-07 asset policy below,
+GitHub releases are source and notes only and no sideload artifact is
+published with them. Steps 3–4 of the release train remain as the recipe for
+**local developer sideload builds** (device smoke tests before promoting a
+store release) — they have no GitHub-release destination. The `github-apk` EAS
+profile likewise has no release to attach an APK to, and an APK built through
+EAS is signed with the EAS upload key and does **not** install over the
+fielded debug-signed sideloads; see bullet 3 before choosing that path.
 
 1. Merge the PR that carries the bump, then tag `vX.Y.Z` as in step 5.
 2. **Done once** — Android signing settled at Play app creation
@@ -172,7 +178,9 @@ before choosing that path).
   channel, never GitHub.
 - Lifecycle: **build → deliver → delete local.** Local Android release
   APK/AAB exist only while a Play submission is pending; deliver, then
-  delete. Dev clients go to EAS (`eas upload` for Android; cloud
-  `development` profile builds for iOS — a local iOS dev client stays
-  local). The simulator `CuratedJournal.app` is the iOS dev channel and
-  is kept.
+  delete. Dev clients go to EAS (Android dev clients upload with
+  `eas upload` — added in eas-cli 16.3.0 and un-hidden in 16.13.4, so the
+  `>= 16.0.0` floor in `eas.json` predates the command; run eas-cli
+  ≥ 16.13.4 or raise that floor; iOS uses cloud `development` profile
+  builds — a local iOS dev client stays local). The simulator
+  `CuratedJournal.app` is the iOS dev channel and is kept.

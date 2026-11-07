@@ -1,8 +1,11 @@
 name: Dependency release age
 
-# Policy: every dependency in package-lock.json must be at least 14 days old,
-# to limit exposure to poisoned upstream releases. Runs before any install,
-# so a too-new package's install scripts never execute in CI.
+# Policy: a PR's package-lock.json delta vs the base branch must contain no
+# registry version published in the last 14 days, to limit exposure to
+# poisoned upstream releases. A PR whose delta is empty (no new or changed
+# packages) passes without a cooldown; whole-lockfile sweeps stay available
+# as manual `workflow_dispatch` audits. Runs before any install, so a
+# too-new package's install scripts never execute in CI.
 on:
   pull_request:
     paths:
@@ -18,10 +21,24 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history so the base branch ref is present for the delta
+          # diff; the checkout action's own fetch is authenticated during
+          # the step, and `git show` afterwards needs no credentials.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "26.12.1"
       - name: Check minimum release age
-        run: node scripts/check-release-age.mjs --days 14
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            node scripts/check-release-age.mjs --days 14 --base "$BASE_REF"
+          else
+            node scripts/check-release-age.mjs --days 14
+          fi
