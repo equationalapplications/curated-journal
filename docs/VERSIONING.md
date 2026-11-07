@@ -184,3 +184,30 @@ fielded debug-signed sideloads; see bullet 3 before choosing that path.
   ≥ 16.13.4 or raise that floor; iOS uses cloud `development` profile
   builds — a local iOS dev client stays local). The simulator
   `CuratedJournal.app` is the iOS dev channel and is kept.
+
+## Delivery records
+
+Permanent record of store deliveries — what shipped, where, when, and what
+was verified at delivery. Signing fingerprints live in the Store releases
+section above; entries here reference them rather than duplicate.
+
+### 7.0.0 (1) — Play Internal testing, published 2026-11-07
+
+- First Play delivery: internal testing track, published (not left as a
+  draft) on the evening of 2026-11-07. Tester opt-in URL:
+  `https://play.google.com/apps/internaltest/4700972081921712496`.
+- Signing verified at delivery: App integrity (read-only) showed the
+  Google-generated app-signing key and the upload key matching the SHA-256
+  values recorded above, and the delivered AAB's signer certificate was
+  independently keytool-verified byte-identical to the upload key.
+- Submission service account: `eas-play-submit@clanker-prod`, reused (no
+  new key minted), granted CJ-scoped least privilege — release to testing
+  tracks plus read-only app/quality info; no production rights.
+- Artifact deletion completed per the build → deliver → delete-local
+  policy: the delivered AAB and APK were removed after publish. The iOS
+  simulator app is kept as the dev channel.
+- Legal pages live on GitHub Pages (user-approved hosting, 2026-11-07) and
+  linked from the store listing; source of truth lands in `main` via the
+  `docs/legal-store-pages` PR:
+  - Privacy: `https://equationalapplications.github.io/curated-journal/privacy/`
+  - Terms: `https://equationalapplications.github.io/curated-journal/terms/`
