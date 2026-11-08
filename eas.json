@@ -30,7 +30,8 @@
     "production": {
       "android": {
         "track": "internal",
-        "releaseStatus": "draft"
+        "releaseStatus": "draft",
+        "serviceAccountKeyPath": "./credentials/play-submission-key.json"
       },
       "ios": {
         "ascAppId": "6829888561",
