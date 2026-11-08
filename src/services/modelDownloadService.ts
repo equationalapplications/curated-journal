@@ -1,9 +1,11 @@
 import { DownloadTask, File, Paths } from 'expo-file-system';
 import type { CuratedModel } from '@/catalog/modelManifest';
 import { buildUserAgent } from '@/lib/buildUserAgent';
+import { classifyDownloadError, coerceInt64, type DownloadErrorCode } from '@/lib/downloadErrorTaxonomy';
 import type { DownloadPauseStateRecord } from '@/services/modelDownloadState';
 
-export type DownloadErrorCode = 'disk-full' | 'network';
+export type { DownloadErrorCode };
+export { classifyDownloadError };
 
 export type DownloadCallbacks = {
   onProgress?: (data: { bytesWritten: number; totalBytes: number }) => void;
@@ -11,17 +13,20 @@ export type DownloadCallbacks = {
 
 let activeTask: DownloadTask | null = null;
 
-export function classifyDownloadError(error: unknown): DownloadErrorCode {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/ENOSPC|NSFileWriteOutOfSpaceError/.test(message)) return 'disk-full';
-  return 'network';
+// The SDK's progress payload crosses the Int64→BigInt boundary; normalize here
+// so nothing downstream ever handles a BigInt. See downloadErrorTaxonomy.
+function normalizeProgress(
+  onProgress: (data: { bytesWritten: number; totalBytes: number }) => void,
+): (data: { bytesWritten: number; totalBytes: number }) => void {
+  return (data) =>
+    onProgress({ bytesWritten: coerceInt64(data.bytesWritten), totalBytes: coerceInt64(data.totalBytes) });
 }
 
 export async function startDownload(model: CuratedModel, callbacks: DownloadCallbacks): Promise<File | null> {
   const dest = new File(Paths.document, model.filename);
   activeTask = new DownloadTask(model.hfUrl, dest, {
     headers: { 'User-Agent': buildUserAgent() },
-    onProgress: callbacks.onProgress,
+    onProgress: callbacks.onProgress ? normalizeProgress(callbacks.onProgress) : undefined,
   });
   return activeTask.downloadAsync();
 }
@@ -38,7 +43,7 @@ export async function resumeDownload(
 ): Promise<File | null> {
   activeTask = DownloadTask.fromSavable(pauseState, {
     headers: { 'User-Agent': buildUserAgent() },
-    onProgress: callbacks.onProgress,
+    onProgress: callbacks.onProgress ? normalizeProgress(callbacks.onProgress) : undefined,
   });
   return activeTask.resumeAsync();
 }
@@ -49,7 +54,7 @@ export function cancelActiveDownload(): void {
 }
 
 export function verifyDownload(file: File, model: CuratedModel): boolean {
-  return file.exists && file.size === model.sizeBytes;
+  return file.exists && coerceInt64(file.size) === model.sizeBytes;
 }
 
 export function deletePartialFile(filename: string): void {

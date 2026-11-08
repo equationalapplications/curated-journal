@@ -1,5 +1,6 @@
 import { assign, fromCallback, fromPromise, setup } from 'xstate';
 import { getCuratedModel, type CuratedModel, type CuratedModelId } from '@/catalog/modelManifest';
+import { classifyDownloadError, coerceInt64 } from '@/lib/downloadErrorTaxonomy';
 import type { NetworkGateState } from '@/lib/networkGate';
 import type { DownloadPauseStateRecord, ModelDownloadStatus } from '@/services/modelDownloadState';
 
@@ -15,7 +16,7 @@ export type ModelHubMachineEvents =
   | { type: 'RESUME' }
   | { type: 'APP_BACKGROUND' }
   | { type: 'APP_FOREGROUND' }
-  | { type: 'FAIL'; code: 'network' | 'disk-full'; message: string }
+  | { type: 'FAIL'; code: 'network' | 'disk-full' | 'unknown'; message: string }
   | { type: 'RETRY' }
   | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
@@ -66,7 +67,7 @@ export type ModelHubMachineInput = {
   currentModelId?: CuratedModelId | 'custom' | null;
 };
 
-type ErrorCode = 'network' | 'disk-full' | 'verify' | 'smoke' | 'retire';
+type ErrorCode = 'network' | 'disk-full' | 'unknown' | 'verify' | 'smoke' | 'retire';
 
 type Context = {
   api: ModelHubApi;
@@ -100,7 +101,14 @@ export const modelHubMachine = setup({
         let cancelled = false;
         const onProgress = (p: { bytesWritten: number; totalBytes: number }) => {
           if (!cancelled) {
-            sendBack({ type: 'DOWNLOAD_PROGRESS', bytesWritten: p.bytesWritten, totalBytes: p.totalBytes });
+            // Coerce again at this boundary: the service normalizes its own
+            // payloads, but api implementations are injected and this context
+            // is rendered with plain number arithmetic.
+            sendBack({
+              type: 'DOWNLOAD_PROGRESS',
+              bytesWritten: coerceInt64(p.bytesWritten),
+              totalBytes: coerceInt64(p.totalBytes),
+            });
           }
         };
         (async () => {
@@ -112,10 +120,7 @@ export const modelHubMachine = setup({
           } catch (error) {
             if (!cancelled) {
               const message = error instanceof Error ? error.message : String(error);
-              const code: 'network' | 'disk-full' = /ENOSPC|NSFileWriteOutOfSpaceError/.test(message)
-                ? 'disk-full'
-                : 'network';
-              sendBack({ type: 'FAIL', code, message });
+              sendBack({ type: 'FAIL', code: classifyDownloadError(error), message });
             }
           }
         })();

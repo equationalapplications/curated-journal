@@ -141,7 +141,7 @@ export default function ModelHubDownloadScreen() {
         {stateValue === 'failed' && error ? (
           <View style={styles.row}>
             <ThemedText type="small" style={styles.rowCopy}>
-              {ERROR_COPY[error.code] ?? error.message}
+              {ERROR_COPY[error.code] ?? `Download failed: ${error.message}`}
             </ThemedText>
             <Button label="Retry" variant="primary" onPress={() => send({ type: 'RETRY' })} />
           </View>

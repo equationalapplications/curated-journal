@@ -84,6 +84,28 @@ describe('modelHubMachine', () => {
     actor.stop();
   });
 
+  it('coerces BigInt progress values to numbers before storing them', async () => {
+    // SDK 58 delivers Int64 progress fields as BigInt at runtime; the render
+    // layer does plain number arithmetic on these, so the machine must never
+    // hold BigInts in context (defense in depth behind the service boundary).
+    let progressCb: ((p: { bytesWritten: unknown; totalBytes: unknown }) => void) | undefined;
+    const api = makeApi({
+      startDownload: jest.fn(async (_model, onProgress) => {
+        progressCb = onProgress as typeof progressCb;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return true;
+      }),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, () => progressCb !== undefined, { timeout: 3000 });
+    progressCb!({ bytesWritten: 100n, totalBytes: 200n });
+    await waitFor(actor, (s) => s.context.progress.bytesWritten === 100, { timeout: 3000 });
+    expect(typeof actor.getSnapshot().context.progress.bytesWritten).toBe('number');
+    expect(typeof actor.getSnapshot().context.progress.totalBytes).toBe('number');
+    actor.stop();
+  });
+
   it('manual PAUSE then RESUME preserves pauseState and resumes the same download', async () => {
     const api = makeApi({
       startDownload: jest.fn(async () => new Promise<boolean>(() => undefined)),
@@ -171,7 +193,7 @@ describe('modelHubMachine', () => {
     const api = makeApi({
       startDownload: jest.fn(async () => {
         attempt += 1;
-        if (attempt === 1) throw new Error('fetch failed');
+        if (attempt === 1) throw new Error('The request failed because the network connection was lost');
         return true;
       }),
       pauseDownload: jest.fn(async () => ({ url: fastLight.hfUrl, fileUri: 'file:///f.gguf', isDirectory: false, resumeData: 'rd' })),
@@ -182,6 +204,25 @@ describe('modelHubMachine', () => {
     expect(actor.getSnapshot().context.error?.code).toBe('network');
     actor.send({ type: 'RETRY' });
     await waitFor(actor, (s) => s.matches('selecting') || s.matches('downloading') || s.matches('complete'), { timeout: 3000 });
+    actor.stop();
+  });
+
+  it('unrecognized failures classify as unknown and keep the raw message', async () => {
+    // Issue #91: any failure that is not provably disk-full or network used to
+    // be reported as "check your connection", which misdirected users and hid
+    // the real cause (e.g. the SDK 58 BigInt payload crash).
+    const api = makeApi({
+      startDownload: jest.fn(async () => {
+        throw new Error('Cannot convert 100 to BigInt');
+      }),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.error?.code).toBe('unknown');
+    expect(actor.getSnapshot().context.error?.message).toBe('Cannot convert 100 to BigInt');
+    // Only disk-full failures delete the partial file.
+    expect(api.deletePartialFile).not.toHaveBeenCalled();
     actor.stop();
   });
 
