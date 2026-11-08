@@ -27,6 +27,13 @@
     }
   },
   "submit": {
+    "staging": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft",
+        "serviceAccountKeyPath": "./credentials/play-submission-key.json"
+      }
+    },
     "production": {
       "android": {
         "track": "internal",

@@ -203,6 +203,16 @@ section above; entries here reference them rather than duplicate.
 - Submission service account: `eas-play-submit@clanker-prod`, reused (no
   new key minted), granted CJ-scoped least privilege — release to testing
   tracks plus read-only app/quality info; no production rights.
+- Submission identity migrated 2026-11-07 (Clanker-sale ruling; PATCH
+  7.0.3): the surviving-org account
+  `ea-play-submit@equationalapplications-com` now holds CJ's Play grant
+  (release to testing tracks + read-only app/quality info; no production
+  rights) and its JSON key is staged locally at the gitignored
+  `credentials/play-submission-key.json`. Local CLI submits use the new
+  `staging` submit profile; the `production` profile stays keyless so the
+  `eas-store-release` CI auto-submit is unaffected.
+  `eas-play-submit@clanker-prod` is retired for CJ and RG submits —
+  console-side grant removal pending.
 - Artifact deletion completed per the build → deliver → delete-local
   policy: the delivered AAB and APK were removed after publish. The iOS
   simulator app is kept as the dev channel.
