@@ -82,11 +82,13 @@ if (baseRef) {
     const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 256 * 1024 * 1024,
     }).trim()
     baseRaw = execFileSync("git", ["show", `${baseRef}:${lockfile}`], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 256 * 1024 * 1024,
     })
   } catch (err) {
     console.error(`Could not read ${lockfile} from ${baseRef}: ${String(err.stderr ?? err.message).trim()}`)
