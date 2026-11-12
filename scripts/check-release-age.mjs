@@ -102,7 +102,8 @@ if (baseRef) {
     if (
       before &&
       (meta.version ?? "") === (before.version ?? "") &&
-      (meta.resolved ?? "") === (before.resolved ?? "")
+      (meta.resolved ?? "") === (before.resolved ?? "") &&
+      (meta.integrity ?? "") === (before.integrity ?? "")
     )
       inherited++
     else changedPaths.push(path)
@@ -122,6 +123,18 @@ if (baseRef) {
   const all = wantedFrom(currentMetas, [...currentMetas.keys()])
   wanted = all.wanted
   scope = "whole lockfile"
+}
+
+// The registry's `time` values are UTC ISO-8601 strings
+// ("2026-10-28T15:10:57.079Z"). Anything else fails closed: `new Date(1)` is
+// a valid 1970 date that would pass as "old", and V8 rolls impossible dates
+// over (2026-02-30 -> 2026-03-02), so the parsed value must round-trip.
+const PUBLISH_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/
+function parsePublishTime(value) {
+  if (typeof value !== "string" || !PUBLISH_TIME.test(value)) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString().slice(0, 19) === value.slice(0, 19) ? date : null
 }
 
 const violations = []
@@ -152,8 +165,8 @@ async function worker() {
       const published = doc.time?.[version]
       if (!published) failures.push(`${name}@${version}: no publish time in registry`)
       else {
-        const publishedAt = new Date(published)
-        if (Number.isNaN(publishedAt.getTime()))
+        const publishedAt = parsePublishTime(published)
+        if (!publishedAt)
           failures.push(`${name}@${version}: unparsable publish time in registry`)
         else if (publishedAt > cutoff)
           violations.push(`${name}@${version} published ${published.slice(0, 10)}`)
