@@ -15,12 +15,14 @@ import {
   type CuratedModelId,
 } from '@/catalog/modelManifest';
 import { useModelHub } from '@/hooks/useModelHub';
+import { currentDeviceMemory } from '@/lib/modelLoadParams';
+import { modelRamWarning } from '@/lib/modelRamWarning';
 
 export default function ModelHubIndexScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { send, stateValue, error, currentModelId } = useModelHub();
-  const [warningFor, setWarningFor] = useState<CuratedModel | null>(null);
+  const [warningFor, setWarningFor] = useState<{ model: CuratedModel; message: string } | null>(null);
   const { confirm, confirmElement } = useConfirmSheet();
 
   useEffect(() => {
@@ -70,8 +72,9 @@ export default function ModelHubIndexScreen() {
 
   const selectModel = (model: CuratedModel) => {
     if (model.id === currentModelId) return;
-    if (model.deviceWarning) {
-      setWarningFor(model);
+    const message = modelRamWarning(model, currentDeviceMemory().totalMemoryBytes);
+    if (message) {
+      setWarningFor({ model, message });
       return;
     }
     commitSelection(model);
@@ -79,7 +82,7 @@ export default function ModelHubIndexScreen() {
 
   const confirmWarning = () => {
     if (!warningFor) return;
-    const model = warningFor;
+    const { model } = warningFor;
     setWarningFor(null);
     commitSelection(model);
   };
@@ -169,7 +172,7 @@ export default function ModelHubIndexScreen() {
         {warningFor ? (
           <Card style={styles.warning}>
             <ThemedText type="small" themeColor="onSurfaceVar">
-              {warningFor.deviceWarning}
+              {warningFor.message}
             </ThemedText>
             <View style={styles.warningActions}>
               <Button label="Cancel" variant="default" onPress={() => setWarningFor(null)} />

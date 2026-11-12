@@ -12,7 +12,7 @@ goes under the line it belongs to.
   - Librarian prompt bound: FAILS. Engine caps the extract/resolve prompts at OPS_RESOLVE_MAX_PROMPT_CHARS = 4e4 (index.js:7748, used :7790; batch loop promptLength = system+user chars, :7296). The extract call (buildOpsExtractPrompt, :6353, :7599-7610) has no cap of its own derivable here. 40000 chars -> ceil(40000/3)*1.10 = 14667 tokens > 2048. Batch size floor is 10 items (:7256-7293, from maxOutputTokens 2048*0.8/150 -> 10).
   - Heal prompt bound: FAILS. HEAL_MAX_PROMPT_CHARS = 4e4 (index.js:8151, used :8785); fact bodies up to 4000 chars (:6160), anchors <= 50 x 800 chars (:6158, :6162), tasks <= 50 (:6161). 40000 chars -> 14667 tokens > 2048. Over budget even by the engine's own cap, so a 4096 context cannot be proven to fit.
   - Decision (applied / not applied) and why:
-- [ ] 4 RAM warning before download (A4).
+- [x] 4 RAM warning before download (A4).
 - [ ] 5 Pause state without resume data normalized in store and service (B1).
 - [ ] 6 Machine: restore, pause, resume, error paths (B1, B2, B6).
 - [ ] 7 Machine: existing file, smoke marker, smoke-failed state, orphans (B4, B5, B7, A6).
