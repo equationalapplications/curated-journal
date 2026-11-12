@@ -50,3 +50,11 @@ describe('app config privacy + OTA gate', () => {
     expect(appConfig.expo.runtimeVersion).toMatch(/^\d+\.0\.0$/);
   });
 });
+
+describe('iPad support (specs/2026-11-12-ipad-support)', () => {
+  // An iPhone-only build runs on iPad in compatibility mode, where the
+  // keyboard frame and window size disagree and the keyboard covers inputs.
+  it('ships as a universal iOS app', () => {
+    expect(appConfig.expo.ios?.supportsTablet).toBe(true);
+  });
+});
