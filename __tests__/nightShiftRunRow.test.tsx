@@ -36,7 +36,7 @@ describe('NightShiftRunRow', () => {
     mockedGates.mockReturnValue({ charging: true, hasModel: true, canStart: true });
     await render(<NightShiftRunRow />);
     expect(screen.queryByText(HINT)).toBeNull();
-    fireEvent.press(runButton());
+    await fireEvent.press(runButton());
     expect(mockPush).toHaveBeenCalledWith('/night-shift');
   });
 });
