@@ -16,8 +16,10 @@ import { countIngestFailures, type IngestResult } from '@/lib/ingestReport';
  *
  * A failed entry keeps its text until the user picks RETRY (back of the
  * queue) or DISCARD. There is no cancel for an in-flight save (R5). Each
- * ingest is still capped by `saveTimeoutMs`, so a hung on-device LLM
- * surfaces as a failure instead of stalling the queue forever.
+ * ingest is still capped by `saveTimeoutMs` (R10): on timeout the save's LLM
+ * generations are cancelled and the entry stays `saving` until the ingest
+ * settles, so a hung on-device LLM surfaces as a failure and a timed-out
+ * ingest can never write a note after its entry is retried or discarded.
  */
 
 export type SaveStatus = 'queued' | 'saving' | 'failed';
@@ -42,6 +44,13 @@ export type JournalSaveQueueInput = {
   }) => Promise<IngestResult>;
   /** Hard cap on one entry's ingest. Default 120s. */
   saveTimeoutMs?: number;
+  /**
+   * Opens a scope over the LLM generations started from now on; `cancel()`
+   * stops them (see `openGenerationScope` in `llamaProvider`). Called once per
+   * save, cancelled when that save times out. Omit to leave timeouts
+   * uncancelled.
+   */
+  openGenerationScope?: () => { cancel: () => void };
 };
 
 export type JournalSaveQueueEvents =
@@ -56,6 +65,7 @@ type Context = {
   entityId: string;
   ingest: JournalSaveQueueInput['ingest'];
   saveTimeoutMs: number;
+  openGenerationScope: JournalSaveQueueInput['openGenerationScope'];
   entries: QueuedEntry[];
   warnings: SaveWarning[];
   /** Increments on every successful save; the screen refetches on change. */
@@ -70,31 +80,40 @@ type SaveEntryInput = {
   entityId: string;
   ingest: JournalSaveQueueInput['ingest'];
   saveTimeoutMs: number;
+  openGenerationScope: JournalSaveQueueInput['openGenerationScope'];
 };
 
 /**
- * Reject after `ms` if `promise` has not settled. The timer is cleared on
- * settle, and on `signal` abort (the actor stopped), so a stopped queue
- * leaves no timer behind.
+ * Await `promise` with a time cap. When `ms` passes first, `onTimeout` runs
+ * (cancel the work), then this still waits for the work to settle and rejects
+ * with `message`, unless the work resolved anyway, in which case its result
+ * stands: it was saved. Waiting is what keeps a timed-out ingest from writing
+ * after the queue has moved on. The timer is cleared on settle, and on
+ * `signal` abort (the actor stopped), so a stopped queue leaves no timer
+ * behind.
  */
-function withTimeout<T>(
+async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
   message: string,
   signal: AbortSignal,
+  onTimeout: () => void,
 ): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const clear = () => {
-    if (timer !== undefined) clearTimeout(timer);
-  };
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    onTimeout();
+  }, ms);
+  const clear = () => clearTimeout(timer);
   signal.addEventListener('abort', clear, { once: true });
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
+  try {
+    return await promise;
+  } catch (error) {
+    throw timedOut ? new Error(message) : error;
+  } finally {
     clear();
     signal.removeEventListener('abort', clear);
-  });
+  }
 }
 
 const firstQueued = (entries: QueuedEntry[]) => entries.find((e) => e.status === 'queued');
@@ -110,13 +129,14 @@ export const journalSaveQueueMachine = setup({
   },
   actors: {
     saveEntry: fromPromise(async ({ input, signal }: { input: SaveEntryInput; signal: AbortSignal }) => {
-      const { entry, entityId, ingest, saveTimeoutMs } = input;
+      const { entry, entityId, ingest, saveTimeoutMs, openGenerationScope } = input;
       const markdown = `# ${entry.title}\n\n${entry.body}`;
       const sourceHash = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
         markdown,
         { encoding: Crypto.CryptoEncoding.HEX },
       );
+      const scope = openGenerationScope?.();
       return withTimeout(
         ingest(entityId, {
           sourceRef: `journal://${Date.now()}`,
@@ -126,6 +146,7 @@ export const journalSaveQueueMachine = setup({
         saveTimeoutMs,
         `Save timed out after ${Math.round(saveTimeoutMs / 1000)}s — the wiki engine stayed busy. Try again when the app is idle.`,
         signal,
+        () => scope?.cancel(),
       );
     }),
   },
@@ -135,6 +156,7 @@ export const journalSaveQueueMachine = setup({
     entityId: input.entityId,
     ingest: input.ingest,
     saveTimeoutMs: input.saveTimeoutMs ?? 120_000,
+    openGenerationScope: input.openGenerationScope,
     entries: [],
     warnings: [],
     savedCount: 0,
@@ -209,6 +231,7 @@ export const journalSaveQueueMachine = setup({
             entityId: context.entityId,
             ingest: context.ingest,
             saveTimeoutMs: context.saveTimeoutMs,
+            openGenerationScope: context.openGenerationScope,
           };
         },
         onDone: {

@@ -1,7 +1,9 @@
 import { initLlama } from 'llama.rn';
 import {
   createLlamaProvider,
+  GenerationCancelledError,
   LLM_MAX_PREDICT_TOKENS,
+  openGenerationScope,
   releaseContext,
   setNightShiftActive,
   subscribeNightShiftLlmProgress,
@@ -172,5 +174,48 @@ describe('createLlamaProvider', () => {
     const b = provider.generateText({ systemPrompt: 's', userPrompt: 'B' });
     await expect(a).rejects.toThrow('boom');
     await expect(b).resolves.toBe('ok');
+  });
+
+  it('a cancelled scope stops its running completion and skips its queued calls', async () => {
+    const finishers: ((text: string) => void)[] = [];
+    const started: string[] = [];
+    const completion = jest.fn(
+      (params: { messages: { content: string }[] }) =>
+        new Promise<{ text: string }>((resolve) => {
+          started.push(params.messages[1].content);
+          finishers.push((text) => resolve({ text }));
+        }),
+    );
+    const stopCompletion = jest.fn(async () => {
+      // llama.rn resolves a stopped completion with its partial text.
+      finishers[finishers.length - 1]('{"partial');
+    });
+    jest
+      .mocked(initLlama)
+      .mockResolvedValueOnce({ completion, stopCompletion, release: jest.fn() } as never);
+    const provider = createLlamaProvider({ modelPath: '/m10.gguf' });
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    // Night Shift's call predates the save's scope.
+    const before = provider.generateText({ systemPrompt: 's', userPrompt: 'before' });
+    const scope = openGenerationScope();
+    const save1 = provider.generateText({ systemPrompt: 's', userPrompt: 'save1' });
+    const save2 = provider.generateText({ systemPrompt: 's', userPrompt: 'save2' });
+    await tick();
+    finishers[0]('before-done');
+    await expect(before).resolves.toBe('before-done');
+    await tick();
+    expect(started).toEqual(['before', 'save1']);
+
+    scope.cancel();
+    const after = provider.generateText({ systemPrompt: 's', userPrompt: 'after' });
+    await expect(save1).rejects.toBeInstanceOf(GenerationCancelledError);
+    await expect(save2).rejects.toBeInstanceOf(GenerationCancelledError);
+    expect(stopCompletion).toHaveBeenCalledTimes(1);
+    await tick();
+    // save2 never reached the model; the call made after cancel runs.
+    expect(started).toEqual(['before', 'save1', 'after']);
+    finishers[2]('after-done');
+    await expect(after).resolves.toBe('after-done');
   });
 });

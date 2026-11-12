@@ -12,6 +12,7 @@ import { useMachine } from '@xstate/react';
 import { useWiki } from '@equationalapplications/expo-llm-wiki';
 import { useJournal } from '@/contexts/JournalContext';
 import { createJournalIngest } from '@/lib/journalIngest';
+import { openGenerationScope } from '@/lib/llamaProvider';
 import {
   journalSaveQueueMachine,
   type JournalSaveQueueInput,
@@ -52,7 +53,7 @@ export function JournalSaveQueueProvider({ children }: { children: ReactNode }) 
     [],
   );
   const [state, send] = useMachine(journalSaveQueueMachine, {
-    input: { entityId, ingest, saveTimeoutMs: 120_000 },
+    input: { entityId, ingest, saveTimeoutMs: 120_000, openGenerationScope },
   });
 
   useEffect(() => {

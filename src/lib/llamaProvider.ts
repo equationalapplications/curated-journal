@@ -28,12 +28,65 @@ let sharedContext: LlamaContext | null = null;
  */
 let generationTail: Promise<unknown> = Promise.resolve();
 
-function serialized<T>(run: () => Promise<T>): Promise<T> {
-  const result = generationTail.then(run, run);
+/** Thrown by a generateText call cancelled through a generation scope. */
+export class GenerationCancelledError extends Error {
+  constructor() {
+    super('LLM generation cancelled');
+    this.name = 'GenerationCancelledError';
+  }
+}
+
+type PendingGeneration = {
+  cancelled: boolean;
+  /** The context running this call's completion, set only while it runs. */
+  running: LlamaContext | null;
+};
+
+/** Every generateText call not yet settled, keyed by call order. */
+const pendingGenerations = new Map<number, PendingGeneration>();
+let generationSeq = 0;
+
+function serialized<T>(run: (pending: PendingGeneration) => Promise<T>): Promise<T> {
+  const seq = ++generationSeq;
+  const pending: PendingGeneration = { cancelled: false, running: null };
+  pendingGenerations.set(seq, pending);
+  const start = () => {
+    if (pending.cancelled) return Promise.reject(new GenerationCancelledError());
+    return run(pending);
+  };
+  const result = generationTail.then(start, start).finally(() => {
+    pendingGenerations.delete(seq);
+  });
   // The next caller waits for this one to settle, success or failure.
   generationTail = result.catch(() => undefined);
   return result;
 }
+
+/**
+ * Opens a scope over every generateText call made from now on. `cancel()`
+ * stops the scope's running completion (llama.rn `stopCompletion`) and
+ * rejects its queued calls with `GenerationCancelledError` before they start.
+ * Calls made before the scope opened, or after `cancel()`, are untouched.
+ *
+ * The save queue opens one per save and cancels it on timeout, so a timed-out
+ * save frees the chain instead of holding every later call behind it. A chat
+ * question or Night Shift call made during that save is cancelled with it
+ * (calls are not tagged by caller).
+ */
+export function openGenerationScope(): { cancel: () => void } {
+  const floor = generationSeq;
+  return {
+    cancel: () => {
+      for (const [seq, pending] of pendingGenerations) {
+        if (seq <= floor || pending.cancelled) continue;
+        pending.cancelled = true;
+        // The completion settles once stopped; serialization holds until then.
+        pending.running?.stopCompletion().catch(() => undefined);
+      }
+    },
+  };
+}
+
 let nightShiftActive = false;
 let llmProgress = defaultLlmProgress();
 const llmProgressListeners = new Set<(progress: NightShiftLlmProgress) => void>();
@@ -113,8 +166,9 @@ export function createLlamaProvider(config: {
 
   return {
     maxOutputTokens: LLM_MAX_PREDICT_TOKENS,
-    generateText: ({ systemPrompt, userPrompt }) => serialized(async () => {
+    generateText: ({ systemPrompt, userPrompt }) => serialized(async (pending) => {
       const ctx = await ensureContext();
+      if (pending.cancelled) throw new GenerationCancelledError();
       let tokenCount = 0;
 
       if (nightShiftActive) {
@@ -123,6 +177,7 @@ export function createLlamaProvider(config: {
       }
 
       try {
+        pending.running = ctx;
         const result = await ctx.completion(
           {
             messages: [
@@ -149,7 +204,11 @@ export function createLlamaProvider(config: {
                 emitLlmProgress();
               }
             : undefined,
-        );
+        ).finally(() => {
+          pending.running = null;
+        });
+        // A stopped completion resolves with partial text; never hand that on.
+        if (pending.cancelled) throw new GenerationCancelledError();
 
         if (nightShiftActive) {
           llmProgress = {

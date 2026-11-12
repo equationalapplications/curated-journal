@@ -166,18 +166,81 @@ describe('journalSaveQueueMachine', () => {
     expect(actor.getSnapshot().context.warnings).toEqual([]);
   });
 
-  it('times out a hung ingest into a failed entry (R10)', async () => {
+  it('on timeout cancels the generations, waits for the ingest, then fails the entry (R10)', async () => {
     jest.useFakeTimers();
     try {
-      const actor = start(jest.fn(() => new Promise<never>(() => {})), 1_000);
+      const { ingest, calls } = deferredIngest();
+      const cancel = jest.fn(() => calls[0].reject(new Error('LLM generation cancelled')));
+      const actor = createActor(journalSaveQueueMachine, {
+        input: { entityId: 'e1', ingest, saveTimeoutMs: 1_000, openGenerationScope: () => ({ cancel }) },
+      });
+      actor.start();
+      actors.push(actor);
       actor.send({ type: 'ENQUEUE', title: 'A', body: '1' });
+      actor.send({ type: 'ENQUEUE', title: 'B', body: '2' });
       await jest.advanceTimersByTimeAsync(1_100);
+
+      expect(cancel).toHaveBeenCalledTimes(1);
       const [a] = actor.getSnapshot().context.entries;
       expect(a.status).toBe('failed');
       expect(a.error?.message).toMatch(/timed out/i);
+      expect(statuses(actor)).toEqual(['A:failed', 'B:saving']);
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('keeps a timed-out entry saving until its ingest settles, so the queue never overlaps it', async () => {
+    jest.useFakeTimers();
+    try {
+      const { ingest, calls } = deferredIngest();
+      const cancel = jest.fn();
+      const actor = createActor(journalSaveQueueMachine, {
+        input: { entityId: 'e1', ingest, saveTimeoutMs: 1_000, openGenerationScope: () => ({ cancel }) },
+      });
+      actor.start();
+      actors.push(actor);
+      actor.send({ type: 'ENQUEUE', title: 'A', body: '1' });
+      actor.send({ type: 'ENQUEUE', title: 'B', body: '2' });
+      await jest.advanceTimersByTimeAsync(1_100);
+
+      // Cancelled, but the ingest has not settled: A cannot be discarded yet
+      // and B has not started.
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(statuses(actor)).toEqual(['A:saving', 'B:queued']);
+      actor.send({ type: 'DISCARD', id: actor.getSnapshot().context.entries[0].id });
+      expect(statuses(actor)).toEqual(['A:saving', 'B:queued']);
+      expect(calls).toHaveLength(1);
+
+      // The ingest finished its write anyway: the note is saved, not failed.
+      calls[0].resolve(clean);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(statuses(actor)).toEqual(['B:saving']);
+      expect(actor.getSnapshot().context.savedCount).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('opens a fresh generation scope per save and never cancels one that finished in time', async () => {
+    const { ingest, calls } = deferredIngest();
+    const cancel = jest.fn();
+    const openGenerationScope = jest.fn(() => ({ cancel }));
+    const actor = createActor(journalSaveQueueMachine, {
+      input: { entityId: 'e1', ingest, saveTimeoutMs: 5_000, openGenerationScope },
+    });
+    actor.start();
+    actors.push(actor);
+    actor.send({ type: 'ENQUEUE', title: 'A', body: '1' });
+    actor.send({ type: 'ENQUEUE', title: 'B', body: '2' });
+    await flush();
+    calls[0].resolve(clean);
+    await flush();
+    await flush();
+    calls[1].resolve(clean);
+    await flush();
+    expect(openGenerationScope).toHaveBeenCalledTimes(2);
+    expect(cancel).not.toHaveBeenCalled();
   });
 
   it('SET_ENGINE rebinds the ingest used by later saves', async () => {
