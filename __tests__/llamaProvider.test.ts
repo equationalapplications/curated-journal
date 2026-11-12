@@ -108,6 +108,17 @@ describe('createLlamaProvider', () => {
     unsubscribe();
   });
 
+  // Releasing the context (app sent to the background) interrupts a running
+  // completion, which llama.rn resolves with partial text and `interrupted`.
+  it('rejects a completion interrupted by a context release', async () => {
+    const completion = jest.fn(async () => ({ text: '{"facts": [', interrupted: true }));
+    jest.mocked(initLlama).mockResolvedValueOnce({ completion, release: jest.fn() } as never);
+    const provider = createLlamaProvider({ modelPath: '/m-int.gguf' });
+    await expect(provider.generateText({ systemPrompt: 's', userPrompt: 'u' })).rejects.toThrow(
+      'interrupted',
+    );
+  });
+
   // Spec specs/2026-11-12-background-save R9: a token callback switches on
   // llama.rn's emit_partial_completion (a full re-parse plus a JS-thread hop
   // per token), so it is passed only when Night Shift shows token progress.

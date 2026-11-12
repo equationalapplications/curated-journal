@@ -33,6 +33,7 @@ jest.mock('@equationalapplications/expo-llm-wiki', () => ({
 
 jest.mock('expo-router', () => ({
   useFocusEffect: (callback: () => void) => callback(),
+  useIsFocused: () => true,
 }));
 
 jest.mock('@/components/journal/JournalList', () => {

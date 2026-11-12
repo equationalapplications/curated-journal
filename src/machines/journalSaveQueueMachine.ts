@@ -93,8 +93,10 @@ type SaveEntryInput = {
  * (cancel the work) and this waits up to `graceMs` more for the work to
  * settle: waiting keeps a cancelled ingest from writing after the queue has
  * moved on, the grace cap keeps a hang outside the LLM from blocking it
- * forever. A timed-out save counts as saved only if it resolved with no chunk
- * failures; otherwise it rejects with `message` and keeps its text (R4).
+ * forever. On giving up, `onGiveUp` runs (stop cancelling new work): a stale
+ * ingest's later LLM calls may then run and write, which is accepted. A
+ * timed-out save counts as saved only if it resolved with no chunk failures;
+ * otherwise it rejects with `message` and keeps its text (R4).
  * Timers are cleared on settle, and on `signal` abort (the actor stopped), so
  * a stopped queue leaves no timer behind.
  */
@@ -105,6 +107,7 @@ async function withTimeout(
   message: string,
   signal: AbortSignal,
   onTimeout: () => void,
+  onGiveUp: () => void,
 ): Promise<IngestResult> {
   let timedOut = false;
   let grace: ReturnType<typeof setTimeout> | undefined;
@@ -115,7 +118,10 @@ async function withTimeout(
   const timer = setTimeout(() => {
     timedOut = true;
     onTimeout();
-    grace = setTimeout(() => giveUp(new Error(message)), graceMs);
+    grace = setTimeout(() => {
+      onGiveUp();
+      giveUp(new Error(message));
+    }, graceMs);
   }, ms);
   const clear = () => {
     clearTimeout(timer);
@@ -160,8 +166,10 @@ export const journalSaveQueueMachine = setup({
         sourceHash,
         documentChunk: markdown,
       });
-      // The scope stays open (and cancelling) until the ingest itself settles,
-      // even if the grace period gave up on it first.
+      // The scope stays open (and cancelling) while the queue waits on this
+      // ingest. It closes when the ingest settles, or when the grace period
+      // gives up: past that the queue moves on, and a scope still cancelling
+      // would cancel the next save's calls (and chat, and Night Shift) too.
       ingesting.then(
         () => scope?.close(),
         () => scope?.close(),
@@ -173,6 +181,7 @@ export const journalSaveQueueMachine = setup({
         `Save timed out after ${Math.round(saveTimeoutMs / 1000)}s — the wiki engine stayed busy. Try again when the app is idle.`,
         signal,
         () => scope?.cancel(),
+        () => scope?.close(),
       );
     }),
   },

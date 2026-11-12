@@ -88,7 +88,9 @@ starts afterwards, never run) and the entry stays "Saving…" while its
 ingest settles, for up to 15 s more. A timed-out ingest therefore does not
 write after the entry is retried or discarded, and does not hold later
 calls in the R8 chain. Past the 15 s grace the entry fails anyway, so a
-hang outside the LLM never blocks the queue. A timed-out save counts as
+hang outside the LLM never blocks the queue. Giving up also ends the
+cancellation, so the next save, chat and Night Shift run normally; a
+stale ingest that later resumes may still write (accepted). A timed-out save counts as
 saved only if its ingest resolved with no chunk failures. Cancellation is
 not tagged by caller: a chat question or Night Shift call made while a
 save is cancelled is cancelled with it (user ruling 2026-11-12, PR #106

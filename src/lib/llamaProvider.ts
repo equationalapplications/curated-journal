@@ -251,6 +251,12 @@ export function createLlamaProvider(config: {
         });
         // A stopped completion resolves with partial text; never hand that on.
         if (pending.cancelled) throw new GenerationCancelledError();
+        // So does one whose context was released mid-run (the app went to the
+        // background): llama.rn flags it `interrupted`. That is a failure, not
+        // output — a background save must not ingest a truncated answer.
+        if (result.interrupted) {
+          throw new Error('LLM generation interrupted: the model was released');
+        }
 
         if (nightShiftActive) {
           llmProgress = {

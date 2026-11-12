@@ -271,8 +271,8 @@ describe('journalSaveQueueMachine', () => {
       expect(statuses(actor)).toEqual(['A:saving', 'B:queued']);
       await jest.advanceTimersByTimeAsync(500);
       expect(statuses(actor)).toEqual(['A:failed', 'B:saving']);
-      // The hung ingest never settled, so its scope stays open and cancelling.
-      expect(close).not.toHaveBeenCalled();
+      // The queue moved on, so the scope stops cancelling: B's calls must run.
+      expect(close).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
     }

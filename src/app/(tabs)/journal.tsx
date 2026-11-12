@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useIsFocused } from 'expo-router';
 import {
   JournalList,
   type JournalListItem,
@@ -28,6 +28,10 @@ export default function JournalScreen() {
   const { isWide } = useSplitPaneLayout();
   const theme = useTheme();
   const { confirm, confirmElement } = useConfirmSheet();
+  // Tab screens stay mounted, and the sheet is a native Modal: without this a
+  // background save's dialog would pop up over another tab. It waits instead.
+  const isFocused = useIsFocused();
+  const dialog = isFocused ? confirmElement : null;
 
   useFocusEffect(
     useCallback(() => {
@@ -69,10 +73,14 @@ export default function JournalScreen() {
     [enqueue],
   );
 
-  // A finished save adds a note, so the list reads it back.
+  // A finished save adds a note, so the list reads it back. Only on a new
+  // save: a remount already refetches through useFocusEffect.
   const { savedCount } = saveQueue;
+  const seenSavedCount = useRef(savedCount);
   useEffect(() => {
-    if (savedCount > 0) void refetch();
+    if (savedCount === seenSavedCount.current) return;
+    seenSavedCount.current = savedCount;
+    void refetch();
   }, [savedCount, refetch]);
 
   // One dialog at a time: warnings first, then the oldest failure (R4, R6).
@@ -106,7 +114,7 @@ export default function JournalScreen() {
   if (composing) {
     return (
       <>
-        {confirmElement}
+        {dialog}
         <JournalEntryEditor
           onSave={handleSave}
           onCancel={() => setComposing(false)}
@@ -118,7 +126,7 @@ export default function JournalScreen() {
   if (isWide) {
     return (
       <View style={styles.split}>
-        {confirmElement}
+        {dialog}
         <View style={styles.listPane}>
           <JournalList
             items={items}
@@ -141,7 +149,7 @@ export default function JournalScreen() {
 
   return (
     <View style={styles.container}>
-      {confirmElement}
+      {dialog}
       <View style={styles.toggle} accessibilityRole="tablist">
         <PaneTab
           label="Notes"
