@@ -1,3 +1,5 @@
+import type { WikiConfig } from '@equationalapplications/core-llm-wiki';
+
 export const SPLIT_PANE_MIN_WIDTH = 768;
 export const CHAT_TRAVERSAL_NODE_CAP = 12;
 export const CHAT_TRAVERSAL_MAX_DEPTH = 1;
@@ -19,7 +21,7 @@ export const WIKI_CONFIG = {
   autoHealThreshold: Infinity,
   librarian: { strategy: 'legacy' },
   maintenance: 'auto',
-} as const;
+} as const satisfies WikiConfig;
 
 export const ENTITY_ID_KEY = 'curated_journal_entity_id';
 export const MODEL_PATH_KEY = 'curated_journal_model_path';
