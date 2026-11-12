@@ -4,7 +4,8 @@ import type { LlamaModelConfig } from '@/catalog/modelManifest';
 
 export const GIB = 1024 ** 3;
 export const LOW_MEMORY_KV_CACHE_TYPE = 'q8_0' as const;
-export const LOW_MEMORY_CONTEXT_SIZE: number | null = null; // Task 3 sets this
+// Not applied: spec A5 lever 2 is unproven (heal prompt up to 40000 chars); see LEDGER task 3.
+export const LOW_MEMORY_CONTEXT_SIZE: number | null = null;
 
 export type DeviceMemory = { platform: string; totalMemoryBytes: number | null };
 

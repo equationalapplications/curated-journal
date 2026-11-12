@@ -16,6 +16,9 @@ describe('modelLoadParams', () => {
       use_mlock: false, cache_type_k: 'q8_0', cache_type_v: 'q8_0', flash_attn_type: 'on',
     });
   });
+  it('keeps the 8192 context on low-memory iOS (A5 lever 2 not applied)', () => {
+    expect(resolveModelLoadParams({ ...fl, device: ios3 }).n_ctx).toBe(8192);
+  });
   it('leaves Android exactly as today, even below comfortable RAM', () => {
     expect(resolveModelLoadParams({ ...fl, device: android3 })).toEqual({ n_ctx: 8192, n_gpu_layers: 0, use_mlock: true });
   });
