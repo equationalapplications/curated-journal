@@ -1,7 +1,7 @@
 {
   "name": "cur",
   "main": "expo-router/entry",
-  "version": "8.0.0",
+  "version": "8.0.1",
   "dependencies": {
     "@equationalapplications/core-llm-wiki": "8.2.0",
     "@equationalapplications/expo-llm-wiki": "8.2.0",
