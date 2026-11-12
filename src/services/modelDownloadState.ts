@@ -48,9 +48,23 @@ export function createModelDownloadStateStore(db: SQLite.SQLiteDatabase) {
     return ready;
   }
 
+  // Writes run one after another, in call order. The machine fires some of
+  // them without awaiting (entry actions), and expo-sqlite does not order
+  // independent async queries, so a late `downloading` write could otherwise
+  // land on top of the `smoke-testing` marker. A failed write never blocks
+  // the next one.
+  let writes: Promise<void> = Promise.resolve();
+  function serialize(write: () => Promise<void>): Promise<void> {
+    const run = writes.then(write);
+    writes = run.catch(() => undefined);
+    return run;
+  }
+
   return {
     async get(): Promise<ModelDownloadStateRecord | null> {
       await ensureSchema();
+      // Read after every write already issued, never between them.
+      await writes;
       const row = await db.getFirstAsync<Row>(
         'SELECT model_id, pause_state_json, status, updated_at FROM model_download_state WHERE id = 1',
       );
@@ -64,29 +78,33 @@ export function createModelDownloadStateStore(db: SQLite.SQLiteDatabase) {
       };
     },
 
-    async set(record: { modelId: string | null; status: ModelDownloadStatus; pauseState: DownloadPauseStateRecord | null }): Promise<void> {
-      await ensureSchema();
-      const pauseState = normalizePauseState(record.pauseState);
-      await db.runAsync(
-        `INSERT INTO model_download_state (id, model_id, pause_state_json, status, updated_at)
-         VALUES (1, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET model_id = excluded.model_id, pause_state_json = excluded.pause_state_json,
-           status = excluded.status, updated_at = excluded.updated_at`,
-        record.modelId,
-        pauseState ? JSON.stringify(pauseState) : null,
-        record.status,
-        new Date().toISOString(),
-      );
+    set(record: { modelId: string | null; status: ModelDownloadStatus; pauseState: DownloadPauseStateRecord | null }): Promise<void> {
+      return serialize(async () => {
+        await ensureSchema();
+        const pauseState = normalizePauseState(record.pauseState);
+        await db.runAsync(
+          `INSERT INTO model_download_state (id, model_id, pause_state_json, status, updated_at)
+           VALUES (1, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET model_id = excluded.model_id, pause_state_json = excluded.pause_state_json,
+             status = excluded.status, updated_at = excluded.updated_at`,
+          record.modelId,
+          pauseState ? JSON.stringify(pauseState) : null,
+          record.status,
+          new Date().toISOString(),
+        );
+      });
     },
 
-    async clear(): Promise<void> {
-      await ensureSchema();
-      await db.runAsync(
-        `INSERT INTO model_download_state (id, model_id, pause_state_json, status, updated_at)
-         VALUES (1, NULL, NULL, 'idle', ?)
-         ON CONFLICT(id) DO UPDATE SET model_id = NULL, pause_state_json = NULL, status = 'idle', updated_at = excluded.updated_at`,
-        new Date().toISOString(),
-      );
+    clear(): Promise<void> {
+      return serialize(async () => {
+        await ensureSchema();
+        await db.runAsync(
+          `INSERT INTO model_download_state (id, model_id, pause_state_json, status, updated_at)
+           VALUES (1, NULL, NULL, 'idle', ?)
+           ON CONFLICT(id) DO UPDATE SET model_id = NULL, pause_state_json = NULL, status = 'idle', updated_at = excluded.updated_at`,
+          new Date().toISOString(),
+        );
+      });
     },
   };
 }

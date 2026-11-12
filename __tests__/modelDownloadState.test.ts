@@ -22,6 +22,39 @@ function makeDb() {
 }
 
 describe('modelDownloadState', () => {
+  it('lands unawaited writes in call order, even when an earlier write is slow', async () => {
+    const db = makeDb();
+    const realRun = db.runAsync.getMockImplementation()!;
+    let releaseFirst!: () => void;
+    db.runAsync.mockImplementationOnce(async (sql: string, ...params: unknown[]) => {
+      await new Promise<void>((r) => { releaseFirst = r; });
+      return realRun(sql, ...params);
+    });
+    const store = createModelDownloadStateStore(db as never);
+
+    // The machine's `downloading` entry write is fire-and-forget; the smoke
+    // marker is written right after it.
+    void store.set({ modelId: 'fast-light', status: 'downloading', pauseState: null });
+    const marker = store.set({ modelId: 'fast-light', status: 'smoke-testing', pauseState: null });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(db.runAsync).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await marker;
+    await expect(store.get()).resolves.toMatchObject({ status: 'smoke-testing' });
+  });
+
+  it('a failed write does not block the next one', async () => {
+    const db = makeDb();
+    db.runAsync.mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+    const store = createModelDownloadStateStore(db as never);
+    await expect(store.set({ modelId: 'fast-light', status: 'downloading', pauseState: null })).rejects.toThrow(
+      'SQLITE_BUSY',
+    );
+    await store.clear();
+    await expect(store.get()).resolves.toMatchObject({ status: 'idle' });
+  });
+
   it('returns null status when no row has been written yet', async () => {
     const store = createModelDownloadStateStore(makeDb() as never);
     await expect(store.get()).resolves.toBeNull();
