@@ -1,0 +1,20 @@
+diff --git a/node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift b/node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
+index de76b97..90b333a 100644
+--- a/node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
++++ b/node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
+@@ -939,11 +939,14 @@ private func withEncodedValue(
+     defer {
+       expo.destroyValues(slot, 1)
+     }
++    // Built outside the isolated closure and only captured by it, like `withEmplacedValues`: Swift 6.2
++    // (Xcode 26) region analysis rejects constructing it from `slot` inside the closure.
++    let valueSlot = JavaScriptValue.Slot(slot)
+     // The runtime can't be deallocated during a call on its JavaScript thread, so it's borrowed without
+     // a retain.
+     try runtime._withUnsafeGuaranteedRef { runtime in
+       try JavaScriptActor.assumeIsolated {
+-        try encode(JavaScriptValue.Slot(slot), runtime)
++        try encode(valueSlot, runtime)
+       }
+     }
+     body(slot.pointee)
