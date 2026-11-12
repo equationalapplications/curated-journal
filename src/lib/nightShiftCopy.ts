@@ -29,6 +29,9 @@ function healPhaseLabel(llm: NightShiftLlmProgress): string {
   return 'Preparing heal pass — reviewing the graph…';
 }
 
+export const NIGHT_SHIFT_CHARGING_HINT =
+  'Plug in your device to run Night Shift — it only runs while charging.';
+
 export const NIGHT_SHIFT_DONE_PHASE = 'All done';
 export const NIGHT_SHIFT_DONE_DETAIL =
   'Your notes were organized and the graph is up to date. You can close this screen.';
