@@ -119,9 +119,10 @@ export function smokeTestSettled(): Promise<void> {
  * Marker → load → commit, all in one promise. The marker write must finish
  * before the load starts: the OS can kill the app at any point after that, and
  * relaunch reads this row. On success the identity is written before the
- * marker is cleared, so a kill in between never leaves a marker for a model
- * that is already current; an identity-write failure rejects as
- * `ModelCommitError`. On failure the row records `smoke-failed`, so a closed
+ * marker is cleared (spec B5). A kill in between leaves a `smoke-testing`
+ * marker for a model that is already current; `toRestoreState` recognises
+ * that row as a pass and the hub clears it. An identity-write failure rejects
+ * as `ModelCommitError`. On failure the row records `smoke-failed`, so a closed
  * hub never leaves a `smoke-testing` marker that later reads as a kill.
  */
 async function runSmokeTestAndCommit(
@@ -437,7 +438,9 @@ export const modelHubMachine = setup({
             progress: ({ event }) => ({ bytesWritten: event.bytesWritten, totalBytes: event.totalBytes }),
           }),
         },
-        DOWNLOAD_COMPLETE: { target: 'verifying' },
+        // The resume data that got us here is spent: a later failure must not
+        // RETRY by resuming from it.
+        DOWNLOAD_COMPLETE: { target: 'verifying', actions: assign({ pauseState: null }) },
         PAUSE: { target: 'paused', actions: assign({ pausedReason: 'user' }) },
         APP_BACKGROUND: { target: 'paused', actions: assign({ pausedReason: 'background' }) },
         FAIL: {
@@ -553,11 +556,13 @@ export const modelHubMachine = setup({
           },
         }),
         ({ context }) => {
-          void context.api.persistDownloadState({
-            modelId: context.modelId,
-            status: 'smoke-failed',
-            pauseState: null,
-          });
+          void context.api
+            .persistDownloadState({
+              modelId: context.modelId,
+              status: 'smoke-failed',
+              pauseState: null,
+            })
+            .catch(() => undefined);
         },
       ],
       on: {
@@ -570,7 +575,7 @@ export const modelHubMachine = setup({
               if (context.modelId && context.modelId !== context.currentModelId) {
                 context.api.deletePartialFile(getCuratedModel(context.modelId).filename);
               }
-              void context.api.clearDownloadState();
+              void context.api.clearDownloadState().catch(() => undefined);
             },
             assign({ modelId: null, error: null, smokeKilled: false }),
           ],

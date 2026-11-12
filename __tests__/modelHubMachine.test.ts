@@ -439,6 +439,23 @@ describe('modelHubMachine', () => {
     expect(api.setModelPath).not.toHaveBeenCalled();
   });
 
+  it('a completed resumed download clears its spent resume data', async () => {
+    const api = makeApi({
+      startDownload: jest.fn(async () => new Promise<boolean>(() => undefined)),
+      verifyDownload: jest.fn(() => false),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+    actor.send({ type: 'PAUSE' });
+    await waitFor(actor, (s) => s.matches('paused') && s.context.pauseState !== null, { timeout: 3000 });
+    actor.send({ type: 'RESUME' });
+    // Verify fails: RETRY must restart, not resume from spent data.
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.pauseState).toBeNull();
+    actor.stop();
+  });
+
   it('disk-full failure routes RETRY back to selecting (not downloading)', async () => {
     const api = makeApi({
       startDownload: jest.fn(async () => {

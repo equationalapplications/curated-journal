@@ -85,6 +85,19 @@ export default function ModelHubDownloadScreen() {
     }
   }, [stateValue, completeOnboarding, router]);
 
+  // RETRY from `failed` with nothing to resume goes back to the list: follow
+  // it, or this screen is left showing no actions. Keyed on the transition,
+  // not on `selecting` alone — a restore mounts this screen before the
+  // RESTORE_DOWNLOAD event has left `selecting`.
+  const previousState = useRef(stateValue);
+  useEffect(() => {
+    const previous = previousState.current;
+    previousState.current = stateValue;
+    if (previous === 'failed' && stateValue === 'selecting') {
+      router.dismissTo('/model-hub' as Href);
+    }
+  }, [stateValue, router]);
+
   const chooseAnother = () => {
     send({ type: 'CHOOSE_ANOTHER' });
     // Back to the list, or onto it when a restore replaced it: a plain back()

@@ -31,12 +31,13 @@ export default function ModelHubStackLayout() {
       if (cancelled) return;
       setCurrentModelId((storedModelId as CuratedModelId | 'custom' | null) ?? null);
       setApi(createModelHubApi(store));
-      const restoreState = toRestoreState(downloadState);
+      const restoreState = toRestoreState(downloadState, storedModelId);
       if (restoreState) {
         setRestore(restoreState);
         router.replace('/model-hub/download' as Href);
       } else if (downloadState && downloadState.status !== 'idle' && downloadState.status !== 'failed') {
-        // A saved install this bundle cannot restore (removed model, unknown status).
+        // A saved install this bundle cannot restore (removed model, unknown
+        // status), or a smoke-testing marker for a model already committed.
         try {
           await store.clear();
         } catch (cause) {

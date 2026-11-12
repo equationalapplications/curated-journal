@@ -97,6 +97,32 @@ describe('createModelHubApi', () => {
     expect(entityStorage.setModelId).toHaveBeenCalledWith('fast-light');
   });
 
+  it('setModelPath puts the previous path back when the id write fails', async () => {
+    jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce('file:///doc/old.gguf');
+    jest.mocked(entityStorage.setModelId).mockRejectedValueOnce(new Error('disk I/O'));
+    const api = createModelHubApi(makeStore() as never);
+    await expect(api.setModelPath(model)).rejects.toThrow('disk I/O');
+    expect(jest.mocked(entityStorage.setModelPath).mock.calls.at(-1)).toEqual(['file:///doc/old.gguf']);
+  });
+
+  it('setModelPath clears the identity when there was no previous model and the id write fails', async () => {
+    jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
+    jest.mocked(entityStorage.setModelId).mockRejectedValueOnce(new Error('disk I/O'));
+    const api = createModelHubApi(makeStore() as never);
+    await expect(api.setModelPath(model)).rejects.toThrow('disk I/O');
+    expect(entityStorage.clearModelPath).toHaveBeenCalled();
+  });
+
+  it('deletePartialFile never throws into the machine', () => {
+    jest.mocked(downloadService.deletePartialFile).mockImplementationOnce(() => {
+      throw new Error('EACCES');
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const api = createModelHubApi(makeStore() as never);
+    expect(() => api.deletePartialFile('f.gguf')).not.toThrow();
+    warn.mockRestore();
+  });
+
   it('persistDownloadState and clearDownloadState delegate to the injected store', async () => {
     const store = makeStore();
     const api = createModelHubApi(store as never);
@@ -114,6 +140,16 @@ describe('toRestoreState', () => {
       status,
       pauseState: null,
     });
+  });
+
+  it('treats a smoke-testing row for the already-current model as a pass, not a kill', () => {
+    expect(
+      toRestoreState({ modelId: 'fast-light', status: 'smoke-testing', pauseState: null }, 'fast-light'),
+    ).toBeNull();
+    // A different current model: still a kill to restore.
+    expect(
+      toRestoreState({ modelId: 'fast-light', status: 'smoke-testing', pauseState: null }, 'smarter-slower'),
+    ).toEqual({ modelId: 'fast-light', status: 'smoke-testing', pauseState: null });
   });
 
   it('returns null for idle, failed, unknown status, null or removed model', () => {

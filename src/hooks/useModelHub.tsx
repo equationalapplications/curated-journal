@@ -50,9 +50,17 @@ export type ModelHubRestoreState = {
 const RESTORABLE: ReadonlySet<string> = new Set(['downloading', 'paused', 'smoke-testing', 'smoke-failed']);
 
 /** Null unless the saved status is restorable AND its model is still in the catalog. */
-export function toRestoreState(record: ModelDownloadStateRecord | null): ModelHubRestoreState | null {
+export function toRestoreState(
+  record: ModelDownloadStateRecord | null,
+  currentModelId: string | null = null,
+): ModelHubRestoreState | null {
   if (!record || !record.modelId || !RESTORABLE.has(record.status)) return null;
   if (!MODEL_CATALOG.some((m) => m.id === record.modelId)) return null;
+  // The identity is written only after the smoke test passes, and the marker
+  // is cleared after that. A `smoke-testing` row for the model that is already
+  // current means the app died between those two writes: the test passed, so
+  // there is nothing to restore (the caller clears the stale row).
+  if (record.status === 'smoke-testing' && record.modelId === currentModelId) return null;
   return {
     modelId: record.modelId as CuratedModelId,
     status: record.status as ModelHubRestoreState['status'],
@@ -76,7 +84,15 @@ export function createModelHubApi(store: Store): ModelHubApi {
       const file = new File(Paths.document, model.filename);
       return verifyDownload(file, model);
     },
-    deletePartialFile: (filename) => deletePartialFile(filename),
+    // Best effort: the machine calls this from synchronous actions, where a
+    // throw would stop the hub actor and leave the screen with no way out.
+    deletePartialFile: (filename) => {
+      try {
+        deletePartialFile(filename);
+      } catch (cause) {
+        console.warn('[model-hub] could not delete model file', filename, cause);
+      }
+    },
     runSmokeTest: (model) => {
       const file = new File(Paths.document, model.filename);
       return runModelSmokeTest({
@@ -102,8 +118,22 @@ export function createModelHubApi(store: Store): ModelHubApi {
     clearDownloadState: () => store.clear(),
     setModelPath: async (model) => {
       const file = new File(Paths.document, model.filename);
+      const previousPath = await getModelPath();
       await setModelPath(file.uri);
-      await setModelId(model.id);
+      try {
+        await setModelId(model.id);
+      } catch (cause) {
+        // Never leave the path naming this model under another model's id:
+        // the next launch would load it with the wrong config, and re-picking
+        // it would retire (delete) the file that was just downloaded.
+        try {
+          if (previousPath) await setModelPath(previousPath);
+          else await clearModelPath();
+        } catch {
+          // Best effort; the original failure is what the user needs to see.
+        }
+        throw cause;
+      }
     },
     // Deliberately not wrapped in try/catch around the unlink: a rejection here
     // means the model file could not be removed, and the machine's

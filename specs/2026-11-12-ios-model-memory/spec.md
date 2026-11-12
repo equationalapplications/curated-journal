@@ -215,7 +215,9 @@ write and the marker update run as one task that outlives a closed hub:
 a pass writes the identity and then clears the marker, a fail records
 `smoke-failed`, and a failed identity write records `failed`. Reopening
 the hub waits for a test still running in this process before it reads
-the marker, so only a real kill reads as one. The smoke-failed state
+the marker, so only a real kill reads as one. A `smoke-testing` row whose model is
+already the stored current model is a pass (the identity is written only
+after the test passes), so the hub clears it instead of restoring it. The smoke-failed state
 is persisted too (`smoke-failed`) and restored on every later launch
 until the user takes one of the two actions, so the app never returns
 to a plain list with a hidden 2.4 GB file.
