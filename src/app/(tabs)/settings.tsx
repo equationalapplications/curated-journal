@@ -8,16 +8,15 @@ import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { Screen } from '@/components/screen';
 import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
 import { useJournal } from '@/contexts/JournalContext';
-import { useNightShiftGates } from '@/hooks/useNightShiftGates';
 import { UpdateCheckRow } from '@/components/settings/UpdateCheckRow';
 import { NightShiftPruneRow } from '@/components/settings/NightShiftPruneRow';
+import { NightShiftRunRow } from '@/components/settings/NightShiftRunRow';
 import { TipJarSection } from '@/components/settings/TipJarSection';
 import { Space } from '@/constants/theme';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { entityId } = useJournal();
-  const { canStart } = useNightShiftGates();
   const { execute: exportDump } = useWikiExport();
   const { confirm, confirmElement } = useConfirmSheet();
 
@@ -72,17 +71,7 @@ export default function SettingsScreen() {
           AI
         </ThemedText>
         <ListGroup>
-          <Row style={styles.row} divider={false}>
-            <ThemedText type="strong" style={styles.rowLabel}>
-              Run Night Shift
-            </ThemedText>
-            <Button
-              label="Run"
-              variant="primary"
-              disabled={!canStart}
-              onPress={() => router.push('/night-shift')}
-            />
-          </Row>
+          <NightShiftRunRow />
           <NightShiftPruneRow />
         </ListGroup>
 
