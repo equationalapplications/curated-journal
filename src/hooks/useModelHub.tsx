@@ -88,11 +88,13 @@ export function createModelHubApi(store: Store): ModelHubApi {
     isLowMemoryFor: (model) =>
       isBelowComfortableRam(model.minComfortableRamBytes, currentDeviceMemory().totalMemoryBytes),
     deleteOrphanedModelFiles: async (keepModelId) => {
-      let currentModelPath: string | null = null;
+      let currentModelPath: string | null;
       try {
         currentModelPath = await getModelPath();
-      } catch {
-        // Unknown current path: the sync cleanup still protects keepModelId's file.
+      } catch (cause) {
+        // An unknown current path must never risk deleting the working model's file.
+        console.warn('[model-hub] skipped orphan cleanup: current model path unknown', cause);
+        return;
       }
       deleteOrphanedCuratedModelFiles({ keepModelId, currentModelPath });
     },

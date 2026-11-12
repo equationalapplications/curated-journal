@@ -150,6 +150,18 @@ describe('createModelHubApi memory and orphan wiring', () => {
   });
 });
 
+describe('deleteOrphanedModelFiles with an unknown current path', () => {
+  it('skips cleanup and resolves when getModelPath rejects', async () => {
+    jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
+    jest.mocked(entityStorage.getModelPath).mockRejectedValueOnce(new Error('storage'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const api = createModelHubApi(makeStore() as never);
+    await expect(api.deleteOrphanedModelFiles('fast-light')).resolves.toBeUndefined();
+    expect(deleteOrphanedCuratedModelFiles).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
 describe('ModelHubProvider AppState', () => {
   it('sends APP_BACKGROUND only on background and APP_FOREGROUND on active', async () => {
     let handler: (s: string) => void = () => {};

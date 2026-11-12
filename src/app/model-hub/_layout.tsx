@@ -33,7 +33,11 @@ export default function ModelHubStackLayout() {
         router.replace('/model-hub/download' as Href);
       } else if (downloadState && downloadState.status !== 'idle' && downloadState.status !== 'failed') {
         // A saved install this bundle cannot restore (removed model, unknown status).
-        await store.clear();
+        try {
+          await store.clear();
+        } catch (cause) {
+          console.warn('[model-hub] could not clear an unrestorable download state', cause);
+        }
       }
     })();
     return () => {
