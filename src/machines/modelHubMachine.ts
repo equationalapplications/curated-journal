@@ -456,8 +456,13 @@ export const modelHubMachine = setup({
             guard: ({ event }) => event.output.ok === true,
             target: 'complete',
             actions: ({ context }) => {
-              void context.api.setModelPath(getCuratedModel(context.modelId as CuratedModelId));
-              void context.api.clearDownloadState();
+              // The smoke-testing marker is cleared only once the identity write
+              // has landed, so a kill in between never leaves a marker for a
+              // model that is already current.
+              void context.api
+                .setModelPath(getCuratedModel(context.modelId as CuratedModelId))
+                .then(() => context.api.clearDownloadState())
+                .catch(() => undefined);
             },
           },
           { target: 'smokeFailed' },
@@ -493,7 +498,8 @@ export const modelHubMachine = setup({
           target: 'selecting',
           actions: [
             ({ context }) => {
-              if (context.modelId) {
+              // Never delete the installed, working model's file.
+              if (context.modelId && context.modelId !== context.currentModelId) {
                 context.api.deletePartialFile(getCuratedModel(context.modelId).filename);
               }
               void context.api.clearDownloadState();

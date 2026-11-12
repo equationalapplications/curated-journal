@@ -342,6 +342,42 @@ describe('modelHubMachine', () => {
       expect(actor.getSnapshot().context.modelId).toBeNull();
       actor.stop();
     });
+
+    it('CHOOSE_ANOTHER never deletes the file when the model is the current working one', async () => {
+      const api = makeApi();
+      const actor = createActor(modelHubMachine, {
+        input: { api, currentModelId: 'fast-light' },
+      }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'smoke-testing', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      actor.send({ type: 'CHOOSE_ANOTHER' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      expect(api.deletePartialFile).not.toHaveBeenCalled();
+      expect(api.clearDownloadState).toHaveBeenCalled();
+      expect(actor.getSnapshot().context.modelId).toBeNull();
+      actor.stop();
+    });
+  });
+
+  it('clears the download state only after the model identity write has finished', async () => {
+    let finishSetPath!: () => void;
+    const api = makeApi({
+      setModelPath: jest.fn(() => new Promise<void>((r) => { finishSetPath = r; })),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.setModelPath).toHaveBeenCalled();
+    expect(api.clearDownloadState).not.toHaveBeenCalled();
+    finishSetPath();
+    await waitFor(
+      actor,
+      () => (api.clearDownloadState as jest.Mock).mock.calls.length > 0,
+      { timeout: 3000 },
+    ).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.clearDownloadState).toHaveBeenCalled();
+    actor.stop();
   });
 
   it('disk-full failure routes RETRY back to selecting (not downloading)', async () => {
