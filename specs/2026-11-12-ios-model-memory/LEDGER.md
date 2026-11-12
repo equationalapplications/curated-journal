@@ -17,12 +17,25 @@ goes under the line it belongs to.
 - [x] 6 Machine: restore, pause, resume, error paths (B1, B2, B6).
 - [x] 7 Machine: existing file, smoke marker, smoke-failed state, orphans (B4, B5, B7, A6).
 - [x] 8 Hook, layout and screens (B3, B5 UI, B7, restore).
-- [ ] 9 Version, full suite, tsc, lint.
-  - Version chosen and why:
-  - `npm test` tail:
-  - `tsc` output:
-  - lint output:
-  - Requirement → test trace (A1–A6, B1–B7):
+- [x] 9 Version, full suite, tsc, lint.
+  - Version chosen and why: 8.1.0. origin/main is 8.0.1 (d8cd194); #106 and #107 have not merged; branch already contains origin/main. JS/TS-only with a user-visible addition = MINOR. Bumped package.json, package-lock.json (two fields), app.json.
+  - `npm test` tail: Test Suites: 66 passed, 66 total; Tests: 462 passed, 462 total.
+  - `tsc` output: none (clean).
+  - lint output: `npm run lint` (expo lint, eslint): 0 errors, 31 warnings (all warnings, none fail the run). Prettier is not part of lint and is not enforced repo-wide (it flags untouched files too).
+  - Requirement -> test trace (A1-A6, B1-B7):
+    - A1: __tests__/modelLoadParams.test.ts "falls back to a 4096 context when none is given" and "custom import: 4096 context, no pinning on iOS, no low-memory profile"; provider/smoke use it: llamaProvider.test.ts "never pins weights on iOS, whatever the manifest says", modelSmokeTest.test.ts "never pins weights on iOS even when the manifest says useMlock".
+    - A2: modelLoadParams.test.ts "never pins weights on iOS, whatever the manifest says" (also "leaves Android exactly as today...").
+    - A3: modelManifest.test.ts "carries a comfortable-RAM threshold per model"; modelLoadParams.test.ts "compares strictly below the threshold" and "treats total memory %p as unknown".
+    - A4: modelHubRamWarning.test.tsx "warns on a 3 GiB device, then sends only after Continue", "does not warn Smarter & Slower on an 8 GiB device", "keeps today's behavior when total memory is unknown"; modelRamWarning.test.ts "warns when RAM is known and below the threshold".
+    - A5: lever 1: modelLoadParams.test.ts "adds the quantized KV cache on low-memory iOS", llamaProvider.test.ts "quantizes the KV cache on a device below the comfortable RAM". Lever 2 not applied (see task 3): modelLoadParams.test.ts "keeps the 8192 context on low-memory iOS (A5 lever 2 not applied)". Lever-1 smoke on simulator/device: on-device only, no automated test.
+    - A6: modelHubMachine.test.ts "{ ok: false } persists smoke-failed and uses the copy by memory" and "restoring smoke-testing goes to smokeFailed with the memory message"; screen copy: modelHubDownloadSmokeFailed.test.tsx "smokeFailed shows the message and two actions".
+    - B1: modelDownloadState.test.ts "normalizePauseState is null unless resumeData is a non-empty string", "get() reads a paused row without resumeData as pauseState null, keeping status", "set() stores NULL for a pauseState without resumeData"; modelDownloadService.test.ts "pauseDownload resolves null when savable has no resumeData"; modelHubMachine.test.ts "restored pause with no pause state stays paused until RESUME starts fresh", "a pause that returns null resumes with a fresh start".
+    - B2: modelHubMachine.test.ts "restored pause with resume data stays paused and RESUME resumes it".
+    - B3: useModelHub.test.ts "sends APP_BACKGROUND only on background and APP_FOREGROUND on active" (ModelHubProvider AppState).
+    - B4: modelHubMachine.test.ts "reuses a complete file on select", "reuses a complete file on restore".
+    - B5: modelHubMachine.test.ts "a rejecting smoke test reaches smokeFailed and keeps the file", "does not call runSmokeTest until the smoke-testing marker write finishes", "restoring smoke-testing goes to smokeFailed...", "restoring smoke-failed does not run the smoke test until RETRY, then completes", "RETRY after the file is gone fails...", "CHOOSE_ANOTHER deletes the file, clears state and returns to selecting"; modelSmokeTest.test.ts "resolves { ok: false } and does not delete the file when initLlama throws"; modelDownloadState.test.ts "round-trips smoke-testing and smoke-failed statuses"; useModelHub.test.ts toRestoreState "returns state for %s".
+    - B6: modelHubMachine.test.ts "pauseTask rejection lands in failed", "verifyTask rejection lands in failed", "checkNetworkActor rejection returns to selecting with a banner, and SELECT_MODEL works again", "a rejecting smoke test reaches smokeFailed and keeps the file", "stale resume data: a rejected resume fails...".
+    - B7: modelFiles.test.ts "deletes only the catalog files that are not the kept model", "keeps a file whose uri is the current model path", "never propagates a delete failure"; modelHubImport.test.tsx "cleans orphaned catalog files after the pick and before the copy"; useModelHub.test.ts "deleteOrphanedModelFiles passes the keep id and stored path" and "skips cleanup and resolves when getModelPath rejects". Machine-side trigger on curated download start: no dedicated machine test found (covered through the api wiring only).
 - [ ] 10 Cleanup commit (after user review).
 
 ## Plan-level calls not in the spec
