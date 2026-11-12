@@ -325,9 +325,32 @@ describe('check-release-age first-party exemption', () => {
             'https://evil.example.com/@equationalapplications/core-okf/-/core-okf-99.0.0.tgz',
         }),
       )
-      expect(result.status).toBe(0)
+      // Fail closed: a tarball from another host can't be age-verified.
+      expect(result.status).toBe(1)
       expect(result.stdout).not.toContain('First-party, exempt')
-      expect(result.stdout).toContain('Not age-checkable, skipped')
+      expect(result.stderr).toContain('is not the registry tarball for @equationalapplications/core-okf@99.0.0')
+    } finally {
+      await registry.close()
+    }
+  })
+
+  it('does not exempt a third-party tarball reached through a `..` path under the first-party scope', async () => {
+    const registry = await startRegistry({
+      '@equationalapplications/core-okf': { time: { '99.0.0': daysAgo(30) } },
+      evil: { time: { '9.9.9': daysAgo(1) } },
+    })
+    try {
+      const result = await runDelta(
+        registry.url,
+        lockWith('node_modules/@equationalapplications/core-okf', {
+          version: '99.0.0',
+          // npm normalizes this to <registry>/evil/-/evil-9.9.9.tgz.
+          resolved: `${registry.url}@equationalapplications/../evil/-/evil-9.9.9.tgz`,
+        }),
+      )
+      expect(result.status).toBe(1)
+      expect(result.stdout).not.toContain('First-party, exempt')
+      expect(result.stderr).toContain('is not the registry tarball')
     } finally {
       await registry.close()
     }
@@ -397,6 +420,143 @@ describe('check-release-age first-party exemption', () => {
     } finally {
       await registry.close()
       fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('check-release-age entry provenance and publish times', () => {
+  async function runDeltaFrom(registryUrl: string, base: object, current: object) {
+    const dir = makeTempRepo()
+    try {
+      commitFile(dir, 'lock.json', JSON.stringify(base))
+      fs.writeFileSync(path.join(dir, 'lock.json'), JSON.stringify(current))
+      return await runScript(
+        ['--registry', registryUrl, '--base', 'HEAD', '--lockfile', 'lock.json'],
+        dir,
+      )
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  const lock = (entries: Record<string, object>) => ({
+    lockfileVersion: 3,
+    // A link entry keeps the base readable (an empty base fails closed).
+    packages: { '': { name: 'fixture' }, 'node_modules/local': { version: '0.0.0', link: true }, ...entries },
+  })
+
+  it('checks the tarball npm installs: a version that disagrees with resolved fails closed', async () => {
+    const registry = await startRegistry({
+      foo: { time: { '1.0.0': daysAgo(30), '9.9.9': daysAgo(1) } },
+    })
+    try {
+      const result = await runDeltaFrom(
+        registry.url,
+        lock({}),
+        lock({
+          // Claims an old version, installs the 1-day-old tarball.
+          'node_modules/foo': { version: '1.0.0', resolved: `${registry.url}foo/-/foo-9.9.9.tgz` },
+        }),
+      )
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('is not the registry tarball for foo@1.0.0')
+    } finally {
+      await registry.close()
+    }
+  })
+
+  it('fails closed on a node_modules entry with no version', async () => {
+    const registry = await startRegistry({})
+    try {
+      const result = await runDeltaFrom(
+        registry.url,
+        lock({}),
+        lock({ 'node_modules/foo': { resolved: `${registry.url}foo/-/foo-9.9.9.tgz` } }),
+      )
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('node_modules/foo: missing version')
+    } finally {
+      await registry.close()
+    }
+  })
+
+  it('skips workspace entries instead of querying the registry for them', async () => {
+    const registry = await startRegistry({})
+    try {
+      const result = await runDeltaFrom(
+        registry.url,
+        lock({}),
+        lock({ 'packages/app': { name: 'app', version: '1.0.0' } }),
+      )
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('skipped (workspace/link/bundled entries): packages/app')
+    } finally {
+      await registry.close()
+    }
+  })
+
+  it('inherits an unchanged tarball that npm re-hoisted to a new path', async () => {
+    // Published 1 day ago and already in base: moving it is not a new install.
+    const registry = await startRegistry({ foo: { time: { '9.9.9': daysAgo(1) } } })
+    const entry = {
+      version: '9.9.9',
+      resolved: `${registry.url}foo/-/foo-9.9.9.tgz`,
+      integrity: 'sha512-same',
+    }
+    try {
+      const result = await runDeltaFrom(
+        registry.url,
+        lock({ 'node_modules/bar/node_modules/foo': entry }),
+        lock({ 'node_modules/foo': entry }),
+      )
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('No dependency changes')
+    } finally {
+      await registry.close()
+    }
+  })
+
+  it.each([
+    ['a number', 1],
+    ['a numeric string', '1'],
+    ['an impossible date', '2026-02-30T00:00:00.000Z'],
+    ['a date-only string', '2020-01-01'],
+  ])('fails closed when the registry publish time is %s', async (_label, published) => {
+    const registry = await startRegistry({
+      foo: { time: { '1.0.0': published as unknown as string } },
+    })
+    try {
+      const result = await runDeltaFrom(
+        registry.url,
+        lock({}),
+        lock({ 'node_modules/foo': { version: '1.0.0', resolved: `${registry.url}foo/-/foo-1.0.0.tgz` } }),
+      )
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('foo@1.0.0: unparsable publish time in registry')
+    } finally {
+      await registry.close()
+    }
+  })
+
+  it('does not retry a 404', async () => {
+    let hits = 0
+    const server = http.createServer((_req, res) => {
+      hits++
+      res.statusCode = 404
+      res.end('not found')
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+    try {
+      const result = await runDeltaFrom(
+        url,
+        lock({}),
+        lock({ 'node_modules/foo': { version: '1.0.0', resolved: `${url}foo/-/foo-1.0.0.tgz` } }),
+      )
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('foo: HTTP 404')
+      expect(hits).toBe(1)
+    } finally {
+      await new Promise((r) => server.close(r))
     }
   })
 })
