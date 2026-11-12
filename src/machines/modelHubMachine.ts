@@ -76,7 +76,7 @@ type Context = {
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: ErrorCode; message: string } | null;
   pauseState: DownloadPauseStateRecord | null;
-  pausedReason: 'user' | 'background' | null;
+  pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
 };
 
@@ -113,7 +113,7 @@ export const modelHubMachine = setup({
         };
         (async () => {
           try {
-            const completed = input.pauseState
+            const completed = input.pauseState?.resumeData
               ? await input.api.resumeDownload(input.pauseState, onProgress)
               : await input.api.startDownload(input.model, onProgress);
             if (!cancelled && completed) sendBack({ type: 'DOWNLOAD_COMPLETE' });
@@ -130,7 +130,19 @@ export const modelHubMachine = setup({
       },
     ),
     pauseTask: fromPromise(
-      async ({ input }: { input: { api: ModelHubApi; modelId: CuratedModelId | null } }) => {
+      async ({
+        input,
+      }: {
+        input: {
+          api: ModelHubApi;
+          modelId: CuratedModelId | null;
+          pausedReason: Context['pausedReason'];
+          pauseState: DownloadPauseStateRecord | null;
+        };
+      }) => {
+        // A restored pause has no live download to pause, and its row is
+        // already persisted — hand back what was restored.
+        if (input.pausedReason === 'restored') return input.pauseState;
         const pauseState = await input.api.pauseDownload();
         await input.api.persistDownloadState({ modelId: input.modelId, status: 'paused', pauseState });
         return pauseState;
@@ -191,12 +203,12 @@ export const modelHubMachine = setup({
         IMPORT_CUSTOM: { target: 'customImport' },
         RESTORE_DOWNLOAD: [
           {
-            guard: ({ event }) => event.status === 'paused' && event.pauseState !== null,
+            guard: ({ event }) => event.status === 'paused',
             target: 'paused',
             actions: assign({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
-              pausedReason: 'user' as const,
+              pausedReason: 'restored' as const,
               error: null,
             }),
           },
@@ -261,6 +273,14 @@ export const modelHubMachine = setup({
           { guard: ({ event }) => event.output === 'cellular', target: 'cellularConfirm' },
           { target: 'awaitingWifi' },
         ],
+        onError: {
+          // The list is on screen and has no Retry button, so go back to it
+          // with the error in the banner (same as retiringCurrent).
+          target: 'selecting',
+          actions: assign({
+            error: { code: 'network' as const, message: 'Could not check your connection. Try again.' },
+          }),
+        },
       },
     },
     awaitingWifi: {
@@ -303,7 +323,8 @@ export const modelHubMachine = setup({
         FAIL: {
           target: 'failed',
           actions: [
-            assign({ error: ({ event }) => ({ code: event.code, message: event.message }) }),
+            // Stale resume data must not be retried: drop it so RETRY starts clean.
+            assign({ error: ({ event }) => ({ code: event.code, message: event.message }), pauseState: null }),
             ({ context, event }) => {
               if (event.code === 'disk-full' && context.modelId) {
                 context.api.deletePartialFile(getCuratedModel(context.modelId).filename);
@@ -316,8 +337,19 @@ export const modelHubMachine = setup({
     paused: {
       invoke: {
         src: 'pauseTask',
-        input: ({ context }) => ({ api: context.api, modelId: context.modelId }),
+        input: ({ context }) => ({
+          api: context.api,
+          modelId: context.modelId,
+          pausedReason: context.pausedReason,
+          pauseState: context.pauseState,
+        }),
         onDone: { actions: assign({ pauseState: ({ event }) => event.output }) },
+        onError: {
+          target: 'failed',
+          actions: assign({
+            error: { code: 'unknown' as const, message: 'Could not pause the download. Try again.' },
+          }),
+        },
       },
       on: {
         RESUME: { target: 'downloading' },
@@ -350,6 +382,12 @@ export const modelHubMachine = setup({
             ],
           },
         ],
+        onError: {
+          target: 'failed',
+          actions: assign({
+            error: { code: 'verify' as const, message: 'Could not check the downloaded file. Try again.' },
+          }),
+        },
       },
     },
     smokeTest: {

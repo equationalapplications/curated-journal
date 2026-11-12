@@ -379,4 +379,132 @@ describe('modelHubMachine', () => {
     expect(api.deleteModelFile).not.toHaveBeenCalled();
     actor.stop();
   });
+
+  describe('restore, pause and resume (B1, B2, B6)', () => {
+    const record = { url: fastLight.hfUrl, fileUri: 'file:///f.gguf', isDirectory: false, resumeData: 'rd' };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    it('restored pause with resume data stays paused and RESUME resumes it', async () => {
+      const api = makeApi();
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      expect(actor.getSnapshot().context.pausedReason).toBe('restored');
+      expect(api.pauseDownload).not.toHaveBeenCalled();
+      expect(api.persistDownloadState).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      actor.stop();
+    });
+
+    it('restored pause with no pause state stays paused until RESUME starts fresh', async () => {
+      const api = makeApi();
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: null });
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).toHaveBeenCalledTimes(1);
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('a pause that returns null resumes with a fresh start', async () => {
+      const api = makeApi({
+        pauseDownload: jest.fn(async () => null),
+        startDownload: jest.fn(async () => {
+          await tick();
+          return true;
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'PAUSE' });
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).toHaveBeenCalledTimes(2);
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('stale resume data: a rejected resume fails, drops the pause state, and RETRY does not resume again', async () => {
+      const api = makeApi({
+        resumeDownload: jest.fn(async () => {
+          throw new Error('no resumeData');
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.pauseState).toBeNull();
+      actor.send({ type: 'RETRY' });
+      await tick();
+      expect(api.resumeDownload).toHaveBeenCalledTimes(1);
+      actor.stop();
+    });
+
+    it('checkNetworkActor rejection returns to selecting with a banner, and SELECT_MODEL works again', async () => {
+      const checkNetwork = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValue('offline');
+      const api = makeApi({ checkNetwork });
+      const actor = createActor(modelHubMachine, { input: { api, currentModelId: 'fast-light' } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(actor.getSnapshot().context.error).toEqual({
+        code: 'network',
+        message: 'Could not check your connection. Try again.',
+      });
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('pauseTask rejection lands in failed', async () => {
+      const api = makeApi({
+        pauseDownload: jest.fn(async () => {
+          throw new Error('boom');
+        }),
+        startDownload: jest.fn(() => new Promise<boolean>(() => undefined)),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'PAUSE' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(actor.getSnapshot().context.error).toEqual({
+        code: 'unknown',
+        message: 'Could not pause the download. Try again.',
+      });
+      actor.stop();
+    });
+
+    it('verifyTask rejection lands in failed', async () => {
+      const api = makeApi({
+        verifyDownload: jest.fn(() => {
+          throw new Error('boom');
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(actor.getSnapshot().context.error).toEqual({
+        code: 'verify',
+        message: 'Could not check the downloaded file. Try again.',
+      });
+      actor.stop();
+    });
+  });
 });

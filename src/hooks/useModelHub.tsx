@@ -123,7 +123,7 @@ type ModelHubContextValue = {
   currentModelId: CuratedModelId | 'custom' | null;
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: string; message: string } | null;
-  pausedReason: 'user' | 'background' | null;
+  pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
 };
 
