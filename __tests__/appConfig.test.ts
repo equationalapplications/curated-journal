@@ -57,4 +57,17 @@ describe('iPad support (specs/2026-11-12-ipad-support)', () => {
   it('ships as a universal iOS app', () => {
     expect(appConfig.expo.ios?.supportsTablet).toBe(true);
   });
+
+  // R2: iPad multitasking (Split View, Stage Manager) needs every orientation
+  // and no full-screen requirement; either change drops it silently.
+  it('stays multitasking-compatible (R2)', () => {
+    expect(appConfig.expo.orientation).toBe('default');
+    expect(appConfig.expo.ios?.requireFullScreen).not.toBe(true);
+    expect(appConfig.expo.ios?.infoPlist?.UIRequiresFullScreen).not.toBe(true);
+  });
+
+  // R3: universal iOS is a native change, so it ships as a MAJOR (9.0.0).
+  it('ships on the 9.0.0 runtime (R3)', () => {
+    expect(appConfig.expo.runtimeVersion).toBe('9.0.0');
+  });
 });
