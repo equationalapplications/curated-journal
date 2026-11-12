@@ -15,13 +15,15 @@ import { NIGHT_SHIFT_CHARGING_HINT } from '@/lib/nightShiftCopy';
  */
 export function NightShiftRunRow() {
   const router = useRouter();
-  const { charging, canStart } = useNightShiftGates();
+  const { charging, chargingKnown, canStart } = useNightShiftGates();
+  // Only once the battery has been read: an unread state is not "unplugged".
+  const showChargingHint = chargingKnown && !charging;
 
   return (
     <Row style={styles.row} divider={false}>
       <View style={styles.copyBlock}>
         <ThemedText type="strong">Run Night Shift</ThemedText>
-        {!charging ? (
+        {showChargingHint ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             {NIGHT_SHIFT_CHARGING_HINT}
           </ThemedText>
@@ -31,6 +33,8 @@ export function NightShiftRunRow() {
         testID="night-shift-run-button"
         label="Run"
         variant="primary"
+        // Screen readers that land on the button hear why it is disabled.
+        accessibilityHint={showChargingHint ? NIGHT_SHIFT_CHARGING_HINT : undefined}
         disabled={!canStart}
         onPress={() => router.push('/night-shift')}
       />

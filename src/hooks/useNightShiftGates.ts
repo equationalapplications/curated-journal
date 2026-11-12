@@ -6,7 +6,9 @@ import { devLlmMode } from '@/lib/devModel';
 import { getModelPath } from '@/lib/entityStorage';
 
 export function useNightShiftGates() {
-  const [charging, setCharging] = useState(false);
+  // null until the first battery read resolves, so a plugged-in device does
+  // not flash "not charging" copy while the state loads.
+  const [charging, setCharging] = useState<boolean | null>(null);
   const [hasModel, setHasModel] = useState(false);
 
   useEffect(() => {
@@ -40,7 +42,8 @@ export function useNightShiftGates() {
   }, []);
 
   const simulatorDevBypass = __DEV__ && !Device.isDevice;
-  const chargingOk = charging || simulatorDevBypass;
+  const chargingOk = charging === true || simulatorDevBypass;
+  const chargingKnown = charging !== null || simulatorDevBypass;
 
-  return { charging: chargingOk, hasModel, canStart: chargingOk && hasModel };
+  return { charging: chargingOk, chargingKnown, hasModel, canStart: chargingOk && hasModel };
 }
