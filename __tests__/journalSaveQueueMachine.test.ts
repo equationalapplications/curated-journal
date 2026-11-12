@@ -172,7 +172,7 @@ describe('journalSaveQueueMachine', () => {
       const { ingest, calls } = deferredIngest();
       const cancel = jest.fn(() => calls[0].reject(new Error('LLM generation cancelled')));
       const actor = createActor(journalSaveQueueMachine, {
-        input: { entityId: 'e1', ingest, saveTimeoutMs: 1_000, openGenerationScope: () => ({ cancel }) },
+        input: { entityId: 'e1', ingest, saveTimeoutMs: 1_000, openGenerationScope: () => ({ cancel, close: jest.fn() }) },
       });
       actor.start();
       actors.push(actor);
@@ -196,7 +196,7 @@ describe('journalSaveQueueMachine', () => {
       const { ingest, calls } = deferredIngest();
       const cancel = jest.fn();
       const actor = createActor(journalSaveQueueMachine, {
-        input: { entityId: 'e1', ingest, saveTimeoutMs: 1_000, openGenerationScope: () => ({ cancel }) },
+        input: { entityId: 'e1', ingest, saveTimeoutMs: 1_000, openGenerationScope: () => ({ cancel, close: jest.fn() }) },
       });
       actor.start();
       actors.push(actor);
@@ -222,10 +222,67 @@ describe('journalSaveQueueMachine', () => {
     }
   });
 
+  it('fails a timed-out save that resolved with chunk failures, keeping its text', async () => {
+    jest.useFakeTimers();
+    try {
+      const { ingest, calls } = deferredIngest();
+      const actor = createActor(journalSaveQueueMachine, {
+        input: {
+          entityId: 'e1',
+          ingest,
+          saveTimeoutMs: 1_000,
+          openGenerationScope: () => ({ cancel: jest.fn(), close: jest.fn() }),
+        },
+      });
+      actor.start();
+      actors.push(actor);
+      actor.send({ type: 'ENQUEUE', title: 'A', body: '1' });
+      await jest.advanceTimersByTimeAsync(1_100);
+      calls[0].resolve({ ...clean, chunks: 2, ingestedChunks: 1, failedChunks: 1 });
+      await jest.advanceTimersByTimeAsync(0);
+      const [a] = actor.getSnapshot().context.entries;
+      expect(a.status).toBe('failed');
+      expect(a.body).toBe('1');
+      expect(a.error?.message).toMatch(/timed out/i);
+      expect(actor.getSnapshot().context.savedCount).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('fails the entry after the grace period when the cancelled ingest never settles', async () => {
+    jest.useFakeTimers();
+    try {
+      const close = jest.fn();
+      const actor = createActor(journalSaveQueueMachine, {
+        input: {
+          entityId: 'e1',
+          ingest: jest.fn(() => new Promise<never>(() => {})),
+          saveTimeoutMs: 1_000,
+          cancelGraceMs: 500,
+          openGenerationScope: () => ({ cancel: jest.fn(), close }),
+        },
+      });
+      actor.start();
+      actors.push(actor);
+      actor.send({ type: 'ENQUEUE', title: 'A', body: '1' });
+      actor.send({ type: 'ENQUEUE', title: 'B', body: '2' });
+      await jest.advanceTimersByTimeAsync(1_100);
+      expect(statuses(actor)).toEqual(['A:saving', 'B:queued']);
+      await jest.advanceTimersByTimeAsync(500);
+      expect(statuses(actor)).toEqual(['A:failed', 'B:saving']);
+      // The hung ingest never settled, so its scope stays open and cancelling.
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('opens a fresh generation scope per save and never cancels one that finished in time', async () => {
     const { ingest, calls } = deferredIngest();
     const cancel = jest.fn();
-    const openGenerationScope = jest.fn(() => ({ cancel }));
+    const close = jest.fn();
+    const openGenerationScope = jest.fn(() => ({ cancel, close }));
     const actor = createActor(journalSaveQueueMachine, {
       input: { entityId: 'e1', ingest, saveTimeoutMs: 5_000, openGenerationScope },
     });
@@ -240,6 +297,7 @@ describe('journalSaveQueueMachine', () => {
     calls[1].resolve(clean);
     await flush();
     expect(openGenerationScope).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(2);
     expect(cancel).not.toHaveBeenCalled();
   });
 

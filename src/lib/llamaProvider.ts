@@ -40,15 +40,32 @@ type PendingGeneration = {
   cancelled: boolean;
   /** The context running this call's completion, set only while it runs. */
   running: LlamaContext | null;
+  /** Ends a foreground wait early when the call is cancelled. */
+  wake: (() => void) | null;
 };
+
+type GenerationScope = { floor: number; cancelled: boolean };
 
 /** Every generateText call not yet settled, keyed by call order. */
 const pendingGenerations = new Map<number, PendingGeneration>();
+/** Scopes not yet closed. A cancelled one also cancels calls made later. */
+const openScopes = new Set<GenerationScope>();
 let generationSeq = 0;
+
+function cancelPending(pending: PendingGeneration): void {
+  if (pending.cancelled) return;
+  pending.cancelled = true;
+  // The completion settles once stopped; serialization holds until then.
+  pending.running?.stopCompletion().catch(() => undefined);
+  pending.wake?.();
+}
 
 function serialized<T>(run: (pending: PendingGeneration) => Promise<T>): Promise<T> {
   const seq = ++generationSeq;
-  const pending: PendingGeneration = { cancelled: false, running: null };
+  const pending: PendingGeneration = { cancelled: false, running: null, wake: null };
+  for (const scope of openScopes) {
+    if (scope.cancelled && seq > scope.floor) pending.cancelled = true;
+  }
   pendingGenerations.set(seq, pending);
   const start = () => {
     if (pending.cancelled) return Promise.reject(new GenerationCancelledError());
@@ -63,28 +80,51 @@ function serialized<T>(run: (pending: PendingGeneration) => Promise<T>): Promise
 }
 
 /**
- * Opens a scope over every generateText call made from now on. `cancel()`
- * stops the scope's running completion (llama.rn `stopCompletion`) and
- * rejects its queued calls with `GenerationCancelledError` before they start.
- * Calls made before the scope opened, or after `cancel()`, are untouched.
+ * Opens a scope over every generateText call made from now until `close()`.
+ * `cancel()` stops the scope's running completion (llama.rn `stopCompletion`)
+ * and rejects its queued calls, and any it makes later, with
+ * `GenerationCancelledError` before they start. Calls made before the scope
+ * opened, or after it closed, are untouched.
  *
- * The save queue opens one per save and cancels it on timeout, so a timed-out
- * save frees the chain instead of holding every later call behind it. A chat
- * question or Night Shift call made during that save is cancelled with it
- * (calls are not tagged by caller).
+ * The save queue opens one per save, cancels it on timeout and closes it when
+ * the save ends, so a timed-out save frees the chain instead of holding every
+ * later call behind it. A chat question or Night Shift call made while a save
+ * is cancelled is cancelled with it (calls are not tagged by caller).
  */
-export function openGenerationScope(): { cancel: () => void } {
-  const floor = generationSeq;
+export function openGenerationScope(): { cancel: () => void; close: () => void } {
+  const scope: GenerationScope = { floor: generationSeq, cancelled: false };
+  openScopes.add(scope);
   return {
     cancel: () => {
+      scope.cancelled = true;
       for (const [seq, pending] of pendingGenerations) {
-        if (seq <= floor || pending.cancelled) continue;
-        pending.cancelled = true;
-        // The completion settles once stopped; serialization holds until then.
-        pending.running?.stopCompletion().catch(() => undefined);
+        if (seq > scope.floor) cancelPending(pending);
       }
     },
+    close: () => {
+      openScopes.delete(scope);
+    },
   };
+}
+
+/**
+ * Outside Night Shift the context is released in the background, so a queued
+ * background save would otherwise reload the model there (memory pressure,
+ * Jetsam on iOS). Wait for the foreground instead; a cancel ends the wait.
+ */
+function waitForForeground(pending: PendingGeneration): Promise<void> {
+  if (nightShiftActive || AppState.currentState !== 'background') return Promise.resolve();
+  return new Promise((resolve) => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'background') done();
+    });
+    function done() {
+      subscription.remove();
+      pending.wake = null;
+      resolve();
+    }
+    pending.wake = done;
+  });
 }
 
 let nightShiftActive = false;
@@ -167,6 +207,8 @@ export function createLlamaProvider(config: {
   return {
     maxOutputTokens: LLM_MAX_PREDICT_TOKENS,
     generateText: ({ systemPrompt, userPrompt }) => serialized(async (pending) => {
+      await waitForForeground(pending);
+      if (pending.cancelled) throw new GenerationCancelledError();
       const ctx = await ensureContext();
       if (pending.cancelled) throw new GenerationCancelledError();
       let tokenCount = 0;

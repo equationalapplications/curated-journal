@@ -83,13 +83,18 @@ active. Night Shift's token-progress UI is unchanged.
 its existing message. The clock includes any wait behind another LLM
 call (R8). This is accepted: a timeout is a recoverable R4 failure.
 On timeout the save's LLM generations are cancelled (llama.rn
-`stopCompletion` on the running one, queued ones never start) and the
-entry stays "Saving…" until its ingest settles. A timed-out ingest
-therefore never writes after the entry is retried or discarded, and never
-holds later calls in the R8 chain. If the ingest resolved anyway, the note
-counts as saved. Cancellation is not tagged by caller: a chat question or
-Night Shift call made during that save is cancelled with it (user ruling
-2026-11-12, PR #106 review).
+`stopCompletion` on the running one; queued ones, and any the ingest
+starts afterwards, never run) and the entry stays "Saving…" while its
+ingest settles, for up to 15 s more. A timed-out ingest therefore does not
+write after the entry is retried or discarded, and does not hold later
+calls in the R8 chain. Past the 15 s grace the entry fails anyway, so a
+hang outside the LLM never blocks the queue. A timed-out save counts as
+saved only if its ingest resolved with no chunk failures. Cancellation is
+not tagged by caller: a chat question or Night Shift call made while a
+save is cancelled is cancelled with it (user ruling 2026-11-12, PR #106
+review). Outside Night Shift, a generation waits for the foreground
+before loading the model, so a queued save never reloads it in the
+background.
 
 ## Out of scope
 

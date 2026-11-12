@@ -1,4 +1,5 @@
 import { initLlama } from 'llama.rn';
+import { AppState } from 'react-native';
 import {
   createLlamaProvider,
   GenerationCancelledError,
@@ -11,7 +12,7 @@ import {
 
 jest.mock('llama.rn', () => ({ initLlama: jest.fn() }));
 jest.mock('react-native', () => ({
-  AppState: { addEventListener: jest.fn() },
+  AppState: { addEventListener: jest.fn(), currentState: 'active' },
   Platform: { OS: 'ios' },
 }));
 
@@ -208,14 +209,80 @@ describe('createLlamaProvider', () => {
     expect(started).toEqual(['before', 'save1']);
 
     scope.cancel();
-    const after = provider.generateText({ systemPrompt: 's', userPrompt: 'after' });
     await expect(save1).rejects.toBeInstanceOf(GenerationCancelledError);
     await expect(save2).rejects.toBeInstanceOf(GenerationCancelledError);
     expect(stopCompletion).toHaveBeenCalledTimes(1);
+
+    // Once the save ends its scope closes, and later calls run normally.
+    scope.close();
+    const after = provider.generateText({ systemPrompt: 's', userPrompt: 'after' });
     await tick();
-    // save2 never reached the model; the call made after cancel runs.
+    // save2 never reached the model.
     expect(started).toEqual(['before', 'save1', 'after']);
     finishers[2]('after-done');
     await expect(after).resolves.toBe('after-done');
+  });
+
+  it('a cancelled scope also cancels calls made later, until it closes', async () => {
+    const completion = jest.fn(async () => ({ text: 'ran' }));
+    jest
+      .mocked(initLlama)
+      .mockResolvedValueOnce({ completion, stopCompletion: jest.fn(), release: jest.fn() } as never);
+    const provider = createLlamaProvider({ modelPath: '/m11.gguf' });
+
+    const scope = openGenerationScope();
+    scope.cancel();
+    // The cancelled ingest moves on to its next chunk.
+    await expect(
+      provider.generateText({ systemPrompt: 's', userPrompt: 'next-chunk' }),
+    ).rejects.toBeInstanceOf(GenerationCancelledError);
+    expect(completion).not.toHaveBeenCalled();
+
+    scope.close();
+    await expect(provider.generateText({ systemPrompt: 's', userPrompt: 'later' })).resolves.toBe(
+      'ran',
+    );
+  });
+
+  it('waits for the foreground before loading the model outside Night Shift', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const remove = jest.fn();
+    jest.mocked(AppState.addEventListener).mockImplementation(((_: string, fn: (s: string) => void) => {
+      listeners.push(fn);
+      return { remove };
+    }) as never);
+    (AppState as { currentState: string }).currentState = 'background';
+    const completion = jest.fn(async () => ({ text: 'ok' }));
+    jest.mocked(initLlama).mockResolvedValueOnce({ completion, release: jest.fn() } as never);
+    try {
+      const provider = createLlamaProvider({ modelPath: '/m12.gguf' });
+      const call = provider.generateText({ systemPrompt: 's', userPrompt: 'u' });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(initLlama).not.toHaveBeenCalled();
+
+      (AppState as { currentState: string }).currentState = 'active';
+      listeners.forEach((fn) => fn('active'));
+      await expect(call).resolves.toBe('ok');
+      expect(remove).toHaveBeenCalled();
+    } finally {
+      (AppState as { currentState: string }).currentState = 'active';
+    }
+  });
+
+  it('a cancel ends the foreground wait', async () => {
+    jest.mocked(AppState.addEventListener).mockImplementation((() => ({ remove: jest.fn() })) as never);
+    (AppState as { currentState: string }).currentState = 'background';
+    try {
+      const provider = createLlamaProvider({ modelPath: '/m13.gguf' });
+      const scope = openGenerationScope();
+      const call = provider.generateText({ systemPrompt: 's', userPrompt: 'u' });
+      await new Promise((r) => setTimeout(r, 0));
+      scope.cancel();
+      await expect(call).rejects.toBeInstanceOf(GenerationCancelledError);
+      expect(initLlama).not.toHaveBeenCalled();
+      scope.close();
+    } finally {
+      (AppState as { currentState: string }).currentState = 'active';
+    }
   });
 });
