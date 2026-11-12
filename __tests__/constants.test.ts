@@ -11,6 +11,16 @@ describe('constants', () => {
     expect(WIKI_CONFIG.autoHealThreshold).toBe(Infinity);
   });
 
+  it('pins the 7.x engine (legacy librarian, auto maintenance) across llm-wiki 8.x', () => {
+    // llm-wiki 8.0.0 flipped the defaults to the ops librarian + deferred
+    // maintenance. Night Shift drives librarian/heal explicitly and the
+    // on-device models are only validated against the legacy librarian, so
+    // both are set explicitly; Infinity thresholds keep write() from
+    // auto-running either way.
+    expect(WIKI_CONFIG.librarian).toEqual({ strategy: 'legacy' });
+    expect(WIKI_CONFIG.maintenance).toBe('auto');
+  });
+
   it('enforces chat traversal cap per spec', () => {
     expect(CHAT_TRAVERSAL_NODE_CAP).toBe(12);
   });

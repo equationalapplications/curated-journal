@@ -8,9 +8,17 @@ export const MAX_ZIP_UNCOMPRESSED_BYTES = 200 * 1024 * 1024;
 export const CHAT_OUTPUT_TOKEN_RESERVE = 512;
 export const CHARS_PER_TOKEN_ESTIMATE = 4;
 
+// llm-wiki 8.0.0 changed the engine defaults to the ops librarian and
+// deferred maintenance. Pin the 7.x engine explicitly: Night Shift runs the
+// librarian/heal itself, and the curated on-device models are validated
+// against the legacy librarian only. Adopting 'ops' is a separate,
+// on-device-evaluated change. Infinity thresholds keep write() from
+// auto-running maintenance.
 export const WIKI_CONFIG = {
   autoLibrarianThreshold: Infinity,
   autoHealThreshold: Infinity,
+  librarian: { strategy: 'legacy' },
+  maintenance: 'auto',
 } as const;
 
 export const ENTITY_ID_KEY = 'curated_journal_entity_id';
