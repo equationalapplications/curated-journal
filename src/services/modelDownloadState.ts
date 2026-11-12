@@ -1,6 +1,6 @@
 import type * as SQLite from 'expo-sqlite';
 
-export type ModelDownloadStatus = 'idle' | 'downloading' | 'paused' | 'failed';
+export type ModelDownloadStatus = 'idle' | 'downloading' | 'paused' | 'failed' | 'smoke-testing' | 'smoke-failed';
 
 export type DownloadPauseStateRecord = {
   url: string;
@@ -9,6 +9,13 @@ export type DownloadPauseStateRecord = {
   headers?: Record<string, string>;
   resumeData?: string;
 };
+
+/** A pause state is usable only with non-empty resume data; otherwise it is no pause state. */
+export function normalizePauseState(
+  pauseState: DownloadPauseStateRecord | null | undefined,
+): DownloadPauseStateRecord | null {
+  return pauseState && typeof pauseState.resumeData === 'string' && pauseState.resumeData !== '' ? pauseState : null;
+}
 
 export type ModelDownloadStateRecord = {
   modelId: string | null;
@@ -51,19 +58,22 @@ export function createModelDownloadStateStore(db: SQLite.SQLiteDatabase) {
       return {
         modelId: row.model_id,
         status: row.status as ModelDownloadStatus,
-        pauseState: row.pause_state_json ? (JSON.parse(row.pause_state_json) as DownloadPauseStateRecord) : null,
+        pauseState: normalizePauseState(
+          row.pause_state_json ? (JSON.parse(row.pause_state_json) as DownloadPauseStateRecord) : null,
+        ),
       };
     },
 
     async set(record: { modelId: string | null; status: ModelDownloadStatus; pauseState: DownloadPauseStateRecord | null }): Promise<void> {
       await ensureSchema();
+      const pauseState = normalizePauseState(record.pauseState);
       await db.runAsync(
         `INSERT INTO model_download_state (id, model_id, pause_state_json, status, updated_at)
          VALUES (1, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET model_id = excluded.model_id, pause_state_json = excluded.pause_state_json,
            status = excluded.status, updated_at = excluded.updated_at`,
         record.modelId,
-        record.pauseState ? JSON.stringify(record.pauseState) : null,
+        pauseState ? JSON.stringify(pauseState) : null,
         record.status,
         new Date().toISOString(),
       );

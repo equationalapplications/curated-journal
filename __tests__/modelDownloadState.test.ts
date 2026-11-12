@@ -1,5 +1,6 @@
 import {
   createModelDownloadStateStore,
+  normalizePauseState,
   type ModelDownloadStatus,
 } from '@/services/modelDownloadState';
 
@@ -55,5 +56,36 @@ describe('modelDownloadState', () => {
   it('typechecks all four ModelDownloadStatus values', () => {
     const statuses: ModelDownloadStatus[] = ['idle', 'downloading', 'paused', 'failed'];
     expect(statuses).toHaveLength(4);
+  });
+
+  it('normalizePauseState is null unless resumeData is a non-empty string', () => {
+    const base = { url: 'u', fileUri: 'f', isDirectory: false };
+    expect(normalizePauseState(null)).toBeNull();
+    expect(normalizePauseState(undefined)).toBeNull();
+    expect(normalizePauseState({ ...base, resumeData: undefined })).toBeNull();
+    expect(normalizePauseState({ ...base, resumeData: '' })).toBeNull();
+    expect(normalizePauseState({ ...base, resumeData: 'rd' })).toEqual({ ...base, resumeData: 'rd' });
+  });
+
+  it('get() reads a paused row without resumeData as pauseState null, keeping status', async () => {
+    const db = makeDb();
+    await db.runAsync('x', 'fast-light', JSON.stringify({ url: 'u', fileUri: 'f', isDirectory: false }), 'paused', 't');
+    const result = await createModelDownloadStateStore(db as never).get();
+    expect(result).toEqual({ modelId: 'fast-light', status: 'paused', pauseState: null });
+  });
+
+  it('set() stores NULL for a pauseState without resumeData', async () => {
+    const db = makeDb();
+    const store = createModelDownloadStateStore(db as never);
+    await store.set({ modelId: 'fast-light', status: 'paused', pauseState: { url: 'u', fileUri: 'f', isDirectory: false } });
+    expect(db.runAsync.mock.calls.at(-1)![2]).toBeNull();
+  });
+
+  it('round-trips smoke-testing and smoke-failed statuses', async () => {
+    const store = createModelDownloadStateStore(makeDb() as never);
+    await store.set({ modelId: 'm', status: 'smoke-testing', pauseState: null });
+    expect((await store.get())?.status).toBe('smoke-testing');
+    await store.set({ modelId: 'm', status: 'smoke-failed', pauseState: null });
+    expect((await store.get())?.status).toBe('smoke-failed');
   });
 });

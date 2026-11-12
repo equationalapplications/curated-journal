@@ -38,7 +38,7 @@ export type ModelHubApi = {
     pauseState: DownloadPauseStateRecord,
     onProgress: (p: { bytesWritten: number; totalBytes: number }) => void,
   ) => Promise<boolean>;
-  pauseDownload: () => Promise<DownloadPauseStateRecord>;
+  pauseDownload: () => Promise<DownloadPauseStateRecord | null>;
   verifyDownload: (model: CuratedModel) => boolean;
   deletePartialFile: (filename: string) => void;
   runSmokeTest: (model: CuratedModel) => Promise<{ ok: boolean }>;

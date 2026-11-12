@@ -66,6 +66,13 @@ describe('modelDownloadService', () => {
     expect(pauseState).toEqual({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: 'rd' });
   });
 
+  it('pauseDownload resolves null when savable has no resumeData', async () => {
+    await startDownload(model, {});
+    const task = jest.mocked(DownloadTask).mock.instances.at(-1) as unknown as { savable: jest.Mock };
+    task.savable.mockReturnValueOnce({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false });
+    await expect(pauseDownload()).resolves.toBeNull();
+  });
+
   it('resumeDownload restores from saved state via DownloadTask.fromSavable', async () => {
     const fromSavable = jest.fn().mockReturnValue({
       resumeAsync: jest.fn(async () => ({ uri: 'file:///doc/test.gguf', exists: true, size: 2393231072, delete: jest.fn() })),
