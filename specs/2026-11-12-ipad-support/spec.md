@@ -50,6 +50,10 @@ is MAJOR (docs/VERSIONING.md): 9.0.0, runtime version 9.0.0. Installed
   declares iPad support. TestFlight does not.
 - Apple does not allow removing iPad support from a shipped app later.
   This is a one-way door.
+- The runtime version is shared across platforms, so Android moves to the
+  9.0.0 island too: Android 8.x store binaries stop receiving OTA updates
+  until a 9.x Android build ships, even though nothing Android-native
+  changed.
 
 ## Verification
 
@@ -59,4 +63,5 @@ is MAJOR (docs/VERSIONING.md): 9.0.0, runtime version 9.0.0. Installed
 - After the next local prebuild: `TARGETED_DEVICE_FAMILY = "1,2"` in the
   generated pbxproj.
 - On device (user, iPad): the app fills the screen, the title field stays
-  above the keyboard, and the three-pane layout shows in landscape.
+  above the keyboard, and the three-pane layout shows in both orientations
+  (iPad Air 3 is 834 pt wide in portrait, above `SPLIT_PANE_MIN_WIDTH`).
