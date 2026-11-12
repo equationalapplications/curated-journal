@@ -64,6 +64,26 @@ describe('useNightShiftGates', () => {
       expect(BATTERY.addBatteryStateListener).toHaveBeenCalled();
     });
 
+    it('reports charging as unknown until the first battery read resolves', async () => {
+      let resolvePower!: (v: Awaited<ReturnType<typeof Battery.getPowerStateAsync>>) => void;
+      BATTERY.getPowerStateAsync.mockReturnValue(
+        new Promise((resolve) => {
+          resolvePower = resolve;
+        }),
+      );
+      STORE.mockResolvedValue('/docs/model.gguf');
+
+      const { result } = await renderHook(() => useNightShiftGates());
+      expect(result.current.chargingKnown).toBe(false);
+      resolvePower({
+        batteryLevel: 0.5,
+        batteryState: Battery.BatteryState.UNPLUGGED,
+        lowPowerMode: false,
+      });
+      await waitFor(() => expect(result.current.chargingKnown).toBe(true));
+      expect(result.current.charging).toBe(false);
+    });
+
     it('stays blocked when the battery state is unknown', async () => {
       BATTERY.getPowerStateAsync.mockResolvedValue({
         batteryLevel: 0.5,
