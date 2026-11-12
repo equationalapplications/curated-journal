@@ -240,17 +240,25 @@ describe('modelHubMachine', () => {
       actor.stop();
     });
 
-    it('persists the smoke-testing marker before runSmokeTest', async () => {
-      const api = makeApi();
+    it('does not call runSmokeTest until the smoke-testing marker write finishes', async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const persistDownloadState = jest.fn(async (record: { status: string }) => {
+        if (record.status === 'smoke-testing') await gate;
+      });
+      const api = makeApi({ persistDownloadState });
       const actor = start(api);
       actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, () => persistDownloadState.mock.calls.some((c) => c[0].status === 'smoke-testing'), {
+        timeout: 3000,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(api.runSmokeTest).not.toHaveBeenCalled();
+      release();
       await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
-      const persist = api.persistDownloadState as jest.Mock;
-      const idx = persist.mock.calls.findIndex((c) => c[0].status === 'smoke-testing');
-      expect(idx).toBeGreaterThanOrEqual(0);
-      expect(persist.mock.invocationCallOrder[idx]).toBeLessThan(
-        (api.runSmokeTest as jest.Mock).mock.invocationCallOrder[0],
-      );
+      expect(api.runSmokeTest).toHaveBeenCalledTimes(1);
       actor.stop();
     });
 
