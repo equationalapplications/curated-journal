@@ -2,7 +2,7 @@
   "expo": {
     "name": "Curated Journal",
     "slug": "curated-journal",
-    "version": "7.0.4",
+    "version": "7.0.6",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cur",
