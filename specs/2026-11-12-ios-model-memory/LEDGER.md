@@ -5,7 +5,7 @@ goes under the line it belongs to.
 
 - [x] 1 Load-parameter function and manifest RAM field (A1, A2, A3, A5 lever 1).
   - Lever 1 package check (file:line for `q8_0`, `flash_attn_type`, JSI parsing): node_modules/llama.rn/src/index.ts:196-224 (`flash_attn_type?: 'auto'|'on'|'off'` L198; `q8_0` in cache_type_k L202, cache_type_v L211, validCacheTypes L224); cpp/jsi/JSIParams.cpp:379-388 (`flash_attn_type`, `cache_type_k`, `cache_type_v` all read into cparams).
-- [ ] 2 Smoke test, provider and import use the function; smoke test keeps the file.
+- [x] 2 Smoke test, provider and import use the function; smoke test keeps the file.
 - [ ] 3 Context lever (A5 lever 2).
   - Chat prompt bound:
   - Librarian prompt bound:

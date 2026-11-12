@@ -61,6 +61,7 @@ export default function ModelHubImportScreen() {
       await source.copy(dest);
       const result = await runModelSmokeTest({ modelPath: dest.uri, llamaConfig: { contextSize: 4096 } });
       if (!result.ok) {
+        deleteIfPresent(dest);
         setStatus('');
         send({ type: 'IMPORT_FAILED', message: 'This model could not run on your device.' });
         router.back();
@@ -69,6 +70,7 @@ export default function ModelHubImportScreen() {
       await setModelPath(dest.uri);
       await setModelId('custom');
     } catch {
+      deleteIfPresent(dest);
       // Smoke test or persistence threw unexpectedly. Without this the status
       // stays nonempty and the picker button is disabled forever — clear it so
       // the user can retry from this screen.
@@ -79,6 +81,15 @@ export default function ModelHubImportScreen() {
     }
     send({ type: 'IMPORT_SMOKE_OK', retirePath: currentPath });
   };
+
+/** The smoke test no longer deletes; the import owns the copy it made. */
+function deleteIfPresent(file: File): void {
+  try {
+    if (file.exists) file.delete();
+  } catch {
+    // Best effort: a leftover copy must not mask the import failure.
+  }
+}
 
 /**
  * Disambiguates the copy we land in the documents directory. Re-importing a

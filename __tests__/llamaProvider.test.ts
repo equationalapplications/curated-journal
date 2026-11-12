@@ -8,6 +8,7 @@ import {
 } from '@/lib/llamaProvider';
 
 jest.mock('llama.rn', () => ({ initLlama: jest.fn() }));
+jest.mock('expo-device', () => ({ totalMemory: 3 * 1024 ** 3 }));
 jest.mock('react-native', () => ({
   AppState: { addEventListener: jest.fn() },
   Platform: { OS: 'ios' },
@@ -19,20 +20,20 @@ describe('createLlamaProvider', () => {
     setNightShiftActive(false);
     await releaseContext();
   });
-  it('passes use_mlock: false through when useMlock is false in config', async () => {
+  it('never pins weights on iOS, whatever the manifest says', async () => {
     const completion = jest.fn(async () => ({ text: 'hi' }));
     jest.mocked(initLlama).mockResolvedValueOnce({ completion, release: jest.fn() } as never);
-    const provider = createLlamaProvider({ modelPath: '/m.gguf', useMlock: false });
+    const provider = createLlamaProvider({ modelPath: '/m.gguf', llamaConfig: { useMlock: true } });
     await provider.generateText({ systemPrompt: 's', userPrompt: 'u' });
     expect(initLlama).toHaveBeenCalledWith(expect.objectContaining({ use_mlock: false }));
   });
 
-  it('defaults use_mlock to true when useMlock is omitted', async () => {
+  it('quantizes the KV cache on a device below the comfortable RAM', async () => {
     const completion = jest.fn(async () => ({ text: 'hi' }));
     jest.mocked(initLlama).mockResolvedValueOnce({ completion, release: jest.fn() } as never);
-    const provider = createLlamaProvider({ modelPath: '/m2.gguf' });
+    const provider = createLlamaProvider({ modelPath: '/m2.gguf', minComfortableRamBytes: 5 * 1024 ** 3 });
     await provider.generateText({ systemPrompt: 's', userPrompt: 'u' });
-    expect(initLlama).toHaveBeenCalledWith(expect.objectContaining({ use_mlock: true }));
+    expect(initLlama).toHaveBeenCalledWith(expect.objectContaining({ cache_type_k: 'q8_0' }));
   });
 
   it('disables thinking so core-llm-wiki receives raw JSON', async () => {

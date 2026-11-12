@@ -1,7 +1,9 @@
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 import type { LLMProvider } from '@equationalapplications/core-llm-wiki';
 import type { LlamaContext } from 'llama.rn';
 import { initLlama } from '@/lib/llamaRuntime';
+import { currentDeviceMemory, resolveModelLoadParams } from '@/lib/modelLoadParams';
+import type { LlamaModelConfig } from '@/catalog/modelManifest';
 
 // core-llm-wiki facts carry bodies up to 800 chars; 512 tokens truncated multi-fact
 // librarian/heal JSON. Also passed to the wiki as maxOutputTokens to size batches.
@@ -78,21 +80,18 @@ AppState.addEventListener('change', (state) => {
 
 export function createLlamaProvider(config: {
   modelPath: string;
-  contextSize?: number;
-  nGpuLayers?: number;
-  useMlock?: boolean;
+  llamaConfig?: Partial<LlamaModelConfig>;
+  minComfortableRamBytes?: number;
 }): LLMProvider {
-  const contextSize = config.contextSize ?? 4096;
-  const nGpuLayers = config.nGpuLayers ?? (Platform.OS === 'ios' ? 99 : 0);
-  const useMlock = config.useMlock ?? true;
-
   async function ensureContext(): Promise<LlamaContext> {
     if (sharedContext) return sharedContext;
     sharedContext = await initLlama({
       model: config.modelPath,
-      n_ctx: contextSize,
-      n_gpu_layers: nGpuLayers,
-      use_mlock: useMlock,
+      ...resolveModelLoadParams({
+        llamaConfig: config.llamaConfig,
+        minComfortableRamBytes: config.minComfortableRamBytes,
+        device: currentDeviceMemory(),
+      }),
     });
     return sharedContext;
   }

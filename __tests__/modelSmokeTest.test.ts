@@ -3,6 +3,7 @@ import { File } from 'expo-file-system';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
 
 jest.mock('llama.rn', () => ({ initLlama: jest.fn() }));
+jest.mock('expo-device', () => ({ totalMemory: null }));
 jest.mock('expo-file-system', () => ({
   File: jest.fn().mockImplementation((uri: string) => ({ uri, exists: true, delete: jest.fn() })),
 }));
@@ -21,15 +22,26 @@ describe('modelSmokeTest', () => {
     expect(release).toHaveBeenCalled();
   });
 
-  it('resolves false and deletes the file when initLlama throws (OOM/load failure)', async () => {
+  it('resolves { ok: false } and does not delete the file when initLlama throws', async () => {
+    jest.mocked(File).mockClear();
     jest.mocked(initLlama).mockRejectedValueOnce(new Error('failed to load model'));
     const result = await runModelSmokeTest({
       modelPath: '/doc/bad.gguf',
       llamaConfig: { contextSize: 4096 },
     });
     expect(result.ok).toBe(false);
-    const fileInstance = jest.mocked(File).mock.results[0]!.value as { delete: jest.Mock };
-    expect(fileInstance.delete).toHaveBeenCalled();
+    const deleted = jest.mocked(File).mock.results.some((r) => (r.value as { delete: jest.Mock }).delete.mock.calls.length > 0);
+    expect(deleted).toBe(false);
+  });
+
+  it('never pins weights on iOS even when the manifest says useMlock', async () => {
+    const completion = jest.fn(async () => ({ text: 'OK' }));
+    jest.mocked(initLlama).mockResolvedValueOnce({ completion, release: jest.fn(async () => undefined) } as never);
+    await runModelSmokeTest({
+      modelPath: '/doc/model.gguf',
+      llamaConfig: { contextSize: 8192, useMlock: true },
+    });
+    expect(initLlama).toHaveBeenLastCalledWith(expect.objectContaining({ use_mlock: false }));
   });
 
   it('resolves false when completion itself throws after a successful load', async () => {

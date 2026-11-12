@@ -63,7 +63,11 @@ export function createModelHubApi(store: Store): ModelHubApi {
     deletePartialFile: (filename) => deletePartialFile(filename),
     runSmokeTest: (model) => {
       const file = new File(Paths.document, model.filename);
-      return runModelSmokeTest({ modelPath: file.uri, llamaConfig: model.llamaConfig });
+      return runModelSmokeTest({
+        modelPath: file.uri,
+        llamaConfig: model.llamaConfig,
+        minComfortableRamBytes: model.minComfortableRamBytes,
+      });
     },
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),

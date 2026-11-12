@@ -1,20 +1,22 @@
-import { Platform } from 'react-native';
 import { initLlama } from '@/lib/llamaRuntime';
-import { File } from 'expo-file-system';
+import { currentDeviceMemory, resolveModelLoadParams } from '@/lib/modelLoadParams';
 import type { LlamaModelConfig } from '@/catalog/modelManifest';
 
 export type SmokeTestResult = { ok: true } | { ok: false; error: Error };
 
 export async function runModelSmokeTest(input: {
   modelPath: string;
-  llamaConfig: LlamaModelConfig;
+  llamaConfig?: Partial<LlamaModelConfig>;
+  minComfortableRamBytes?: number;
 }): Promise<SmokeTestResult> {
   try {
     const ctx = await initLlama({
       model: input.modelPath,
-      n_ctx: input.llamaConfig.contextSize,
-      n_gpu_layers: input.llamaConfig.nGpuLayers ?? (Platform.OS === 'ios' ? 99 : 0),
-      use_mlock: input.llamaConfig.useMlock ?? true,
+      ...resolveModelLoadParams({
+        llamaConfig: input.llamaConfig,
+        minComfortableRamBytes: input.minComfortableRamBytes,
+        device: currentDeviceMemory(),
+      }),
     });
     try {
       await ctx.completion(
@@ -36,8 +38,6 @@ export async function runModelSmokeTest(input: {
       await ctx.release();
     }
   } catch (error) {
-    const file = new File(input.modelPath);
-    if (file.exists) file.delete();
     return { ok: false, error: error instanceof Error ? error : new Error(String(error)) };
   }
 }

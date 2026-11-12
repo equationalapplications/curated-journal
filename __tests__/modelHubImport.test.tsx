@@ -29,10 +29,13 @@ jest.mock('expo-document-picker', () => ({
 // Expo SDK 57 and the screen awaits it, so the mock resolves on a later tick
 // rather than synchronously — that is what makes the ordering test meaningful.
 const mockCopy = jest.fn();
+const mockDelete = jest.fn();
 const mockOrder: string[] = [];
 jest.mock('expo-file-system', () => {
   class File {
     uri: string;
+    exists = true;
+    delete = () => mockDelete(this.uri);
     constructor(target: { uri: string } | string, name?: string) {
       this.uri = name === undefined ? String(target) : `${(target as { uri: string }).uri}/${name}`;
     }
@@ -178,5 +181,29 @@ describe('model-hub custom import', () => {
     await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
     expect(mockSetModelPath).not.toHaveBeenCalled();
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('deletes the copied file when the smoke test fails', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+    mockSmokeTest.mockResolvedValue({ ok: false });
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
+    const dest = (mockCopy.mock.calls[0] as [string, string])[1];
+    expect(mockDelete).toHaveBeenCalledWith(dest);
+  });
+
+  it('deletes the copied file when the smoke test throws', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+    mockSmokeTest.mockRejectedValue(new Error('boom'));
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
+    const dest = (mockCopy.mock.calls[0] as [string, string])[1];
+    expect(mockDelete).toHaveBeenCalledWith(dest);
   });
 });
