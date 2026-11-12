@@ -65,6 +65,14 @@ jest.mock('@/lib/entityStorage', () => ({
   setModelId: jest.fn(async () => undefined),
 }));
 
+const mockDeleteOrphans = jest.fn();
+jest.mock('@/services/modelFiles', () => ({
+  deleteOrphanedCuratedModelFiles: (...args: unknown[]) => {
+    mockOrder.push('orphans');
+    mockDeleteOrphans(...args);
+  },
+}));
+
 import ModelHubImportScreen from '@/app/model-hub/import';
 
 /** Stands in for SecureStore: setModelPath really does overwrite what getModelPath reads. */
@@ -109,7 +117,21 @@ describe('model-hub custom import', () => {
     await pressImport();
 
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
-    expect(mockOrder).toEqual(['copy-done', 'smoke']);
+    expect(mockOrder).toEqual(['orphans', 'copy-done', 'smoke']);
+  });
+
+  it('cleans orphaned catalog files after the pick and before the copy', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockDeleteOrphans).toHaveBeenCalledWith({
+      keepModelId: null,
+      currentModelPath: 'file:///documents/old.gguf',
+    });
+    expect(mockOrder.slice(0, 2)).toEqual(['orphans', 'copy-done']);
   });
 
   it('never writes the import over the file it is about to retire', async () => {

@@ -28,6 +28,7 @@ import type {
   createModelDownloadStateStore,
   DownloadPauseStateRecord,
   ModelDownloadStatus,
+  ModelDownloadStateRecord,
 } from '@/services/modelDownloadState';
 import {
   setModelPath,
@@ -35,15 +36,29 @@ import {
   getModelPath,
   clearModelPath,
 } from '@/lib/entityStorage';
-import type { CuratedModelId } from '@/catalog/modelManifest';
+import { MODEL_CATALOG, type CuratedModelId } from '@/catalog/modelManifest';
+import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 
 type Store = ReturnType<typeof createModelDownloadStateStore>;
 
 export type ModelHubRestoreState = {
   modelId: CuratedModelId;
-  status: Extract<ModelDownloadStatus, 'downloading' | 'paused'>;
+  status: Extract<ModelDownloadStatus, 'downloading' | 'paused' | 'smoke-testing' | 'smoke-failed'>;
   pauseState: DownloadPauseStateRecord | null;
 };
+
+const RESTORABLE: ReadonlySet<string> = new Set(['downloading', 'paused', 'smoke-testing', 'smoke-failed']);
+
+/** Null unless the saved status is restorable AND its model is still in the catalog. */
+export function toRestoreState(record: ModelDownloadStateRecord | null): ModelHubRestoreState | null {
+  if (!record || !record.modelId || !RESTORABLE.has(record.status)) return null;
+  if (!MODEL_CATALOG.some((m) => m.id === record.modelId)) return null;
+  return {
+    modelId: record.modelId as CuratedModelId,
+    status: record.status as ModelHubRestoreState['status'],
+    pauseState: record.pauseState,
+  };
+}
 
 export function createModelHubApi(store: Store): ModelHubApi {
   return {
@@ -72,8 +87,15 @@ export function createModelHubApi(store: Store): ModelHubApi {
     },
     isLowMemoryFor: (model) =>
       isBelowComfortableRam(model.minComfortableRamBytes, currentDeviceMemory().totalMemoryBytes),
-    // Task 8 wires deleteOrphanedCuratedModelFiles
-    deleteOrphanedModelFiles: async () => {},
+    deleteOrphanedModelFiles: async (keepModelId) => {
+      let currentModelPath: string | null = null;
+      try {
+        currentModelPath = await getModelPath();
+      } catch {
+        // Unknown current path: the sync cleanup still protects keepModelId's file.
+      }
+      deleteOrphanedCuratedModelFiles({ keepModelId, currentModelPath });
+    },
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),
     setModelPath: async (model) => {
@@ -168,7 +190,7 @@ export function ModelHubProvider({
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
+      if (nextState === 'background') {
         actor.send({ type: 'APP_BACKGROUND' });
       } else if (nextState === 'active') {
         actor.send({ type: 'APP_FOREGROUND' });

@@ -16,7 +16,7 @@ goes under the line it belongs to.
 - [x] 5 Pause state without resume data normalized in store and service (B1).
 - [x] 6 Machine: restore, pause, resume, error paths (B1, B2, B6).
 - [x] 7 Machine: existing file, smoke marker, smoke-failed state, orphans (B4, B5, B7, A6).
-- [ ] 8 Hook, layout and screens (B3, B5 UI, B7, restore).
+- [x] 8 Hook, layout and screens (B3, B5 UI, B7, restore).
 - [ ] 9 Version, full suite, tsc, lint.
   - Version chosen and why:
   - `npm test` tail:

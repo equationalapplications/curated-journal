@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SQLite from 'expo-sqlite';
 import { createModelDownloadStateStore } from '@/services/modelDownloadState';
-import { createModelHubApi, ModelHubProvider, type ModelHubRestoreState } from '@/hooks/useModelHub';
+import { createModelHubApi, ModelHubProvider, toRestoreState, type ModelHubRestoreState } from '@/hooks/useModelHub';
 import { useTheme } from '@/hooks/use-theme';
 import { getModelId } from '@/lib/entityStorage';
 import type { ModelHubApi } from '@/machines/modelHubMachine';
@@ -27,15 +27,13 @@ export default function ModelHubStackLayout() {
       if (cancelled) return;
       setCurrentModelId((storedModelId as CuratedModelId | 'custom' | null) ?? null);
       setApi(createModelHubApi(store));
-      if (downloadState && (downloadState.status === 'downloading' || downloadState.status === 'paused')) {
-        if (downloadState.modelId) {
-          setRestore({
-            modelId: downloadState.modelId as CuratedModelId,
-            status: downloadState.status,
-            pauseState: downloadState.pauseState,
-          });
-        }
+      const restoreState = toRestoreState(downloadState);
+      if (restoreState) {
+        setRestore(restoreState);
         router.replace('/model-hub/download' as Href);
+      } else if (downloadState && downloadState.status !== 'idle' && downloadState.status !== 'failed') {
+        // A saved install this bundle cannot restore (removed model, unknown status).
+        await store.clear();
       }
     })();
     return () => {

@@ -18,6 +18,15 @@ import { useModelHub } from '@/hooks/useModelHub';
 import { currentDeviceMemory } from '@/lib/modelLoadParams';
 import { modelRamWarning } from '@/lib/modelRamWarning';
 
+const INSTALL_STATES: ReadonlySet<string> = new Set([
+  'downloading',
+  'paused',
+  'failed',
+  'verifying',
+  'smokeTest',
+  'smokeFailed',
+]);
+
 export default function ModelHubIndexScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -25,11 +34,12 @@ export default function ModelHubIndexScreen() {
   const [warningFor, setWarningFor] = useState<{ model: CuratedModel; message: string } | null>(null);
   const { confirm, confirmElement } = useConfirmSheet();
 
+  const inInstall = INSTALL_STATES.has(stateValue);
   useEffect(() => {
-    if (stateValue === 'downloading') {
-      router.push('/model-hub/download' as Href);
-      return;
-    }
+    if (inInstall) router.push('/model-hub/download' as Href);
+  }, [inInstall, router]);
+
+  useEffect(() => {
     if (stateValue === 'cellularConfirm') {
       confirm({
         title: 'Download over cellular',

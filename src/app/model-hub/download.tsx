@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -84,6 +84,12 @@ export default function ModelHubDownloadScreen() {
     }
   }, [stateValue, completeOnboarding, router]);
 
+  const chooseAnother = () => {
+    send({ type: 'CHOOSE_ANOTHER' });
+    if (router.canGoBack()) router.back();
+    else router.replace('/model-hub' as Href);
+  };
+
   const oldest = samples.current[0];
   const newest = samples.current.at(-1);
   const elapsedSeconds = oldest && newest ? (newest.t - oldest.t) / 1000 : 0;
@@ -116,7 +122,11 @@ export default function ModelHubDownloadScreen() {
           <ProgressBar value={pct / 100} />
         )}
 
-        {speedBps > 0 ? (
+        {stateValue === 'verifying' || stateValue === 'smokeTest' ? (
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            Checking the model runs on this device…
+          </ThemedText>
+        ) : speedBps > 0 ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             {formatSpeed(speedBps)} — {formatEta(etaSeconds)}
           </ThemedText>
@@ -136,6 +146,15 @@ export default function ModelHubDownloadScreen() {
               {pausedReason === 'background' ? 'Paused (resuming…)' : 'Paused'}
             </ThemedText>
             <Button label="Resume" variant="primary" onPress={() => send({ type: 'RESUME' })} />
+          </View>
+        ) : null}
+        {stateValue === 'smokeFailed' ? (
+          <View style={styles.smokeFailed}>
+            <ThemedText type="small">{error?.message ?? 'This model could not run on your device.'}</ThemedText>
+            <View style={styles.row}>
+              <Button label="Try again" variant="primary" onPress={() => send({ type: 'RETRY' })} />
+              <Button label="Choose another model" variant="default" onPress={chooseAnother} />
+            </View>
           </View>
         ) : null}
         {stateValue === 'failed' && error ? (
@@ -174,6 +193,7 @@ const styles = StyleSheet.create({
   intro: { gap: Space[2] },
   compact: { alignSelf: 'flex-start' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space[3] },
+  smokeFailed: { gap: Space[3] },
   rowCopy: { flex: 1 },
   tip: { marginTop: Space[2] },
   input: { minHeight: TouchTarget },

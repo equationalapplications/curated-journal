@@ -9,6 +9,7 @@ import { Note } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
 import { setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
+import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
@@ -46,6 +47,7 @@ export default function ModelHubImportScreen() {
     }
     const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
+    deleteOrphanedCuratedModelFiles({ keepModelId: null, currentModelPath: currentPath });
     const dest = new File(Paths.document, uniqueFileName(picked.assets[0].name));
     const source = new File(picked.assets[0].uri);
     // Shown before the copy, not after: a multi-gigabyte .gguf takes a while.
