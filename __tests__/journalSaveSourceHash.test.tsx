@@ -1,6 +1,7 @@
 import { Alert } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import JournalScreen from '@/app/(tabs)/journal';
+import { JournalSaveQueueProvider } from '@/contexts/JournalSaveQueueContext';
 import type { IngestResult } from '@/lib/ingestReport';
 
 const mockExecute = jest.fn(async (): Promise<IngestResult> => ({
@@ -81,9 +82,13 @@ describe('journal save sends a valid 64-char hex sourceHash', () => {
   });
 
   it('hashes the document chunk (64-char hex), not a timestamp', async () => {
-    const screen = await render(<JournalScreen />);
-    fireEvent.press(screen.getByTestId('new-note'));
-    fireEvent.press(await screen.findByTestId('save'));
+    const screen = await render(
+      <JournalSaveQueueProvider>
+        <JournalScreen />
+      </JournalSaveQueueProvider>,
+    );
+    await fireEvent.press(screen.getByTestId('new-note'));
+    await fireEvent.press(await screen.findByTestId('save'));
     await new Promise((r) => setTimeout(r, 0));
 
     expect(mockExecute).toHaveBeenCalledTimes(1);
@@ -103,16 +108,24 @@ describe('journal save sends a valid 64-char hex sourceHash', () => {
   });
 
   it('is deterministic: same content produces the same hash', async () => {
-    const first = await render(<JournalScreen />);
-    fireEvent.press(first.getByTestId('new-note'));
-    fireEvent.press(await first.findByTestId('save'));
+    const first = await render(
+      <JournalSaveQueueProvider>
+        <JournalScreen />
+      </JournalSaveQueueProvider>,
+    );
+    await fireEvent.press(first.getByTestId('new-note'));
+    await fireEvent.press(await first.findByTestId('save'));
     await new Promise((r) => setTimeout(r, 0));
     const hash1 = mockExecute.mock.calls[0][1].sourceHash;
     first.unmount();
 
-    const second = await render(<JournalScreen />);
-    fireEvent.press(second.getByTestId('new-note'));
-    fireEvent.press(await second.findByTestId('save'));
+    const second = await render(
+      <JournalSaveQueueProvider>
+        <JournalScreen />
+      </JournalSaveQueueProvider>,
+    );
+    await fireEvent.press(second.getByTestId('new-note'));
+    await fireEvent.press(await second.findByTestId('save'));
     await new Promise((r) => setTimeout(r, 0));
     const hash2 = mockExecute.mock.calls[1][1].sourceHash;
 

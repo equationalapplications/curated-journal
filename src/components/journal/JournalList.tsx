@@ -11,8 +11,19 @@ import { useTheme } from '@/hooks/use-theme';
 
 export type JournalListItem = { id: string; title: string; preview: string };
 
+/** An entry in the background save queue (spec R3). Not openable: no fact exists yet. */
+export type PendingListItem = { id: string; title: string; status: 'queued' | 'saving' | 'failed' };
+
+const PENDING_LABEL: Record<PendingListItem['status'], string> = {
+  saving: 'Saving…',
+  queued: 'Waiting to save',
+  failed: 'Save failed',
+};
+
 type Props = {
   items: JournalListItem[];
+  /** Entries still saving in the background, shown above the saved notes. */
+  pending?: PendingListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onNewNote: () => void;
@@ -20,7 +31,14 @@ type Props = {
   emptyState?: ReactNode;
 };
 
-export function JournalList({ items, selectedId, onSelect, onNewNote, emptyState }: Props) {
+export function JournalList({
+  items,
+  pending = [],
+  selectedId,
+  onSelect,
+  onNewNote,
+  emptyState,
+}: Props) {
   const theme = useTheme();
 
   return (
@@ -42,7 +60,28 @@ export function JournalList({ items, selectedId, onSelect, onNewNote, emptyState
         />
       </View>
 
-      {items.length === 0 ? (
+      {pending.length > 0 ? (
+        <View style={styles.pending}>
+          <ListGroup>
+            {pending.map((entry, index) => (
+              <ListRow
+                key={entry.id}
+                divider={index < pending.length - 1}
+                disabled
+                accessibilityLabel={`${entry.title}, ${PENDING_LABEL[entry.status]}`}>
+                <ThemedText type="strong">{entry.title}</ThemedText>
+                <ThemedText
+                  type="small"
+                  themeColor={entry.status === 'failed' ? 'error' : 'onSurfaceVar'}>
+                  {PENDING_LABEL[entry.status]}
+                </ThemedText>
+              </ListRow>
+            ))}
+          </ListGroup>
+        </View>
+      ) : null}
+
+      {items.length === 0 && pending.length > 0 ? null : items.length === 0 ? (
         <View style={styles.empty}>
           {emptyState ?? (
             <EmptyState
@@ -90,5 +129,6 @@ const styles = StyleSheet.create({
   actionBar: { paddingHorizontal: Space[4], paddingTop: Space[3], paddingBottom: Space[2] },
   newNote: { alignSelf: 'flex-start' },
   body: { flex: 1, paddingHorizontal: Space[4], gap: Space[2] },
+  pending: { paddingHorizontal: Space[4], paddingBottom: Space[2] },
   empty: { flex: 1, paddingHorizontal: Space[4], paddingTop: Space[2] },
 });

@@ -10,11 +10,9 @@ import { Space, TouchTarget } from '@/constants/theme';
 type Props = {
   onSave: (input: { title: string; body: string }) => void | Promise<void>;
   onCancel: () => void;
-  /** Machine-owned save-in-flight flag (hashing|ingesting) — derives the Save button label. */
-  saving?: boolean;
 };
 
-export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) {
+export function JournalEntryEditor({ onSave, onCancel }: Props) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const theme = useTheme();
@@ -46,12 +44,7 @@ export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) 
         />
         <View style={styles.actions}>
           <Button label="Cancel" variant="default" onPress={onCancel} />
-          <Button
-            label={saving ? 'Saving…' : 'Save'}
-            variant="primary"
-            disabled={saving}
-            onPress={() => onSave({ title, body })}
-          />
+          <Button label="Save" variant="primary" onPress={() => onSave({ title, body })} />
         </View>
       </KeyboardAwareScrollView>
     </View>

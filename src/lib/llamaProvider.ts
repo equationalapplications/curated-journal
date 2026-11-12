@@ -20,6 +20,20 @@ const defaultLlmProgress = (): NightShiftLlmProgress => ({
 });
 
 let sharedContext: LlamaContext | null = null;
+/**
+ * Tail of the generateText chain. A background save, a chat question and
+ * Night Shift share one llama context, and llama.rn throws "Context is busy"
+ * if a second completion starts while one is running, so calls queue here
+ * (spec specs/2026-11-12-background-save R8).
+ */
+let generationTail: Promise<unknown> = Promise.resolve();
+
+function serialized<T>(run: () => Promise<T>): Promise<T> {
+  const result = generationTail.then(run, run);
+  // The next caller waits for this one to settle, success or failure.
+  generationTail = result.catch(() => undefined);
+  return result;
+}
 let nightShiftActive = false;
 let llmProgress = defaultLlmProgress();
 const llmProgressListeners = new Set<(progress: NightShiftLlmProgress) => void>();
@@ -99,7 +113,7 @@ export function createLlamaProvider(config: {
 
   return {
     maxOutputTokens: LLM_MAX_PREDICT_TOKENS,
-    generateText: async ({ systemPrompt, userPrompt }) => {
+    generateText: ({ systemPrompt, userPrompt }) => serialized(async () => {
       const ctx = await ensureContext();
       let tokenCount = 0;
 
@@ -124,12 +138,17 @@ export function createLlamaProvider(config: {
             top_p: 0.8,
             top_k: 20,
           },
-          () => {
-            if (!nightShiftActive) return;
-            tokenCount += 1;
-            llmProgress = { ...llmProgress, tokensGenerated: tokenCount };
-            emitLlmProgress();
-          },
+          // A token callback switches on llama.rn's per-token partial output
+          // (a full re-parse plus a JS-thread hop per token), so pass one only
+          // while Night Shift shows token progress (spec R9).
+          nightShiftActive
+            ? () => {
+                if (!nightShiftActive) return;
+                tokenCount += 1;
+                llmProgress = { ...llmProgress, tokensGenerated: tokenCount };
+                emitLlmProgress();
+              }
+            : undefined,
         );
 
         if (nightShiftActive) {
@@ -149,7 +168,7 @@ export function createLlamaProvider(config: {
         }
         throw error;
       }
-    },
+    }),
   };
 }
 

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { useMachine } from '@xstate/react';
-import { useWiki } from '@equationalapplications/expo-llm-wiki';
-import { countIngestFailures } from '@/lib/ingestReport';
-import { journalSaveMachine } from '@/machines/journalSaveMachine';
-import { JournalList, type JournalListItem } from '@/components/journal/JournalList';
+import {
+  JournalList,
+  type JournalListItem,
+  type PendingListItem,
+} from '@/components/journal/JournalList';
 import { JournalEntryEditor } from '@/components/journal/JournalEntryEditor';
 import { JournalPane } from '@/components/journal/JournalPane';
 import { SynthesisPane } from '@/components/synthesis/SynthesisPane';
@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { useConfirmSheet } from '@/components/ui/confirm-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { useJournal } from '@/contexts/JournalContext';
-import { createJournalIngest } from '@/lib/journalIngest';
+import { useJournalSaveQueue } from '@/contexts/JournalSaveQueueContext';
 import { notePreview, noteTitle } from '@/lib/noteText';
 import { useJournalMemoryRead } from '@/hooks/useJournalMemoryRead';
 import { useSplitPaneLayout } from '@/hooks/useSplitPaneLayout';
@@ -23,17 +23,11 @@ import { Radius, Space, TouchTarget } from '@/constants/theme';
 export default function JournalScreen() {
   const { entityId, selectedFactId, setSelectedFactId, paneMode, setPaneMode } = useJournal();
   const { data, refetch } = useJournalMemoryRead(entityId);
-  const wiki = useWiki();
-  const ingest = useMemo(() => createJournalIngest(wiki), [wiki]);
+  const saveQueue = useJournalSaveQueue();
   const [composing, setComposing] = useState(false);
   const { isWide } = useSplitPaneLayout();
   const theme = useTheme();
   const { confirm, confirmElement } = useConfirmSheet();
-
-  const [saveState, send] = useMachine(journalSaveMachine, {
-    input: { entityId, ingest, saveTimeoutMs: 120_000 },
-  });
-  const saveInProgress = saveState.matches('hashing') || saveState.matches('ingesting');
 
   useFocusEffect(
     useCallback(() => {
@@ -54,43 +48,60 @@ export default function JournalScreen() {
     });
   }, [data]);
 
-  const handleSave = useCallback(
-    ({ title, body }: { title: string; body: string }) => {
-      send({ type: 'START_SAVE', title, body, entityId, ingest });
-    },
-    [send, entityId, ingest],
+  const pending: PendingListItem[] = useMemo(
+    () =>
+      saveQueue.entries.map((e) => ({
+        id: e.id,
+        title: e.title.trim() || 'Untitled',
+        status: e.status,
+      })),
+    [saveQueue.entries],
   );
 
-  useEffect(() => {
-    const { value, context } = saveState;
-    if (value === 'saved') {
-      const result = context.lastResult;
-      if (result && countIngestFailures(result) > 0) {
-        const failures = countIngestFailures(result);
-        confirm({
-          title: 'Saved with warnings',
-          message:
-            `${failures} chunk${failures === 1 ? '' : 's'} failed to process. ` +
-            'Try running Night Shift, or edit and re-save this entry.',
-        });
-      }
+  // Save hands the entry to the background queue and closes the editor at
+  // once (spec R1). There is no cancel once Save is tapped (R5).
+  const { enqueue } = saveQueue;
+  const handleSave = useCallback(
+    ({ title, body }: { title: string; body: string }) => {
+      enqueue({ title, body });
       setComposing(false);
-      refetch();
-      send({ type: 'DISMISS' });
-    } else if (value === 'failed' && context.lastError) {
+    },
+    [enqueue],
+  );
+
+  // A finished save adds a note, so the list reads it back.
+  const { savedCount } = saveQueue;
+  useEffect(() => {
+    if (savedCount > 0) void refetch();
+  }, [savedCount, refetch]);
+
+  // One dialog at a time: warnings first, then the oldest failure (R4, R6).
+  const { warnings, entries, ackWarning, retry, discard } = saveQueue;
+  const warning = warnings[0];
+  const failed = entries.find((e) => e.status === 'failed');
+  useEffect(() => {
+    if (warning) {
+      const { failures } = warning;
+      confirm({
+        title: 'Saved with warnings',
+        message:
+          `${failures} chunk${failures === 1 ? '' : 's'} failed to process. ` +
+          'Try running Night Shift, or edit and re-save this entry.',
+        buttons: [{ text: 'OK', style: 'cancel', onPress: () => ackWarning(warning.id) }],
+      });
+    } else if (failed) {
+      // No cancel-style button, so the sheet is not dismissable: a scrim tap
+      // must never throw the user's text away.
       confirm({
         title: 'Save failed',
-        message: context.lastError.message,
+        message: failed.error?.message ?? 'The note could not be saved.',
         buttons: [
-          { text: 'Cancel', style: 'cancel', onPress: () => {
-            send({ type: 'DISMISS' });
-            setComposing(false);
-          } },
-          { text: 'Try again', onPress: () => send({ type: 'RETRY' }) },
+          { text: 'Discard', style: 'destructive', onPress: () => discard(failed.id) },
+          { text: 'Try again', onPress: () => retry(failed.id) },
         ],
       });
     }
-  }, [saveState, send, refetch, confirm]);
+  }, [warning, failed, confirm, ackWarning, retry, discard]);
 
   if (composing) {
     return (
@@ -98,13 +109,7 @@ export default function JournalScreen() {
         {confirmElement}
         <JournalEntryEditor
           onSave={handleSave}
-          onCancel={() => {
-            if (saveInProgress) {
-              send({ type: 'CANCEL' });
-            }
-            setComposing(false);
-          }}
-          saving={saveInProgress}
+          onCancel={() => setComposing(false)}
         />
       </>
     );
@@ -117,6 +122,7 @@ export default function JournalScreen() {
         <View style={styles.listPane}>
           <JournalList
             items={items}
+            pending={pending}
             selectedId={selectedFactId}
             onSelect={setSelectedFactId}
             onNewNote={() => setComposing(true)}
@@ -163,6 +169,7 @@ export default function JournalScreen() {
         ) : (
           <JournalList
             items={items}
+            pending={pending}
             selectedId={selectedFactId}
             onSelect={setSelectedFactId}
             onNewNote={() => setComposing(true)}
