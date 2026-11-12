@@ -6,7 +6,7 @@ import { createModelDownloadStateStore } from '@/services/modelDownloadState';
 import { createModelHubApi, ModelHubProvider, toRestoreState, type ModelHubRestoreState } from '@/hooks/useModelHub';
 import { useTheme } from '@/hooks/use-theme';
 import { getModelId } from '@/lib/entityStorage';
-import type { ModelHubApi } from '@/machines/modelHubMachine';
+import { smokeTestSettled, type ModelHubApi } from '@/machines/modelHubMachine';
 import type { CuratedModelId } from '@/catalog/modelManifest';
 
 export default function ModelHubStackLayout() {
@@ -19,6 +19,10 @@ export default function ModelHubStackLayout() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // A smoke test started before the hub was last closed may still be
+      // loading; its `smoke-testing` marker only means a kill once it settles.
+      await smokeTestSettled();
+      if (cancelled) return;
       const db = await SQLite.openDatabaseAsync('curated_journal.db');
       const store = createModelDownloadStateStore(db);
       const downloadState = await store.get();

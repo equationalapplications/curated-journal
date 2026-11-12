@@ -210,7 +210,12 @@ message and two actions:
 
 The smoke test itself no longer deletes the file. To detect the kill,
 the hub persists a `smoke-testing` status before the test starts; a
-launch that finds it treats the test as failed. The smoke-failed state
+launch that finds it treats the test as failed. The test, the identity
+write and the marker update run as one task that outlives a closed hub:
+a pass writes the identity and then clears the marker, a fail records
+`smoke-failed`, and a failed identity write records `failed`. Reopening
+the hub waits for a test still running in this process before it reads
+the marker, so only a real kill reads as one. The smoke-failed state
 is persisted too (`smoke-failed`) and restored on every later launch
 until the user takes one of the two actions, so the app never returns
 to a plain list with a hidden 2.4 GB file.

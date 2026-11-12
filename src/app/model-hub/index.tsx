@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useNavigation, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card, ListGroup, ListRow } from '@/components/ui/card';
@@ -35,9 +35,13 @@ export default function ModelHubIndexScreen() {
   const { confirm, confirmElement } = useConfirmSheet();
 
   const inInstall = INSTALL_STATES.has(stateValue);
-  useEffect(() => {
-    if (inInstall) router.push('/model-hub/download' as Href);
-  }, [inInstall, router]);
+  // On focus too, not only when inInstall flips: a swipe-back from the
+  // download screen lands here mid-install, where the list ignores taps.
+  useFocusEffect(
+    useCallback(() => {
+      if (inInstall) router.push('/model-hub/download' as Href);
+    }, [inInstall, router]),
+  );
 
   useEffect(() => {
     if (stateValue === 'cellularConfirm') {

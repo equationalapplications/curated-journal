@@ -1,5 +1,10 @@
 import { createActor, waitFor } from 'xstate';
-import { modelHubMachine, smokeFailureMessage, type ModelHubApi } from '@/machines/modelHubMachine';
+import {
+  modelHubMachine,
+  smokeFailureMessage,
+  smokeTestSettled,
+  type ModelHubApi,
+} from '@/machines/modelHubMachine';
 import type { CuratedModel } from '@/catalog/modelManifest';
 
 const fastLight: CuratedModel = {
@@ -32,6 +37,15 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     deleteOrphanedModelFiles: jest.fn(async () => undefined),
     ...overrides,
   };
+}
+
+/** Polls a condition xstate's waitFor cannot see (mock calls emit no snapshot). */
+async function until(check: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('until: condition not met');
+    await new Promise((r) => setTimeout(r, 5));
+  }
 }
 
 describe('modelHubMachine', () => {
@@ -359,25 +373,70 @@ describe('modelHubMachine', () => {
     });
   });
 
-  it('clears the download state only after the model identity write has finished', async () => {
+  it('completes, and clears the download state, only after the model identity write has finished', async () => {
     let finishSetPath!: () => void;
     const api = makeApi({
       setModelPath: jest.fn(() => new Promise<void>((r) => { finishSetPath = r; })),
     });
     const actor = createActor(modelHubMachine, { input: { api } }).start();
     actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
-    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
-    expect(api.setModelPath).toHaveBeenCalled();
+    await until(() => (api.setModelPath as jest.Mock).mock.calls.length > 0);
+    expect(actor.getSnapshot().matches('smokeTest')).toBe(true);
     expect(api.clearDownloadState).not.toHaveBeenCalled();
     finishSetPath();
-    await waitFor(
-      actor,
-      () => (api.clearDownloadState as jest.Mock).mock.calls.length > 0,
-      { timeout: 3000 },
-    ).catch(() => undefined);
-    await new Promise((r) => setTimeout(r, 0));
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
     expect(api.clearDownloadState).toHaveBeenCalled();
     actor.stop();
+  });
+
+  it('a failed identity write goes to failed (commit), not to an out-of-memory smoke failure', async () => {
+    const api = makeApi({ setModelPath: jest.fn(async () => { throw new Error('disk I/O'); }) });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.error?.code).toBe('commit');
+    const calls = (api.persistDownloadState as jest.Mock).mock.calls;
+    expect(calls[calls.length - 1][0].status).toBe('failed');
+    expect(api.clearDownloadState).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('a smoke test outlives a closed hub: it still commits, and smokeTestSettled waits for it', async () => {
+    let finishSmoke!: (r: { ok: boolean }) => void;
+    const api = makeApi({
+      runSmokeTest: jest.fn(() => new Promise<{ ok: boolean }>((r) => { finishSmoke = r; })),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('smokeTest'), { timeout: 3000 });
+    await until(() => (api.runSmokeTest as jest.Mock).mock.calls.length > 0);
+    actor.stop();
+
+    let settled = false;
+    const waiting = smokeTestSettled().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+
+    finishSmoke({ ok: true });
+    await waiting;
+    expect(api.setModelPath).toHaveBeenCalled();
+    expect(api.clearDownloadState).toHaveBeenCalled();
+  });
+
+  it('a smoke failure after the hub closed records smoke-failed, never a stale smoke-testing marker', async () => {
+    let finishSmoke!: (r: { ok: boolean }) => void;
+    const api = makeApi({
+      runSmokeTest: jest.fn(() => new Promise<{ ok: boolean }>((r) => { finishSmoke = r; })),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await until(() => (api.runSmokeTest as jest.Mock).mock.calls.length > 0);
+    actor.stop();
+    finishSmoke({ ok: false });
+    await smokeTestSettled();
+    const calls = (api.persistDownloadState as jest.Mock).mock.calls;
+    expect(calls[calls.length - 1][0].status).toBe('smoke-failed');
+    expect(api.setModelPath).not.toHaveBeenCalled();
   });
 
   it('disk-full failure routes RETRY back to selecting (not downloading)', async () => {

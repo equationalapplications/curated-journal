@@ -23,8 +23,9 @@ jest.mock('@/catalog/modelManifest', () => ({
 }));
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
+const mockDismissTo = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ replace: mockReplace, back: mockBack, canGoBack: () => false }),
+  useRouter: () => ({ replace: mockReplace, back: mockBack, dismissTo: mockDismissTo, canGoBack: () => false }),
 }));
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
@@ -45,7 +46,9 @@ describe('download screen smoke states', () => {
     expect(mockSend).toHaveBeenCalledWith({ type: 'RETRY' });
     await fireEvent.press(screen.getByRole('button', { name: 'Choose another model' }));
     expect(mockSend).toHaveBeenCalledWith({ type: 'CHOOSE_ANOTHER' });
-    expect(mockReplace).toHaveBeenCalledWith('/model-hub');
+    // dismissTo pops to the list, or replaces onto it after a restore.
+    expect(mockDismissTo).toHaveBeenCalledWith('/model-hub');
+    expect(mockBack).not.toHaveBeenCalled();
   });
 
   it('smokeTest shows the checking copy and no Pause button', async () => {

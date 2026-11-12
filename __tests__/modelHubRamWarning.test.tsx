@@ -13,6 +13,7 @@ jest.mock('@/hooks/use-color-scheme', () => ({ useColorScheme: () => 'light' }))
 
 const mockSend = jest.fn();
 jest.mock('expo-router', () => ({
+  useFocusEffect: (effect: () => void) => jest.requireActual('react').useEffect(effect, [effect]),
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   useNavigation: () => ({ canGoBack: () => false, goBack: jest.fn() }),
 }));

@@ -70,7 +70,7 @@ export type ModelHubMachineInput = {
   currentModelId?: CuratedModelId | 'custom' | null;
 };
 
-type ErrorCode = 'network' | 'disk-full' | 'unknown' | 'verify' | 'smoke' | 'retire';
+type ErrorCode = 'network' | 'disk-full' | 'unknown' | 'verify' | 'smoke' | 'retire' | 'commit';
 
 type Context = {
   api: ModelHubApi;
@@ -89,6 +89,73 @@ export function smokeFailureMessage(displayName: string, memoryLikely: boolean):
   return memoryLikely
     ? `This device most likely ran out of memory while loading ${displayName}. Close other apps and try again, or choose another model.`
     : `${displayName} could not run on this device. Try again, or choose another model.`;
+}
+
+/** The smoke test passed, but storing the model's identity failed. */
+export class ModelCommitError extends Error {
+  constructor(cause: unknown) {
+    super('Could not store the model identity');
+    this.name = 'ModelCommitError';
+    this.cause = cause;
+  }
+}
+
+/**
+ * The smoke test in flight in this process, if any. Its native load keeps
+ * running when the hub closes (the actor stops, the promise does not), so the
+ * `smoke-testing` marker it wrote is not evidence of a kill until it settles.
+ */
+let liveSmokeTest: Promise<unknown> | null = null;
+
+/** Resolves once no smoke test is running in this process. Never rejects. */
+export function smokeTestSettled(): Promise<void> {
+  return (liveSmokeTest ?? Promise.resolve()).then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
+ * Marker → load → commit, all in one promise. The marker write must finish
+ * before the load starts: the OS can kill the app at any point after that, and
+ * relaunch reads this row. On success the identity is written before the
+ * marker is cleared, so a kill in between never leaves a marker for a model
+ * that is already current; an identity-write failure rejects as
+ * `ModelCommitError`. On failure the row records `smoke-failed`, so a closed
+ * hub never leaves a `smoke-testing` marker that later reads as a kill.
+ */
+async function runSmokeTestAndCommit(
+  api: ModelHubApi,
+  model: CuratedModel,
+): Promise<{ ok: boolean }> {
+  await api.persistDownloadState({ modelId: model.id, status: 'smoke-testing', pauseState: null });
+  let result: Awaited<ReturnType<ModelHubApi['runSmokeTest']>>;
+  try {
+    result = await api.runSmokeTest(model);
+  } catch (error) {
+    await recordSmokeFailure(api, model);
+    throw error;
+  }
+  if (!result.ok) {
+    await recordSmokeFailure(api, model);
+    return result;
+  }
+  try {
+    await api.setModelPath(model);
+  } catch (cause) {
+    await api
+      .persistDownloadState({ modelId: model.id, status: 'failed', pauseState: null })
+      .catch(() => undefined);
+    throw new ModelCommitError(cause);
+  }
+  await api.clearDownloadState().catch(() => undefined);
+  return result;
+}
+
+function recordSmokeFailure(api: ModelHubApi, model: CuratedModel): Promise<void> {
+  return api
+    .persistDownloadState({ modelId: model.id, status: 'smoke-failed', pauseState: null })
+    .catch(() => undefined);
 }
 
 export const modelHubMachine = setup({
@@ -165,14 +232,13 @@ export const modelHubMachine = setup({
     ),
     smokeTestTask: fromPromise(
       async ({ input }: { input: { api: ModelHubApi; model: CuratedModel } }) => {
-        // The marker write must finish before the load starts: the OS can kill
-        // the app at any point after that, and relaunch reads this row.
-        await input.api.persistDownloadState({
-          modelId: input.model.id,
-          status: 'smoke-testing',
-          pauseState: null,
-        });
-        return input.api.runSmokeTest(input.model);
+        const run = runSmokeTestAndCommit(input.api, input.model);
+        liveSmokeTest = run;
+        void run.then(clearLive, clearLive);
+        function clearLive() {
+          if (liveSmokeTest === run) liveSmokeTest = null;
+        }
+        return run;
       },
     ),
     retireTask: fromPromise(async ({ input }: { input: { api: ModelHubApi } }) =>
@@ -451,23 +517,25 @@ export const modelHubMachine = setup({
           api: context.api,
           model: getCuratedModel(context.modelId as CuratedModelId),
         }),
+        // The task itself commits the model (or records the failure), so the
+        // outcome lands even if the hub is closed mid-test.
         onDone: [
+          { guard: ({ event }) => event.output.ok === true, target: 'complete' },
+          { target: 'smokeFailed' },
+        ],
+        onError: [
           {
-            guard: ({ event }) => event.output.ok === true,
-            target: 'complete',
-            actions: ({ context }) => {
-              // The smoke-testing marker is cleared only once the identity write
-              // has landed, so a kill in between never leaves a marker for a
-              // model that is already current.
-              void context.api
-                .setModelPath(getCuratedModel(context.modelId as CuratedModelId))
-                .then(() => context.api.clearDownloadState())
-                .catch(() => undefined);
-            },
+            guard: ({ event }) => event.error instanceof ModelCommitError,
+            target: 'failed',
+            actions: assign({
+              error: {
+                code: 'commit' as const,
+                message: 'The model works, but it could not be saved as your model. Try again.',
+              },
+            }),
           },
           { target: 'smokeFailed' },
         ],
-        onError: { target: 'smokeFailed' },
       },
     },
     smokeFailed: {

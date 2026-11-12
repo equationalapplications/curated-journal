@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Note } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
-import { setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
+import { clearModelPath, setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
 import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
@@ -52,6 +52,7 @@ export default function ModelHubImportScreen() {
     const source = new File(picked.assets[0].uri);
     // Shown before the copy, not after: a multi-gigabyte .gguf takes a while.
     setStatus('Copying the model and checking it runs on this device…');
+    let committedPath = false;
     try {
       // File.copy() returns a Promise (Expo SDK 57). Left un-awaited, the smoke
       // test below races a half-written file and reports a perfectly good model
@@ -70,8 +71,15 @@ export default function ModelHubImportScreen() {
         return;
       }
       await setModelPath(dest.uri);
+      committedPath = true;
       await setModelId('custom');
     } catch {
+      if (committedPath) {
+        // The stored path already names the copy: point it back at the
+        // installed model before deleting the copy, or the next launch finds a
+        // missing file and drops the working model's identity too.
+        await (currentPath ? setModelPath(currentPath) : clearModelPath()).catch(() => undefined);
+      }
       deleteIfPresent(dest);
       // Smoke test or persistence threw unexpectedly. Without this the status
       // stays nonempty and the picker button is disabled forever — clear it so

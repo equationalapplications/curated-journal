@@ -23,6 +23,7 @@ const TIPS = [
 const ERROR_COPY: Record<string, string> = {
   'disk-full': 'Not enough storage space. Please free up at least 3GB and try again.',
   network: 'Download failed. Check your connection and try again.',
+  commit: 'The model works, but it could not be saved as your model. Try again.',
 };
 
 function formatSpeed(bytesPerSecond: number): string {
@@ -86,8 +87,9 @@ export default function ModelHubDownloadScreen() {
 
   const chooseAnother = () => {
     send({ type: 'CHOOSE_ANOTHER' });
-    if (router.canGoBack()) router.back();
-    else router.replace('/model-hub' as Href);
+    // Back to the list, or onto it when a restore replaced it: a plain back()
+    // there would leave the hub for whatever screen opened it.
+    router.dismissTo('/model-hub' as Href);
   };
 
   const oldest = samples.current[0];
@@ -99,22 +101,26 @@ export default function ModelHubDownloadScreen() {
   const etaSeconds = speedBps > 0 ? remainingBytes / speedBps : -1;
   const pct = progress.totalBytes > 0 ? Math.min(100, (progress.bytesWritten / progress.totalBytes) * 100) : null;
   const model = modelId ? getCuratedModel(modelId) : null;
+  // Restored or post-download states carry no live progress to show.
+  const downloadPhase = stateValue === 'downloading' || stateValue === 'paused' || stateValue === 'failed';
 
   return (
     <Screen>
       <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
         <View style={styles.intro}>
-          <ThemedText type="title">Downloading your AI</ThemedText>
+          <ThemedText type="title">{downloadPhase ? 'Downloading your AI' : 'Setting up your AI'}</ThemedText>
           {model ? <ThemedText type="heading">{model.displayName}</ThemedText> : null}
           {model ? (
             <ThemedText type="small" themeColor="onSurfaceVar">
               {model.tagline}
             </ThemedText>
           ) : null}
-          <ThemedText type="small">Keep this screen open for the fastest download.</ThemedText>
+          {downloadPhase ? (
+            <ThemedText type="small">Keep this screen open for the fastest download.</ThemedText>
+          ) : null}
         </View>
 
-        {pct === null ? (
+        {!downloadPhase ? null : pct === null ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             Starting download…
           </ThemedText>

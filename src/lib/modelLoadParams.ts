@@ -18,7 +18,7 @@ export type ModelLoadParams = {
   flash_attn_type?: 'on';
 };
 
-function isPositiveFinite(n: number | null | undefined): n is number {
+export function isPositiveFinite(n: number | null | undefined): n is number {
   return typeof n === 'number' && Number.isFinite(n) && n > 0;
 }
 
