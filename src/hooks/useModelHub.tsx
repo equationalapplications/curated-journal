@@ -23,6 +23,7 @@ import {
   deletePartialFile,
 } from '@/services/modelDownloadService';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
+import { isBelowComfortableRam, currentDeviceMemory } from '@/lib/modelLoadParams';
 import type {
   createModelDownloadStateStore,
   DownloadPauseStateRecord,
@@ -69,6 +70,10 @@ export function createModelHubApi(store: Store): ModelHubApi {
         minComfortableRamBytes: model.minComfortableRamBytes,
       });
     },
+    isLowMemoryFor: (model) =>
+      isBelowComfortableRam(model.minComfortableRamBytes, currentDeviceMemory().totalMemoryBytes),
+    // Task 8 wires deleteOrphanedCuratedModelFiles
+    deleteOrphanedModelFiles: async () => {},
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),
     setModelPath: async (model) => {

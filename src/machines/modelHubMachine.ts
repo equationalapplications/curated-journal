@@ -18,13 +18,14 @@ export type ModelHubMachineEvents =
   | { type: 'APP_FOREGROUND' }
   | { type: 'FAIL'; code: 'network' | 'disk-full' | 'unknown'; message: string }
   | { type: 'RETRY' }
+  | { type: 'CHOOSE_ANOTHER' }
   | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
   | { type: 'SET_DISPLAY_NAME'; displayName: string }
   | {
       type: 'RESTORE_DOWNLOAD';
       modelId: CuratedModelId;
-      status: 'downloading' | 'paused';
+      status: 'downloading' | 'paused' | 'smoke-testing' | 'smoke-failed';
       pauseState: DownloadPauseStateRecord | null;
     };
 
@@ -51,6 +52,8 @@ export type ModelHubApi = {
   setModelPath: (model: CuratedModel) => Promise<void>;
   retireCurrentModel: () => Promise<RetireOutcome>;
   deleteModelFile: (path: string) => Promise<void>;
+  isLowMemoryFor: (model: CuratedModel) => boolean;
+  deleteOrphanedModelFiles: (keepModelId: CuratedModelId | null) => Promise<void>;
 };
 
 /**
@@ -78,7 +81,15 @@ type Context = {
   pauseState: DownloadPauseStateRecord | null;
   pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
+  smokeKilled: boolean;
+  afterCheck: 'network' | 'download';
 };
+
+export function smokeFailureMessage(displayName: string, memoryLikely: boolean): string {
+  return memoryLikely
+    ? `This device most likely ran out of memory while loading ${displayName}. Close other apps and try again, or choose another model.`
+    : `${displayName} could not run on this device. Try again, or choose another model.`;
+}
 
 export const modelHubMachine = setup({
   types: {
@@ -153,8 +164,16 @@ export const modelHubMachine = setup({
         input.api.verifyDownload(input.model),
     ),
     smokeTestTask: fromPromise(
-      async ({ input }: { input: { api: ModelHubApi; model: CuratedModel } }) =>
-        input.api.runSmokeTest(input.model),
+      async ({ input }: { input: { api: ModelHubApi; model: CuratedModel } }) => {
+        // The marker write must finish before the load starts: the OS can kill
+        // the app at any point after that, and relaunch reads this row.
+        await input.api.persistDownloadState({
+          modelId: input.model.id,
+          status: 'smoke-testing',
+          pauseState: null,
+        });
+        return input.api.runSmokeTest(input.model);
+      },
     ),
     retireTask: fromPromise(async ({ input }: { input: { api: ModelHubApi } }) =>
       input.api.retireCurrentModel(),
@@ -172,6 +191,8 @@ export const modelHubMachine = setup({
     pauseState: null,
     pausedReason: null,
     displayName: null,
+    smokeKilled: false,
+    afterCheck: 'network' as const,
   }),
   on: {
     SET_DISPLAY_NAME: { actions: assign({ displayName: ({ event }) => event.displayName }) },
@@ -182,12 +203,13 @@ export const modelHubMachine = setup({
         SELECT_MODEL: [
           {
             guard: ({ event, context }) => event.modelId === context.currentModelId,
-            target: 'confirmingNetwork',
+            target: 'checkingExisting',
             actions: assign({
               modelId: ({ event }) => event.modelId,
               error: null,
               pauseState: null,
               pausedReason: null,
+              afterCheck: 'network' as const,
             }),
           },
           {
@@ -213,13 +235,45 @@ export const modelHubMachine = setup({
             }),
           },
           {
-            target: 'downloading',
+            guard: ({ event }) => event.status === 'smoke-testing' || event.status === 'smoke-failed',
+            target: 'smokeFailed',
             actions: assign({
               modelId: ({ event }) => event.modelId,
-              pauseState: ({ event }) => event.pauseState,
+              pauseState: null,
+              smokeKilled: ({ event }) => event.status === 'smoke-testing',
               error: null,
             }),
           },
+          {
+            target: 'checkingExisting',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              pauseState: ({ event }) => event.pauseState,
+              afterCheck: 'download' as const,
+              error: null,
+            }),
+          },
+        ],
+      },
+    },
+    checkingExisting: {
+      entry: ({ context }) => {
+        void context.api.deleteOrphanedModelFiles(context.modelId);
+      },
+      invoke: {
+        src: 'verifyTask',
+        input: ({ context }) => ({
+          api: context.api,
+          model: getCuratedModel(context.modelId as CuratedModelId),
+        }),
+        onDone: [
+          { guard: ({ event }) => event.output === true, target: 'smokeTest' },
+          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
+          { target: 'confirmingNetwork' },
+        ],
+        onError: [
+          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
+          { target: 'confirmingNetwork' },
         ],
       },
     },
@@ -233,8 +287,8 @@ export const modelHubMachine = setup({
         onDone: [
           {
             guard: ({ event }) => event.output.identityCleared,
-            target: 'confirmingNetwork',
-            actions: assign({ currentModelId: null }),
+            target: 'checkingExisting',
+            actions: assign({ currentModelId: null, afterCheck: 'network' as const }),
           },
           {
             // The model really was removed — only its stored identity outlived
@@ -406,16 +460,47 @@ export const modelHubMachine = setup({
               void context.api.clearDownloadState();
             },
           },
-          {
-            target: 'selecting',
-            actions: assign({
-              error: {
-                code: 'smoke' as const,
-                message: 'This model could not run on your device. Try Fast & Light or import a custom model.',
-              },
-            }),
-          },
+          { target: 'smokeFailed' },
         ],
+        onError: { target: 'smokeFailed' },
+      },
+    },
+    smokeFailed: {
+      entry: [
+        assign({
+          error: ({ context }) => {
+            const model = getCuratedModel(context.modelId as CuratedModelId);
+            return {
+              code: 'smoke' as const,
+              message: smokeFailureMessage(
+                model.displayName,
+                context.smokeKilled || context.api.isLowMemoryFor(model),
+              ),
+            };
+          },
+        }),
+        ({ context }) => {
+          void context.api.persistDownloadState({
+            modelId: context.modelId,
+            status: 'smoke-failed',
+            pauseState: null,
+          });
+        },
+      ],
+      on: {
+        RETRY: { target: 'verifying', actions: assign({ error: null, smokeKilled: false }) },
+        CHOOSE_ANOTHER: {
+          target: 'selecting',
+          actions: [
+            ({ context }) => {
+              if (context.modelId) {
+                context.api.deletePartialFile(getCuratedModel(context.modelId).filename);
+              }
+              void context.api.clearDownloadState();
+            },
+            assign({ modelId: null, error: null, smokeKilled: false }),
+          ],
+        },
       },
     },
     complete: { type: 'final' },
