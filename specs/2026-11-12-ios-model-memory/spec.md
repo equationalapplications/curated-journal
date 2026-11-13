@@ -1,6 +1,6 @@
 # Spec: iOS model memory and download restore
 
-**Status: Implemented** — 2026-11-12 (PR #108, 8.1.0). Reviewed and
+**Status: Implemented** — 2026-11-12 (PR #108, 8.2.0). Reviewed and
 user-approved 2026-11-12. The implementation record (decisions the
 transient plan and ledger held) is at the end of this spec.
 
