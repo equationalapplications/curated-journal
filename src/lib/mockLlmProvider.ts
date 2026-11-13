@@ -7,7 +7,7 @@ export function createMockLlmProvider(): LLMProvider {
     generateText: async ({ userPrompt }) => {
       // Ingest asks for JSON back, not prose — without this the wiki's
       // parseJsonResponse throws and every save fails. The chunk is
-      // `# <title>\n\n<body>` (journalSaveMachine). Checked BEFORE the
+      // `# <title>\n\n<body>` (journalSaveQueueMachine). Checked BEFORE the
       // librarian keywords: a note that merely mentions "heal" would
       // otherwise match librarian and silently extract no facts.
       if (userPrompt.startsWith('Document Chunk:')) {

@@ -17,6 +17,7 @@ import { adoptCachedModel, devLlmMode } from '@/lib/devModel';
 import { MODEL_CATALOG } from '@/catalog/modelManifest';
 import { AppReadyProvider } from '@/contexts/AppReadyContext';
 import { JournalProvider } from '@/contexts/JournalContext';
+import { JournalSaveQueueProvider } from '@/contexts/JournalSaveQueueContext';
 import { CitationNavigationProvider } from '@/contexts/CitationNavigationContext';
 import { LlmProvider } from '@/contexts/LlmContext';
 import { ModelHubCompletionProvider } from '@/contexts/ModelHubCompletionContext';
@@ -177,7 +178,9 @@ export default function RootLayout() {
                     <LlmProvider provider={llmProvider}>
                       <JournalWikiProvider wiki={wiki} entityId={entityId}>
                         <JournalProvider entityId={entityId}>
-                          <CitationNavigationProvider>{stack}</CitationNavigationProvider>
+                          <JournalSaveQueueProvider>
+                            <CitationNavigationProvider>{stack}</CitationNavigationProvider>
+                          </JournalSaveQueueProvider>
                         </JournalProvider>
                       </JournalWikiProvider>
                     </LlmProvider>
