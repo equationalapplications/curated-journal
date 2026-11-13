@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ const TIPS = [
 const ERROR_COPY: Record<string, string> = {
   'disk-full': 'Not enough storage space. Please free up at least 3GB and try again.',
   network: 'Download failed. Check your connection and try again.',
+  commit: 'The model works, but it could not be saved as your model. Try again.',
 };
 
 function formatSpeed(bytesPerSecond: number): string {
@@ -84,6 +85,26 @@ export default function ModelHubDownloadScreen() {
     }
   }, [stateValue, completeOnboarding, router]);
 
+  // RETRY from `failed` with nothing to resume goes back to the list: follow
+  // it, or this screen is left showing no actions. Keyed on the transition,
+  // not on `selecting` alone — a restore mounts this screen before the
+  // RESTORE_DOWNLOAD event has left `selecting`.
+  const previousState = useRef(stateValue);
+  useEffect(() => {
+    const previous = previousState.current;
+    previousState.current = stateValue;
+    if (previous === 'failed' && stateValue === 'selecting') {
+      router.dismissTo('/model-hub' as Href);
+    }
+  }, [stateValue, router]);
+
+  const chooseAnother = () => {
+    send({ type: 'CHOOSE_ANOTHER' });
+    // Back to the list, or onto it when a restore replaced it: a plain back()
+    // there would leave the hub for whatever screen opened it.
+    router.dismissTo('/model-hub' as Href);
+  };
+
   const oldest = samples.current[0];
   const newest = samples.current.at(-1);
   const elapsedSeconds = oldest && newest ? (newest.t - oldest.t) / 1000 : 0;
@@ -93,22 +114,26 @@ export default function ModelHubDownloadScreen() {
   const etaSeconds = speedBps > 0 ? remainingBytes / speedBps : -1;
   const pct = progress.totalBytes > 0 ? Math.min(100, (progress.bytesWritten / progress.totalBytes) * 100) : null;
   const model = modelId ? getCuratedModel(modelId) : null;
+  // Restored or post-download states carry no live progress to show.
+  const downloadPhase = stateValue === 'downloading' || stateValue === 'paused' || stateValue === 'failed';
 
   return (
     <Screen>
       <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
         <View style={styles.intro}>
-          <ThemedText type="title">Downloading your AI</ThemedText>
+          <ThemedText type="title">{downloadPhase ? 'Downloading your AI' : 'Setting up your AI'}</ThemedText>
           {model ? <ThemedText type="heading">{model.displayName}</ThemedText> : null}
           {model ? (
             <ThemedText type="small" themeColor="onSurfaceVar">
               {model.tagline}
             </ThemedText>
           ) : null}
-          <ThemedText type="small">Keep this screen open for the fastest download.</ThemedText>
+          {downloadPhase ? (
+            <ThemedText type="small">Keep this screen open for the fastest download.</ThemedText>
+          ) : null}
         </View>
 
-        {pct === null ? (
+        {!downloadPhase ? null : pct === null ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             Starting download…
           </ThemedText>
@@ -116,7 +141,11 @@ export default function ModelHubDownloadScreen() {
           <ProgressBar value={pct / 100} />
         )}
 
-        {speedBps > 0 ? (
+        {stateValue === 'verifying' || stateValue === 'smokeTest' ? (
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            Checking the model runs on this device…
+          </ThemedText>
+        ) : speedBps > 0 ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             {formatSpeed(speedBps)} — {formatEta(etaSeconds)}
           </ThemedText>
@@ -136,6 +165,15 @@ export default function ModelHubDownloadScreen() {
               {pausedReason === 'background' ? 'Paused (resuming…)' : 'Paused'}
             </ThemedText>
             <Button label="Resume" variant="primary" onPress={() => send({ type: 'RESUME' })} />
+          </View>
+        ) : null}
+        {stateValue === 'smokeFailed' ? (
+          <View style={styles.smokeFailed}>
+            <ThemedText type="small">{error?.message ?? 'This model could not run on your device.'}</ThemedText>
+            <View style={styles.row}>
+              <Button label="Try again" variant="primary" onPress={() => send({ type: 'RETRY' })} />
+              <Button label="Choose another model" variant="default" onPress={chooseAnother} />
+            </View>
           </View>
         ) : null}
         {stateValue === 'failed' && error ? (
@@ -174,6 +212,7 @@ const styles = StyleSheet.create({
   intro: { gap: Space[2] },
   compact: { alignSelf: 'flex-start' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Space[3] },
+  smokeFailed: { gap: Space[3] },
   rowCopy: { flex: 1 },
   tip: { marginTop: Space[2] },
   input: { minHeight: TouchTarget },

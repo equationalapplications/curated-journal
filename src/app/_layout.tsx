@@ -84,9 +84,8 @@ export default function RootLayout() {
     const model = MODEL_CATALOG.find((entry) => entry.id === modelId);
     const provider = createLlamaProvider({
       modelPath,
-      contextSize: model?.llamaConfig.contextSize,
-      nGpuLayers: model?.llamaConfig.nGpuLayers,
-      useMlock: model?.llamaConfig.useMlock,
+      llamaConfig: model?.llamaConfig,
+      minComfortableRamBytes: model?.minComfortableRamBytes,
     });
     const boot = await bootstrapWiki(provider);
     setWiki(boot.wiki);

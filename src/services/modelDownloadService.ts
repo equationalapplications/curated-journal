@@ -2,7 +2,7 @@ import { DownloadTask, File, Paths } from 'expo-file-system';
 import type { CuratedModel } from '@/catalog/modelManifest';
 import { buildUserAgent } from '@/lib/buildUserAgent';
 import { classifyDownloadError, coerceInt64, type DownloadErrorCode } from '@/lib/downloadErrorTaxonomy';
-import type { DownloadPauseStateRecord } from '@/services/modelDownloadState';
+import { normalizePauseState, type DownloadPauseStateRecord } from '@/services/modelDownloadState';
 
 export type { DownloadErrorCode };
 export { classifyDownloadError };
@@ -31,10 +31,10 @@ export async function startDownload(model: CuratedModel, callbacks: DownloadCall
   return activeTask.downloadAsync();
 }
 
-export async function pauseDownload(): Promise<DownloadPauseStateRecord> {
+export async function pauseDownload(): Promise<DownloadPauseStateRecord | null> {
   if (!activeTask) throw new Error('No active download to pause');
   await activeTask.pauseAsync();
-  return activeTask.savable();
+  return normalizePauseState(activeTask.savable());
 }
 
 export async function resumeDownload(

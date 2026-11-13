@@ -13,6 +13,7 @@ const mockGoBack = jest.fn();
 const mockCurrentModelId = jest.fn().mockReturnValue<string | null>(null);
 
 jest.mock('expo-router', () => ({
+  useFocusEffect: (effect: () => void) => jest.requireActual('react').useEffect(effect, [effect]),
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: mockGoBack }),
 }));

@@ -27,4 +27,9 @@ describe('modelManifest', () => {
   it('getCuratedModel throws on an unknown id', () => {
     expect(() => getCuratedModel('nope' as CuratedModelId)).toThrow('Unknown curated model id: nope');
   });
+
+  it('carries a comfortable-RAM threshold per model', () => {
+    expect(getCuratedModel('fast-light').minComfortableRamBytes).toBe(5 * 1024 ** 3);
+    expect(getCuratedModel('smarter-slower').minComfortableRamBytes).toBe(7 * 1024 ** 3);
+  });
 });

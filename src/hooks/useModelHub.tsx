@@ -23,10 +23,12 @@ import {
   deletePartialFile,
 } from '@/services/modelDownloadService';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
+import { isBelowComfortableRam, currentDeviceMemory } from '@/lib/modelLoadParams';
 import type {
   createModelDownloadStateStore,
   DownloadPauseStateRecord,
   ModelDownloadStatus,
+  ModelDownloadStateRecord,
 } from '@/services/modelDownloadState';
 import {
   setModelPath,
@@ -34,15 +36,37 @@ import {
   getModelPath,
   clearModelPath,
 } from '@/lib/entityStorage';
-import type { CuratedModelId } from '@/catalog/modelManifest';
+import { MODEL_CATALOG, type CuratedModelId } from '@/catalog/modelManifest';
+import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 
 type Store = ReturnType<typeof createModelDownloadStateStore>;
 
 export type ModelHubRestoreState = {
   modelId: CuratedModelId;
-  status: Extract<ModelDownloadStatus, 'downloading' | 'paused'>;
+  status: Extract<ModelDownloadStatus, 'downloading' | 'paused' | 'smoke-testing' | 'smoke-failed'>;
   pauseState: DownloadPauseStateRecord | null;
 };
+
+const RESTORABLE: ReadonlySet<string> = new Set(['downloading', 'paused', 'smoke-testing', 'smoke-failed']);
+
+/** Null unless the saved status is restorable AND its model is still in the catalog. */
+export function toRestoreState(
+  record: ModelDownloadStateRecord | null,
+  currentModelId: string | null = null,
+): ModelHubRestoreState | null {
+  if (!record || !record.modelId || !RESTORABLE.has(record.status)) return null;
+  if (!MODEL_CATALOG.some((m) => m.id === record.modelId)) return null;
+  // The identity is written only after the smoke test passes, and the marker
+  // is cleared after that. A `smoke-testing` row for the model that is already
+  // current means the app died between those two writes: the test passed, so
+  // there is nothing to restore (the caller clears the stale row).
+  if (record.status === 'smoke-testing' && record.modelId === currentModelId) return null;
+  return {
+    modelId: record.modelId as CuratedModelId,
+    status: record.status as ModelHubRestoreState['status'],
+    pauseState: record.pauseState,
+  };
+}
 
 export function createModelHubApi(store: Store): ModelHubApi {
   return {
@@ -60,17 +84,56 @@ export function createModelHubApi(store: Store): ModelHubApi {
       const file = new File(Paths.document, model.filename);
       return verifyDownload(file, model);
     },
-    deletePartialFile: (filename) => deletePartialFile(filename),
+    // Best effort: the machine calls this from synchronous actions, where a
+    // throw would stop the hub actor and leave the screen with no way out.
+    deletePartialFile: (filename) => {
+      try {
+        deletePartialFile(filename);
+      } catch (cause) {
+        console.warn('[model-hub] could not delete model file', filename, cause);
+      }
+    },
     runSmokeTest: (model) => {
       const file = new File(Paths.document, model.filename);
-      return runModelSmokeTest({ modelPath: file.uri, llamaConfig: model.llamaConfig });
+      return runModelSmokeTest({
+        modelPath: file.uri,
+        llamaConfig: model.llamaConfig,
+        minComfortableRamBytes: model.minComfortableRamBytes,
+      });
+    },
+    isLowMemoryFor: (model) =>
+      isBelowComfortableRam(model.minComfortableRamBytes, currentDeviceMemory().totalMemoryBytes),
+    deleteOrphanedModelFiles: async (keepModelId) => {
+      let currentModelPath: string | null;
+      try {
+        currentModelPath = await getModelPath();
+      } catch (cause) {
+        // An unknown current path must never risk deleting the working model's file.
+        console.warn('[model-hub] skipped orphan cleanup: current model path unknown', cause);
+        return;
+      }
+      deleteOrphanedCuratedModelFiles({ keepModelId, currentModelPath });
     },
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),
     setModelPath: async (model) => {
       const file = new File(Paths.document, model.filename);
+      const previousPath = await getModelPath();
       await setModelPath(file.uri);
-      await setModelId(model.id);
+      try {
+        await setModelId(model.id);
+      } catch (cause) {
+        // Never leave the path naming this model under another model's id:
+        // the next launch would load it with the wrong config, and re-picking
+        // it would retire (delete) the file that was just downloaded.
+        try {
+          if (previousPath) await setModelPath(previousPath);
+          else await clearModelPath();
+        } catch {
+          // Best effort; the original failure is what the user needs to see.
+        }
+        throw cause;
+      }
     },
     // Deliberately not wrapped in try/catch around the unlink: a rejection here
     // means the model file could not be removed, and the machine's
@@ -119,7 +182,7 @@ type ModelHubContextValue = {
   currentModelId: CuratedModelId | 'custom' | null;
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: string; message: string } | null;
-  pausedReason: 'user' | 'background' | null;
+  pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
 };
 
@@ -159,7 +222,7 @@ export function ModelHubProvider({
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
+      if (nextState === 'background') {
         actor.send({ type: 'APP_BACKGROUND' });
       } else if (nextState === 'active') {
         actor.send({ type: 'APP_FOREGROUND' });
