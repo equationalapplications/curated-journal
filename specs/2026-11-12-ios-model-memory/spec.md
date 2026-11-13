@@ -1,8 +1,8 @@
 # Spec: iOS model memory and download restore
 
-**Status: Reviewed** — 2026-11-12 (user-approved). One PR carries spec + plan + implementation
-+ version bump; `plan.md`/`LEDGER.md` are transient and deleted in the
-same-PR cleanup commit (AGENTS.md SDD workflow).
+**Status: Implemented** — 2026-11-12 (PR #108, 8.1.0). Reviewed and
+user-approved 2026-11-12. The implementation record (decisions the
+transient plan and ledger held) is at the end of this spec.
 
 ## Why this cycle exists
 
@@ -169,7 +169,7 @@ check:
    size derivable from the app and the wiki engine's source (chat sends
    at most 8 retrieved notes), converted at 3 characters per token,
    plus 10% margin. If any of the three cannot be bounded or does not
-   fit, this lever is not applied and the LEDGER records why.
+   fit, this lever is not applied and the implementation record says why.
 
 A5 applies to curated models only. Custom imports have no declared RAM
 figure and get A1 and A2 only. The fit arithmetic above holds with or without pinning, so A5 does not
@@ -295,3 +295,45 @@ user's go-ahead each time.
 - Warning and failure copy, within A4 and A6.
 - Whether B5's two actions reuse the existing failed screen or extend
   it.
+
+## Implementation record
+
+Kept from the transient plan and ledger, deleted in the cleanup commit.
+
+**A5 lever 1 — applied.** Package check: llama.rn `src/index.ts:196-224`
+(`flash_attn_type?: 'auto' | 'on' | 'off'` at L198; `q8_0` in
+`cache_type_k` L202, `cache_type_v` L211, `validCacheTypes` L224) and
+`cpp/jsi/JSIParams.cpp:379-388` (all three keys read into cparams).
+
+**A5 lever 2 (4096 context) — not applied.** `LOW_MEMORY_CONTEXT_SIZE`
+stays `null`. Rule: tokens = ceil(chars / 3) × 1.10; apply only if
+tokens + 2048 ≤ 4096, i.e. at most ~5,585 characters of prompt. None of
+the three prompts is bounded that low:
+
+- Chat: 8 retrieved facts × up to 800-character bodies is 6,400
+  characters before titles, graph context, the system prompt and the
+  uncapped user question (`SynthesisPane.tsx` `maxResults: 8`;
+  core-llm-wiki body cap). That is 2,347 tokens > 2,048.
+- Librarian: the engine caps extract/resolve prompts at
+  `OPS_RESOLVE_MAX_PROMPT_CHARS` = 40,000 (about 14,667 tokens).
+- Heal: `HEAL_MAX_PROMPT_CHARS` = 40,000 (about 14,667 tokens).
+
+**Plan-level calls not otherwise in this spec:**
+
+- A failed network check returns to the list with an error banner
+  instead of the `failed` state, because the list has no Retry button
+  (B6 amended to match).
+- A file check that throws before a download is treated as "no file".
+- `FAIL` during a download, and a completed download, clear the pause
+  state, so Retry never replays spent resume data.
+- A custom import deletes its own copied file when its smoke test
+  fails, because the smoke test no longer deletes anything.
+- The hub list goes to the download screen for every install state, not
+  only `downloading`, so a reused complete file still shows the
+  test-load screen.
+
+**Manual checks (user, when they choose; not blockers):** Fast & Light on
+iPad Air 3 passes or fails with the memory message, with no second kill;
+pause / kill / relaunch / Resume shows no error, and Control Center
+mid-download doesn't stop the download; if the load passes, time to
+first token and tokens per second for one chat answer.
