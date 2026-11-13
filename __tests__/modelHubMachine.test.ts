@@ -1,5 +1,10 @@
 import { createActor, waitFor } from 'xstate';
-import { modelHubMachine, type ModelHubApi } from '@/machines/modelHubMachine';
+import {
+  modelHubMachine,
+  smokeFailureMessage,
+  smokeTestSettled,
+  type ModelHubApi,
+} from '@/machines/modelHubMachine';
 import type { CuratedModel } from '@/catalog/modelManifest';
 
 const fastLight: CuratedModel = {
@@ -20,7 +25,7 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     startDownload: jest.fn(async () => true),
     resumeDownload: jest.fn(async () => true),
     pauseDownload: jest.fn(async () => ({ url: fastLight.hfUrl, fileUri: 'file:///f.gguf', isDirectory: false, resumeData: 'rd' })),
-    verifyDownload: jest.fn(() => true),
+    verifyDownload: jest.fn().mockReturnValueOnce(false).mockReturnValue(true),
     deletePartialFile: jest.fn(),
     runSmokeTest: jest.fn(async () => ({ ok: true })),
     persistDownloadState: jest.fn(async () => undefined),
@@ -28,8 +33,19 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     setModelPath: jest.fn(async () => undefined),
     retireCurrentModel: jest.fn(async () => ({ identityCleared: true })),
     deleteModelFile: jest.fn(async () => undefined),
+    isLowMemoryFor: jest.fn(() => false),
+    deleteOrphanedModelFiles: jest.fn(async () => undefined),
     ...overrides,
   };
+}
+
+/** Polls a condition xstate's waitFor cannot see (mock calls emit no snapshot). */
+async function until(check: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('until: condition not met');
+    await new Promise((r) => setTimeout(r, 5));
+  }
 }
 
 describe('modelHubMachine', () => {
@@ -164,12 +180,279 @@ describe('modelHubMachine', () => {
     actor.stop();
   });
 
-  it('smoke test failure returns to selecting with a smoke error', async () => {
+  it('smoke test failure goes to smokeFailed with a smoke error', async () => {
     const api = makeApi({ runSmokeTest: jest.fn(async () => ({ ok: false })) });
     const actor = createActor(modelHubMachine, { input: { api } }).start();
     actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
-    await waitFor(actor, (s) => s.matches('selecting') && s.context.error !== null, { timeout: 3000 });
+    await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
     expect(actor.getSnapshot().context.error?.code).toBe('smoke');
+    actor.stop();
+  });
+
+  describe('existing file, smoke marker, smokeFailed', () => {
+    const start = (api: ModelHubApi) => createActor(modelHubMachine, { input: { api } }).start();
+    const lastStatus = (api: ModelHubApi) => {
+      const calls = (api.persistDownloadState as jest.Mock).mock.calls;
+      return calls[calls.length - 1][0].status;
+    };
+
+    it('reuses a complete file on select', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => true) });
+      const actor = start(api);
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).not.toHaveBeenCalled();
+      expect(api.checkNetwork).not.toHaveBeenCalled();
+      expect(api.deleteOrphanedModelFiles).toHaveBeenCalledWith('fast-light');
+      actor.stop();
+    });
+
+    it('reuses a complete file on restore', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => true) });
+      const actor = start(api);
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).not.toHaveBeenCalled();
+      expect(api.checkNetwork).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('no file on select goes through the network check and downloads', async () => {
+      const api = makeApi();
+      const actor = start(api);
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.checkNetwork).toHaveBeenCalled();
+      expect(api.startDownload).toHaveBeenCalled();
+      expect(api.deletePartialFile).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('no file on restore downloads without a network check', async () => {
+      const api = makeApi();
+      const actor = start(api);
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.checkNetwork).not.toHaveBeenCalled();
+      expect(api.startDownload).toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('treats a throwing verify in checkingExisting as no file', async () => {
+      const verifyDownload = jest
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error('boom');
+        })
+        .mockReturnValue(true);
+      const api = makeApi({ verifyDownload });
+      const actor = start(api);
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).toHaveBeenCalled();
+      expect(api.deletePartialFile).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('does not call runSmokeTest until the smoke-testing marker write finishes', async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const persistDownloadState = jest.fn(async (record: { status: string }) => {
+        if (record.status === 'smoke-testing') await gate;
+      });
+      const api = makeApi({ persistDownloadState });
+      const actor = start(api);
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, () => persistDownloadState.mock.calls.some((c) => c[0].status === 'smoke-testing'), {
+        timeout: 3000,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(api.runSmokeTest).not.toHaveBeenCalled();
+      release();
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.runSmokeTest).toHaveBeenCalledTimes(1);
+      actor.stop();
+    });
+
+    it('a rejecting smoke test reaches smokeFailed and keeps the file', async () => {
+      const api = makeApi({ runSmokeTest: jest.fn(async () => { throw new Error('x'); }) });
+      const actor = start(api);
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.error?.code).toBe('smoke');
+      expect(lastStatus(api)).toBe('smoke-failed');
+      expect(api.deletePartialFile).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('{ ok: false } persists smoke-failed and uses the copy by memory', async () => {
+      for (const low of [false, true]) {
+        const api = makeApi({
+          runSmokeTest: jest.fn(async () => ({ ok: false })),
+          isLowMemoryFor: jest.fn(() => low),
+        });
+        const actor = start(api);
+        actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+        await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+        const message = actor.getSnapshot().context.error?.message;
+        expect(message).toBe(smokeFailureMessage('Fast & Light', low));
+        expect(message).not.toContain('Try Fast & Light');
+        expect(lastStatus(api)).toBe('smoke-failed');
+        expect(api.deletePartialFile).not.toHaveBeenCalled();
+        actor.stop();
+      }
+    });
+
+    it('restoring smoke-testing goes to smokeFailed with the memory message', async () => {
+      const api = makeApi();
+      const actor = start(api);
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'smoke-testing', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.error?.code).toBe('smoke');
+      expect(actor.getSnapshot().context.error?.message).toBe(smokeFailureMessage('Fast & Light', true));
+      expect(lastStatus(api)).toBe('smoke-failed');
+      expect(api.deletePartialFile).not.toHaveBeenCalled();
+      expect(api.runSmokeTest).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('restoring smoke-failed does not run the smoke test until RETRY, then completes', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => true) });
+      const actor = start(api);
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'smoke-failed', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      expect(api.runSmokeTest).not.toHaveBeenCalled();
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.runSmokeTest).toHaveBeenCalledTimes(1);
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('RETRY after the file is gone fails with verify and does not smoke test', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => false) });
+      const actor = start(api);
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'smoke-failed', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.error?.code).toBe('verify');
+      expect(lastStatus(api)).toBe('failed');
+      expect(api.runSmokeTest).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('CHOOSE_ANOTHER deletes the file, clears state and returns to selecting', async () => {
+      const api = makeApi();
+      const actor = start(api);
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'smoke-failed', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      actor.send({ type: 'CHOOSE_ANOTHER' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      expect(api.deletePartialFile).toHaveBeenCalledWith('qwen3-4b-instruct-2507-q4_0.gguf');
+      expect(api.clearDownloadState).toHaveBeenCalled();
+      expect(actor.getSnapshot().context.modelId).toBeNull();
+      actor.stop();
+    });
+
+    it('CHOOSE_ANOTHER never deletes the file when the model is the current working one', async () => {
+      const api = makeApi();
+      const actor = createActor(modelHubMachine, {
+        input: { api, currentModelId: 'fast-light' },
+      }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'smoke-testing', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      actor.send({ type: 'CHOOSE_ANOTHER' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      expect(api.deletePartialFile).not.toHaveBeenCalled();
+      expect(api.clearDownloadState).toHaveBeenCalled();
+      expect(actor.getSnapshot().context.modelId).toBeNull();
+      actor.stop();
+    });
+  });
+
+  it('completes, and clears the download state, only after the model identity write has finished', async () => {
+    let finishSetPath!: () => void;
+    const api = makeApi({
+      setModelPath: jest.fn(() => new Promise<void>((r) => { finishSetPath = r; })),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await until(() => (api.setModelPath as jest.Mock).mock.calls.length > 0);
+    expect(actor.getSnapshot().matches('smokeTest')).toBe(true);
+    expect(api.clearDownloadState).not.toHaveBeenCalled();
+    finishSetPath();
+    await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+    expect(api.clearDownloadState).toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('a failed identity write goes to failed (commit), not to an out-of-memory smoke failure', async () => {
+    const api = makeApi({ setModelPath: jest.fn(async () => { throw new Error('disk I/O'); }) });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.error?.code).toBe('commit');
+    const calls = (api.persistDownloadState as jest.Mock).mock.calls;
+    expect(calls[calls.length - 1][0].status).toBe('failed');
+    expect(api.clearDownloadState).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('a smoke test outlives a closed hub: it still commits, and smokeTestSettled waits for it', async () => {
+    let finishSmoke!: (r: { ok: boolean }) => void;
+    const api = makeApi({
+      runSmokeTest: jest.fn(() => new Promise<{ ok: boolean }>((r) => { finishSmoke = r; })),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('smokeTest'), { timeout: 3000 });
+    await until(() => (api.runSmokeTest as jest.Mock).mock.calls.length > 0);
+    actor.stop();
+
+    let settled = false;
+    const waiting = smokeTestSettled().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+
+    finishSmoke({ ok: true });
+    await waiting;
+    expect(api.setModelPath).toHaveBeenCalled();
+    expect(api.clearDownloadState).toHaveBeenCalled();
+  });
+
+  it('a smoke failure after the hub closed records smoke-failed, never a stale smoke-testing marker', async () => {
+    let finishSmoke!: (r: { ok: boolean }) => void;
+    const api = makeApi({
+      runSmokeTest: jest.fn(() => new Promise<{ ok: boolean }>((r) => { finishSmoke = r; })),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await until(() => (api.runSmokeTest as jest.Mock).mock.calls.length > 0);
+    actor.stop();
+    finishSmoke({ ok: false });
+    await smokeTestSettled();
+    const calls = (api.persistDownloadState as jest.Mock).mock.calls;
+    expect(calls[calls.length - 1][0].status).toBe('smoke-failed');
+    expect(api.setModelPath).not.toHaveBeenCalled();
+  });
+
+  it('a completed resumed download clears its spent resume data', async () => {
+    const api = makeApi({
+      startDownload: jest.fn(async () => new Promise<boolean>(() => undefined)),
+      verifyDownload: jest.fn(() => false),
+    });
+    const actor = createActor(modelHubMachine, { input: { api } }).start();
+    actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+    await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+    actor.send({ type: 'PAUSE' });
+    await waitFor(actor, (s) => s.matches('paused') && s.context.pauseState !== null, { timeout: 3000 });
+    actor.send({ type: 'RESUME' });
+    // Verify fails: RETRY must restart, not resume from spent data.
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.pauseState).toBeNull();
     actor.stop();
   });
 
@@ -378,5 +661,133 @@ describe('modelHubMachine', () => {
     await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
     expect(api.deleteModelFile).not.toHaveBeenCalled();
     actor.stop();
+  });
+
+  describe('restore, pause and resume (B1, B2, B6)', () => {
+    const record = { url: fastLight.hfUrl, fileUri: 'file:///f.gguf', isDirectory: false, resumeData: 'rd' };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    it('restored pause with resume data stays paused and RESUME resumes it', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => true) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      expect(actor.getSnapshot().context.pausedReason).toBe('restored');
+      expect(api.pauseDownload).not.toHaveBeenCalled();
+      expect(api.persistDownloadState).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      actor.stop();
+    });
+
+    it('restored pause with no pause state stays paused until RESUME starts fresh', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => true) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: null });
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).toHaveBeenCalledTimes(1);
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('a pause that returns null resumes with a fresh start', async () => {
+      const api = makeApi({
+        pauseDownload: jest.fn(async () => null),
+        startDownload: jest.fn(async () => {
+          await tick();
+          return true;
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'PAUSE' });
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.startDownload).toHaveBeenCalledTimes(2);
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('stale resume data: a rejected resume fails, drops the pause state, and RETRY does not resume again', async () => {
+      const api = makeApi({
+        resumeDownload: jest.fn(async () => {
+          throw new Error('no resumeData');
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.pauseState).toBeNull();
+      actor.send({ type: 'RETRY' });
+      await tick();
+      expect(api.resumeDownload).toHaveBeenCalledTimes(1);
+      actor.stop();
+    });
+
+    it('checkNetworkActor rejection returns to selecting with a banner, and SELECT_MODEL works again', async () => {
+      const checkNetwork = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValue('offline');
+      const api = makeApi({ checkNetwork, verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api, currentModelId: 'fast-light' } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(actor.getSnapshot().context.error).toEqual({
+        code: 'network',
+        message: 'Could not check your connection. Try again.',
+      });
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('pauseTask rejection lands in failed', async () => {
+      const api = makeApi({
+        pauseDownload: jest.fn(async () => {
+          throw new Error('boom');
+        }),
+        startDownload: jest.fn(() => new Promise<boolean>(() => undefined)),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'PAUSE' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(actor.getSnapshot().context.error).toEqual({
+        code: 'unknown',
+        message: 'Could not pause the download. Try again.',
+      });
+      actor.stop();
+    });
+
+    it('verifyTask rejection lands in failed', async () => {
+      const api = makeApi({
+        verifyDownload: jest.fn(() => {
+          throw new Error('boom');
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(actor.getSnapshot().context.error).toEqual({
+        code: 'verify',
+        message: 'Could not check the downloaded file. Try again.',
+      });
+      actor.stop();
+    });
   });
 });

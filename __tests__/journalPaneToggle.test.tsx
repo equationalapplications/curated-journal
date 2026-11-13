@@ -1,6 +1,7 @@
 import { render, fireEvent } from '@testing-library/react-native';
 import JournalScreen from '@/app/(tabs)/journal';
 import { JournalProvider } from '@/contexts/JournalContext';
+import { JournalSaveQueueProvider } from '@/contexts/JournalSaveQueueContext';
 
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
   // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
@@ -9,6 +10,7 @@ jest.mock('@equationalapplications/expo-llm-wiki', () => ({
 
 jest.mock('expo-router', () => ({
   useFocusEffect: (callback: () => void) => callback(),
+  useIsFocused: () => true,
 }));
 
 jest.mock('@/components/journal/JournalList', () => {
@@ -46,7 +48,9 @@ jest.mock('@/hooks/useSplitPaneLayout', () => ({
 function renderJournal() {
   return render(
     <JournalProvider entityId="e1">
-      <JournalScreen />
+      <JournalSaveQueueProvider>
+        <JournalScreen />
+      </JournalSaveQueueProvider>
     </JournalProvider>,
   );
 }

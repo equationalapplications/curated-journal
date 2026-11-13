@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Note } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
-import { setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
+import { clearModelPath, setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
+import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 import { useModelHub } from '@/hooks/useModelHub';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
@@ -46,10 +47,12 @@ export default function ModelHubImportScreen() {
     }
     const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
+    deleteOrphanedCuratedModelFiles({ keepModelId: null, currentModelPath: currentPath });
     const dest = new File(Paths.document, uniqueFileName(picked.assets[0].name));
     const source = new File(picked.assets[0].uri);
     // Shown before the copy, not after: a multi-gigabyte .gguf takes a while.
     setStatus('Copying the model and checking it runs on this device…');
+    let committedPath = false;
     try {
       // File.copy() returns a Promise (Expo SDK 57). Left un-awaited, the smoke
       // test below races a half-written file and reports a perfectly good model
@@ -61,14 +64,23 @@ export default function ModelHubImportScreen() {
       await source.copy(dest);
       const result = await runModelSmokeTest({ modelPath: dest.uri, llamaConfig: { contextSize: 4096 } });
       if (!result.ok) {
+        deleteIfPresent(dest);
         setStatus('');
         send({ type: 'IMPORT_FAILED', message: 'This model could not run on your device.' });
         router.back();
         return;
       }
       await setModelPath(dest.uri);
+      committedPath = true;
       await setModelId('custom');
     } catch {
+      if (committedPath) {
+        // The stored path already names the copy: point it back at the
+        // installed model before deleting the copy, or the next launch finds a
+        // missing file and drops the working model's identity too.
+        await (currentPath ? setModelPath(currentPath) : clearModelPath()).catch(() => undefined);
+      }
+      deleteIfPresent(dest);
       // Smoke test or persistence threw unexpectedly. Without this the status
       // stays nonempty and the picker button is disabled forever — clear it so
       // the user can retry from this screen.
@@ -79,6 +91,15 @@ export default function ModelHubImportScreen() {
     }
     send({ type: 'IMPORT_SMOKE_OK', retirePath: currentPath });
   };
+
+/** The smoke test no longer deletes; the import owns the copy it made. */
+function deleteIfPresent(file: File): void {
+  try {
+    if (file.exists) file.delete();
+  } catch {
+    // Best effort: a leftover copy must not mask the import failure.
+  }
+}
 
 /**
  * Disambiguates the copy we land in the documents directory. Re-importing a

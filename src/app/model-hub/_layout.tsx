@@ -3,10 +3,10 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SQLite from 'expo-sqlite';
 import { createModelDownloadStateStore } from '@/services/modelDownloadState';
-import { createModelHubApi, ModelHubProvider, type ModelHubRestoreState } from '@/hooks/useModelHub';
+import { createModelHubApi, ModelHubProvider, toRestoreState, type ModelHubRestoreState } from '@/hooks/useModelHub';
 import { useTheme } from '@/hooks/use-theme';
 import { getModelId } from '@/lib/entityStorage';
-import type { ModelHubApi } from '@/machines/modelHubMachine';
+import { smokeTestSettled, type ModelHubApi } from '@/machines/modelHubMachine';
 import type { CuratedModelId } from '@/catalog/modelManifest';
 
 export default function ModelHubStackLayout() {
@@ -19,6 +19,10 @@ export default function ModelHubStackLayout() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // A smoke test started before the hub was last closed may still be
+      // loading; its `smoke-testing` marker only means a kill once it settles.
+      await smokeTestSettled();
+      if (cancelled) return;
       const db = await SQLite.openDatabaseAsync('curated_journal.db');
       const store = createModelDownloadStateStore(db);
       const downloadState = await store.get();
@@ -27,15 +31,18 @@ export default function ModelHubStackLayout() {
       if (cancelled) return;
       setCurrentModelId((storedModelId as CuratedModelId | 'custom' | null) ?? null);
       setApi(createModelHubApi(store));
-      if (downloadState && (downloadState.status === 'downloading' || downloadState.status === 'paused')) {
-        if (downloadState.modelId) {
-          setRestore({
-            modelId: downloadState.modelId as CuratedModelId,
-            status: downloadState.status,
-            pauseState: downloadState.pauseState,
-          });
-        }
+      const restoreState = toRestoreState(downloadState, storedModelId);
+      if (restoreState) {
+        setRestore(restoreState);
         router.replace('/model-hub/download' as Href);
+      } else if (downloadState && downloadState.status !== 'idle' && downloadState.status !== 'failed') {
+        // A saved install this bundle cannot restore (removed model, unknown
+        // status), or a smoke-testing marker for a model already committed.
+        try {
+          await store.clear();
+        } catch (cause) {
+          console.warn('[model-hub] could not clear an unrestorable download state', cause);
+        }
       }
     })();
     return () => {

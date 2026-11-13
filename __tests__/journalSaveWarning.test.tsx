@@ -1,5 +1,6 @@
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import JournalScreen from '@/app/(tabs)/journal';
+import { JournalSaveQueueProvider } from '@/contexts/JournalSaveQueueContext';
 import { countIngestFailures, type IngestResult } from '@/lib/ingestReport';
 
 const mockExecute = jest.fn(async (): Promise<IngestResult> => ({
@@ -16,6 +17,7 @@ jest.mock('@equationalapplications/expo-llm-wiki', () => ({
 
 jest.mock('expo-router', () => ({
   useFocusEffect: (callback: () => void) => callback(),
+  useIsFocused: () => true,
 }));
 
 jest.mock('@/components/journal/JournalList', () => {
@@ -71,18 +73,26 @@ describe('journal save ingest-failure warning', () => {
         { chunkIndex: 1, sourceRef: 'a', source: 'parse', position: 3, message: 'boom' },
       ],
     } satisfies IngestResult);
-    const screen = await render(<JournalScreen />);
-    fireEvent.press(screen.getByTestId('new-note'));
-    fireEvent.press(await screen.findByTestId('save'));
+    const screen = await render(
+      <JournalSaveQueueProvider>
+        <JournalScreen />
+      </JournalSaveQueueProvider>,
+    );
+    await fireEvent.press(screen.getByTestId('new-note'));
+    await fireEvent.press(await screen.findByTestId('save'));
     await waitFor(() => expect(screen.getByText('Saved with warnings')).toBeTruthy());
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/2 chunks failed to process\./)).toBeTruthy();
   });
 
   it('does not warn on a clean save', async () => {
-    const screen = await render(<JournalScreen />);
-    fireEvent.press(screen.getByTestId('new-note'));
-    fireEvent.press(await screen.findByTestId('save'));
+    const screen = await render(
+      <JournalSaveQueueProvider>
+        <JournalScreen />
+      </JournalSaveQueueProvider>,
+    );
+    await fireEvent.press(screen.getByTestId('new-note'));
+    await fireEvent.press(await screen.findByTestId('save'));
     await new Promise((r) => setTimeout(r, 0));
     expect(mockExecute).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Saved with warnings')).toBeNull();

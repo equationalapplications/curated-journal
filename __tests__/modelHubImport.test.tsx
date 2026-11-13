@@ -29,10 +29,13 @@ jest.mock('expo-document-picker', () => ({
 // Expo SDK 57 and the screen awaits it, so the mock resolves on a later tick
 // rather than synchronously — that is what makes the ordering test meaningful.
 const mockCopy = jest.fn();
+const mockDelete = jest.fn();
 const mockOrder: string[] = [];
 jest.mock('expo-file-system', () => {
   class File {
     uri: string;
+    exists = true;
+    delete = () => mockDelete(this.uri);
     constructor(target: { uri: string } | string, name?: string) {
       this.uri = name === undefined ? String(target) : `${(target as { uri: string }).uri}/${name}`;
     }
@@ -60,6 +63,14 @@ jest.mock('@/lib/entityStorage', () => ({
   getModelPath: () => mockGetModelPath(),
   setModelPath: (path: string) => mockSetModelPath(path),
   setModelId: jest.fn(async () => undefined),
+}));
+
+const mockDeleteOrphans = jest.fn();
+jest.mock('@/services/modelFiles', () => ({
+  deleteOrphanedCuratedModelFiles: (...args: unknown[]) => {
+    mockOrder.push('orphans');
+    mockDeleteOrphans(...args);
+  },
 }));
 
 import ModelHubImportScreen from '@/app/model-hub/import';
@@ -106,7 +117,21 @@ describe('model-hub custom import', () => {
     await pressImport();
 
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
-    expect(mockOrder).toEqual(['copy-done', 'smoke']);
+    expect(mockOrder).toEqual(['orphans', 'copy-done', 'smoke']);
+  });
+
+  it('cleans orphaned catalog files after the pick and before the copy', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockDeleteOrphans).toHaveBeenCalledWith({
+      keepModelId: null,
+      currentModelPath: 'file:///documents/old.gguf',
+    });
+    expect(mockOrder.slice(0, 2)).toEqual(['orphans', 'copy-done']);
   });
 
   it('never writes the import over the file it is about to retire', async () => {
@@ -178,5 +203,29 @@ describe('model-hub custom import', () => {
     await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
     expect(mockSetModelPath).not.toHaveBeenCalled();
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('deletes the copied file when the smoke test fails', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+    mockSmokeTest.mockResolvedValue({ ok: false });
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
+    const dest = (mockCopy.mock.calls[0] as [string, string])[1];
+    expect(mockDelete).toHaveBeenCalledWith(dest);
+  });
+
+  it('deletes the copied file when the smoke test throws', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+    mockSmokeTest.mockRejectedValue(new Error('boom'));
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
+    const dest = (mockCopy.mock.calls[0] as [string, string])[1];
+    expect(mockDelete).toHaveBeenCalledWith(dest);
   });
 });

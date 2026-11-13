@@ -20,6 +20,7 @@ export type CuratedModel = {
   filename: string;
   llamaConfig: LlamaModelConfig;
   deviceHint: DeviceHint;
+  minComfortableRamBytes: number;
   deviceWarning?: string;
 };
 
@@ -42,6 +43,7 @@ export const MODEL_CATALOG: CuratedModel[] = [
     filename: 'qwen3-4b-instruct-2507-q4_0.gguf',
     llamaConfig: { contextSize: 8192, useMlock: true },
     deviceHint: 'all',
+    minComfortableRamBytes: 5 * 1024 ** 3,
   },
   {
     id: 'smarter-slower',
@@ -55,6 +57,7 @@ export const MODEL_CATALOG: CuratedModel[] = [
     filename: 'qwen3.5-4b-q4_k_m.gguf',
     llamaConfig: { contextSize: 8192, useMlock: false },
     deviceHint: 'recommended-high-ram',
+    minComfortableRamBytes: 7 * 1024 ** 3,
     deviceWarning:
       'This model works best on newer phones and tablets with 8 GB or more RAM. It may be slow or unstable on older devices.',
   },

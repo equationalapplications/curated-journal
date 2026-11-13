@@ -1,5 +1,5 @@
 import type { WikiMemory } from '@equationalapplications/core-llm-wiki';
-import type { JournalSaveMachineInput } from '@/machines/journalSaveMachine';
+import type { JournalSaveQueueInput } from '@/machines/journalSaveQueueMachine';
 
 /**
  * The journal's ingest call. Every save gets a fresh `journal://<time>`
@@ -13,6 +13,6 @@ import type { JournalSaveMachineInput } from '@/machines/journalSaveMachine';
  * `useWikiIngest().execute` cannot pass ingest options, so this calls
  * `ingestDocument` directly.
  */
-export function createJournalIngest(wiki: WikiMemory): JournalSaveMachineInput['ingest'] {
+export function createJournalIngest(wiki: WikiMemory): JournalSaveQueueInput['ingest'] {
   return (entityId, params) => wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' });
 }

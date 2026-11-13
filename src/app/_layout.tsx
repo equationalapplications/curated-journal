@@ -17,6 +17,7 @@ import { adoptCachedModel, devLlmMode } from '@/lib/devModel';
 import { MODEL_CATALOG } from '@/catalog/modelManifest';
 import { AppReadyProvider } from '@/contexts/AppReadyContext';
 import { JournalProvider } from '@/contexts/JournalContext';
+import { JournalSaveQueueProvider } from '@/contexts/JournalSaveQueueContext';
 import { CitationNavigationProvider } from '@/contexts/CitationNavigationContext';
 import { LlmProvider } from '@/contexts/LlmContext';
 import { ModelHubCompletionProvider } from '@/contexts/ModelHubCompletionContext';
@@ -83,9 +84,8 @@ export default function RootLayout() {
     const model = MODEL_CATALOG.find((entry) => entry.id === modelId);
     const provider = createLlamaProvider({
       modelPath,
-      contextSize: model?.llamaConfig.contextSize,
-      nGpuLayers: model?.llamaConfig.nGpuLayers,
-      useMlock: model?.llamaConfig.useMlock,
+      llamaConfig: model?.llamaConfig,
+      minComfortableRamBytes: model?.minComfortableRamBytes,
     });
     const boot = await bootstrapWiki(provider);
     setWiki(boot.wiki);
@@ -178,7 +178,9 @@ export default function RootLayout() {
                     <LlmProvider provider={llmProvider}>
                       <JournalWikiProvider wiki={wiki} entityId={entityId}>
                         <JournalProvider entityId={entityId}>
-                          <CitationNavigationProvider>{stack}</CitationNavigationProvider>
+                          <JournalSaveQueueProvider>
+                            <CitationNavigationProvider>{stack}</CitationNavigationProvider>
+                          </JournalSaveQueueProvider>
                         </JournalProvider>
                       </JournalWikiProvider>
                     </LlmProvider>

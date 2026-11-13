@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Button } from '@/components/ui/button';
@@ -10,14 +10,20 @@ import { Space, TouchTarget } from '@/constants/theme';
 type Props = {
   onSave: (input: { title: string; body: string }) => void | Promise<void>;
   onCancel: () => void;
-  /** Machine-owned save-in-flight flag (hashing|ingesting) — derives the Save button label. */
-  saving?: boolean;
 };
 
-export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) {
+export function JournalEntryEditor({ onSave, onCancel }: Props) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const theme = useTheme();
+  // Save enqueues and closes the editor; a second tap landing before the
+  // editor unmounts must not queue the note twice.
+  const saved = useRef(false);
+  const handleSave = () => {
+    if (saved.current) return;
+    saved.current = true;
+    void onSave({ title, body });
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -46,12 +52,7 @@ export function JournalEntryEditor({ onSave, onCancel, saving = false }: Props) 
         />
         <View style={styles.actions}>
           <Button label="Cancel" variant="default" onPress={onCancel} />
-          <Button
-            label={saving ? 'Saving…' : 'Save'}
-            variant="primary"
-            disabled={saving}
-            onPress={() => onSave({ title, body })}
-          />
+          <Button label="Save" variant="primary" onPress={handleSave} />
         </View>
       </KeyboardAwareScrollView>
     </View>
