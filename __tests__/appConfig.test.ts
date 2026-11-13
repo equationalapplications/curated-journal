@@ -50,3 +50,27 @@ describe('app config privacy + OTA gate', () => {
     expect(appConfig.expo.runtimeVersion).toMatch(/^\d+\.0\.0$/);
   });
 });
+
+describe('iPad support (specs/2026-11-12-ipad-support)', () => {
+  // An iPhone-only build runs on iPad in compatibility mode, where the
+  // keyboard frame and window size disagree and the keyboard covers inputs.
+  it('ships as a universal iOS app', () => {
+    expect(appConfig.expo.ios?.supportsTablet).toBe(true);
+  });
+
+  // R2: iPad multitasking (Split View, Stage Manager) needs no full-screen
+  // requirement. Prebuild forces all four ~ipad orientations whenever
+  // multitasking is on, so `orientation` pins the iPhone list, not iPad's.
+  it('stays multitasking-compatible (R2)', () => {
+    expect(appConfig.expo.orientation).toBe('default');
+    expect(appConfig.expo.ios?.requireFullScreen).not.toBe(true);
+    expect(appConfig.expo.ios?.infoPlist?.UIRequiresFullScreen).not.toBe(true);
+  });
+
+  // R3: universal iOS is a native change, so it ships as a MAJOR (9.0.0).
+  // Assert the floor, not the exact value, so later MAJORs don't break this.
+  it('ships on a 9.x-or-later runtime (R3)', () => {
+    const major = Number(appConfig.expo.runtimeVersion.split('.')[0]);
+    expect(major).toBeGreaterThanOrEqual(9);
+  });
+});

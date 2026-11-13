@@ -2,7 +2,7 @@
   "expo": {
     "name": "Curated Journal",
     "slug": "curated-journal",
-    "version": "8.2.0",
+    "version": "9.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "cur",
@@ -10,6 +10,7 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.equationalapplicationsllc.curatedjournal",
+      "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
       }
