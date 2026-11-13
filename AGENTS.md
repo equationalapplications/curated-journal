@@ -73,6 +73,13 @@ workflow section below).
   draft until implemented; `plan.md` + `LEDGER.md` are transient
   scaffolding deleted in the same-PR cleanup commit — never a separate
   cleanup PR, never written after a merge.
+- **On-device checks never block.** "Implemented" means the code is
+  complete and automated verification (typecheck, lint, tests) passes.
+  Manual and on-device checks (iPad, simulator, physical phones) are the
+  user's to run when they choose: list them unchecked in the spec's
+  Verification section and the PR's test plan, but never hold the status
+  line, un-drafting, or the cleanup commit on them, and never report
+  them as a blocker.
 - **INTENT.md is static** — not a status ledger (Kurt ruling 2026-11-04):
   no Built/Planned status lines, no delivery progress. Implementation
   status lives in the spec's status line and LEDGER while in flight, and
