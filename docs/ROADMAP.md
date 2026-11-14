@@ -1,6 +1,6 @@
 # ROADMAP — what gets built, in what order
 
-> **ROADMAP.md** · v1.0 · 2026-10-28 ·
+> **ROADMAP.md** · v1.1 · 2026-11-13 ·
 > Authority: derived from [INTENT.md](../INTENT.md) — the fourteen-rule
 > charter — and the live state of this repository on the date above
 > (`main` at `3fd45cf`, version 4.0.1, Expo SDK 58). Every step below
@@ -17,6 +17,11 @@
 > step costs in version terms), and from what the family's other projects
 > need from this one. It contains no project dates. The two dates in the
 > standing items are a vendor's schedule, not ours.
+>
+> v1.1 amendment (2026-11-13): adds Track C and Step 8, notes as engine
+> sources, as a PLANNED step (owner ruling, 2026-11-13). No order change
+> to Steps 1 through 7. Nothing else in this file was re-verified on
+> this date; the live-state check for the rest stays 2026-10-28.
 
 Curated Journal is a journal that works with no network, runs its model
 on the phone, and keeps the user's knowledge on the device unless the
@@ -294,6 +299,39 @@ permissions (Bluetooth, local network), which starts a new runtime
 island. It rides the release train in full. Rule 14's status line
 changes in the same pull request.
 
+## Track C — journal notes as engine sources (rules 3 and 8)
+
+Today every saved note goes through the wiki engine's `ingestDocument()`,
+which has the on-device model turn the note into facts before the note
+can be found. The engine is planned to gain a source store: text kept as
+it is, indexed, and searched with no model call (`expo-llm-wiki`
+`docs/ROADMAP.md`, step 4). This track is independent of Tracks A and B.
+
+### Step 8 — Notes as engine sources — PLANNED
+
+Move the journal's save path to the engine's source store once it
+exists. A saved note is then findable at once, with no model run on the
+phone, and the facts the librarian writes point back to the note they
+came from.
+
+The spec must say what happens to notes already ingested; whether and
+when the model still extracts facts from a note; that citation chips
+still scroll to the source note (rule 8); that the note text stays on
+the device, in the engine's own tables (rule 3); and that export and
+import carry the sources.
+
+*Gate:* the engine release that ships the source store; then this
+repository's spec; then the engine bump through the standing
+dependency gate. It does not wait on a privacy mode, because nothing
+leaves the device.
+
+*Why here:* it waits only on the engine. It is listed now so that nobody
+builds a second note store beside the engine in the meantime; rule 3
+gives knowledge one storage owner.
+
+*Version cost:* MINOR if the engine bump is JS/TS only, which the spec
+must confirm; MAJOR if it touches a native surface.
+
 ## Exploratory — named so nobody builds them by accident
 
 These carry no step number and no commitment. Each would need its own
@@ -427,6 +465,7 @@ prepared for this draft on 2026-10-28; "charter" is INTENT.md.
 | Step 5 — build sync | Rules 13, 10 | §2, §4 (item 3) |
 | Step 6 — pairing spec | Rules 14, 11, 12, 13, 5 | §3 (phone-side brain, transport, liveness, index provenance, CJ-side consequences), §4 (item 4) |
 | Step 7 — build pairing | Rules 14, 10 | §3 (MAJOR, cert decision), §4 (item 4) |
+| Step 8 — notes as engine sources | Rules 3, 8 | — (owner ruling, 2026-11-13; engine roadmap step 4) |
 | Exploratory — automatic update check | Rules 9, 11 | §1 (rule 12 note) |
 | Exploratory — cloud calling a hosted model | Rule 2 | §2 (BYOK shipped) |
 | Exploratory — ontology editor | Rule 7; out-of-scope "hand-curated ontology editor" | — |
