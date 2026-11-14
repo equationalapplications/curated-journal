@@ -1,9 +1,10 @@
 # ROADMAP — what gets built, in what order
 
-> **ROADMAP.md** · v1.1 · 2026-11-13 ·
+> **ROADMAP.md** · v1.2 · 2026-11-14 ·
 > Authority: derived from [INTENT.md](../INTENT.md) — the fourteen-rule
-> charter — and the live state of this repository on the date above
-> (`main` at `3fd45cf`, version 4.0.1, Expo SDK 58). Every step below
+> charter — and the live state of this repository as of 2026-10-28
+> (`main` at `3fd45cf`, version 4.0.1, Expo SDK 58; the date above is
+> this amendment's date). Every step below
 > rests on a numbered rule; the Grounding map at the end says which. If
 > this file and INTENT.md disagree, INTENT.md wins on intent and this
 > file is wrong until amended. Roadmaps rot; this one is checked against
@@ -22,11 +23,17 @@
 > sources, as a PLANNED step (owner ruling, 2026-11-13). No order change
 > to Steps 1 through 7. Nothing else in this file was re-verified on
 > this date; the live-state check for the rest stays 2026-10-28.
+>
+> v1.2 amendment (2026-11-14): Track C and Step 8 record the engine's
+> scope ruling of 2026-11-14 (the store only) and what a review of this
+> repository found on that date. No order change. Nothing else in this
+> file was re-verified on this date; the live-state check for the rest
+> stays 2026-10-28.
 
 Curated Journal is a journal that works with no network, runs its model
 on the phone, and keeps the user's knowledge on the device unless the
-on the device unless the user says otherwise. Rules 1 through 9 of the
-charter are built; rule 10 is partly built (the update delivery path has
+user says otherwise. Rules 1 through 9 of the charter are built; rule 10
+is partly built (the update delivery path has
 never been exercised on a device, and no rollback drill has run). Rules
 11 through 14 — privacy modes, step-by-step unlocks, sovereign sync, and
 the phone side of Synapse Core — are decided but not in the code. This
@@ -305,7 +312,10 @@ Today every saved note goes through the wiki engine's `ingestDocument()`,
 which has the on-device model turn the note into facts before the note
 can be found. The engine is planned to gain a source store: text kept as
 it is, indexed, and searched with no model call (`expo-llm-wiki`
-`docs/ROADMAP.md`, step 4). This track is independent of Tracks A and B.
+`docs/ROADMAP.md`, step 4, tracked as
+[equationalapplications/expo-llm-wiki#390](https://github.com/equationalapplications/expo-llm-wiki/issues/390)).
+The engine's first three steps have shipped (as of 2026-11-14), so the
+store is its next step. This track is independent of Tracks A and B.
 
 ### Step 8 — Notes as engine sources — PLANNED
 
@@ -314,11 +324,27 @@ exists. A saved note is then findable at once, with no model run on the
 phone, and the facts the librarian writes point back to the note they
 came from.
 
+*Engine scope (owner ruling, 2026-11-14):* the store only. The engine
+keeps and searches a note's text, and `ingestDocument()` does not
+change. The engine will not extract facts on its own; whether and when
+the journal still calls `ingestDocument()` stays this step's spec's
+decision. The facts that call writes point to the note by its
+`sourceRef`, as today.
+
 The spec must say what happens to notes already ingested; whether and
 when the model still extracts facts from a note; that citation chips
 still scroll to the source note (rule 8); that the note text stays on
 the device, in the engine's own tables (rule 3); and that export and
 import carry the sources.
+
+A review of this repository on 2026-11-14 adds three things the spec
+must cover. The app keeps no copy of a note's text today, so the notes
+list is a read of facts (`src/hooks/useJournalMemoryRead.ts`). There is
+no edit and no delete of a note. And the app's own chunked import
+copies only facts, edges, events and tasks
+(`src/lib/chunkedImportDump.ts`), so it would drop sources. Until this
+step ships, a note can be lost when the model returns no facts
+([#112](https://github.com/equationalapplications/curated-journal/issues/112)).
 
 *Gate:* the engine release that ships the source store; then this
 repository's spec; then the engine bump through the standing
@@ -465,7 +491,7 @@ prepared for this draft on 2026-10-28; "charter" is INTENT.md.
 | Step 5 — build sync | Rules 13, 10 | §2, §4 (item 3) |
 | Step 6 — pairing spec | Rules 14, 11, 12, 13, 5 | §3 (phone-side brain, transport, liveness, index provenance, CJ-side consequences), §4 (item 4) |
 | Step 7 — build pairing | Rules 14, 10 | §3 (MAJOR, cert decision), §4 (item 4) |
-| Step 8 — notes as engine sources | Rules 3, 8 | — (owner ruling, 2026-11-13; engine roadmap step 4) |
+| Step 8 — notes as engine sources | Rules 3, 8 | — (owner ruling, 2026-11-13; engine roadmap step 4, scope ruled 2026-11-14) |
 | Exploratory — automatic update check | Rules 9, 11 | §1 (rule 12 note) |
 | Exploratory — cloud calling a hosted model | Rule 2 | §2 (BYOK shipped) |
 | Exploratory — ontology editor | Rule 7; out-of-scope "hand-curated ontology editor" | — |
