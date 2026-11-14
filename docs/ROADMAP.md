@@ -2,8 +2,9 @@
 
 > **ROADMAP.md** · v1.2 · 2026-11-14 ·
 > Authority: derived from [INTENT.md](../INTENT.md) — the fourteen-rule
-> charter — and the live state of this repository on the date above
-> (`main` at `3fd45cf`, version 4.0.1, Expo SDK 58). Every step below
+charter — and the live state of this repository as of 2026-10-28
+(`main` at `3fd45cf`, version 4.0.1, Expo SDK 58; the date above is this
+amendment's date). Every step below
 > rests on a numbered rule; the Grounding map at the end says which. If
 > this file and INTENT.md disagree, INTENT.md wins on intent and this
 > file is wrong until amended. Roadmaps rot; this one is checked against
@@ -31,7 +32,7 @@
 
 Curated Journal is a journal that works with no network, runs its model
 on the phone, and keeps the user's knowledge on the device unless the
-on the device unless the user says otherwise. Rules 1 through 9 of the
+user says otherwise. Rules 1 through 9 of the
 charter are built; rule 10 is partly built (the update delivery path has
 never been exercised on a device, and no rollback drill has run). Rules
 11 through 14 — privacy modes, step-by-step unlocks, sovereign sync, and
@@ -313,7 +314,8 @@ can be found. The engine is planned to gain a source store: text kept as
 it is, indexed, and searched with no model call (`expo-llm-wiki`
 `docs/ROADMAP.md`, step 4, tracked as
 [equationalapplications/expo-llm-wiki#390](https://github.com/equationalapplications/expo-llm-wiki/issues/390)).
-The engine's first three steps have shipped, so the store is its next
+The engine's first three steps have shipped (as of 2026-11-14), so the
+store is its next
 step. This track is independent of Tracks A and B.
 
 ### Step 8 — Notes as engine sources — PLANNED
@@ -342,7 +344,8 @@ list is a read of facts (`src/hooks/useJournalMemoryRead.ts`). There is
 no edit and no delete of a note. And the app's own chunked import
 copies only facts, edges, events and tasks
 (`src/lib/chunkedImportDump.ts`), so it would drop sources. Until this
-step ships, a note can be lost when the model returns no facts (#112).
+step ships, a note can be lost when the model returns no facts
+([#112](https://github.com/equationalapplications/curated-journal/issues/112)).
 
 *Gate:* the engine release that ships the source store; then this
 repository's spec; then the engine bump through the standing
