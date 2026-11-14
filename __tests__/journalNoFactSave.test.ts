@@ -37,8 +37,8 @@ describe('a save whose ingest stores no facts (issue #112)', () => {
     await wiki.setup();
     const ingest = createJournalIngest(wiki);
 
-    const result = await ingest(ENTITY, note);
-    expect(result).toBeUndefined(); // must reject; see spec
+    // Reject, so the queue keeps the entry as failed (RETRY/DISCARD).
+    await expect(ingest(ENTITY, note)).rejects.toThrow(/no facts/i);
   });
 
   it('still succeeds when the model returns facts', async () => {
@@ -49,5 +49,24 @@ describe('a save whose ingest stores no facts (issue #112)', () => {
     const result = await ingest(ENTITY, note);
     expect(result.failedChunks).toBe(0);
     expect(result.ingestedChunks).toBeGreaterThan(0);
+  });
+
+  it('does not guard a duplicate save: already-saved content stays a success', async () => {
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: goodLlm });
+    await wiki.setup();
+    const ingest = createJournalIngest(wiki);
+
+    // First save stores one fact under journal://1.
+    const first = await ingest(ENTITY, note);
+    expect(first.failedChunks).toBe(0);
+
+    // Same content, empty-facts model, fresh sourceRef: the engine reports
+    // duplicateOf before any chunk runs, so the guard must not fire.
+    const second = await ingest(ENTITY, {
+      ...note,
+      sourceRef: 'journal://2',
+    });
+    expect(second.duplicateOf).toEqual(expect.any(String));
+    expect(second.ingestedChunks).toBe(0);
   });
 });

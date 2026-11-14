@@ -35,11 +35,11 @@ Add a stored-facts guard to `createJournalIngest` in `src/lib/journalIngest.ts`:
 
 1. Call `wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' })` as today.
 2. If the result carries `duplicateOf`, the content was already saved. Return the result unchanged.
-3. Otherwise read back the fresh sourceRef with `wiki.listSourceRefs(entityId)` and find the row for `params.sourceRef`.
-4. If that row's `factCount` is 0, throw an `Error` whose message names the cause ("the model stored no facts from this note — try saving again"). The queue keeps the entry, marks it `failed`, and shows the error. The user can RETRY or DISCARD.
-5. If `factCount` is greater than 0, return the result unchanged.
+3. Otherwise read the save's content back with `wiki.listSourceRefs(entityId)` and find the row whose `sourceHash` equals `params.sourceHash`.
+4. If no such row exists, or its `factCount` is 0, throw an `Error` whose message names the cause ("The model stored no facts from this note. Try saving again."). The queue keeps the entry, marks it `failed`, and shows the error. The user can RETRY or DISCARD.
+5. Otherwise return the result unchanged.
 
-`listSourceRefs` is a live API on `WikiMemory` (`@equationalapplications/core-llm-wiki`). It returns one row per live sourceRef with a `factCount`. The readback is one query per save.
+The readback matches by `sourceHash`, not by `sourceRef`. The engine normalizes the stored spelling of a sourceRef (it stores `journal://<n>` with the scheme stripped), and that normalization is not a callable rule, so a raw-ref match would break. The hash round-trips verbatim. `listSourceRefs` is a live API on `WikiMemory` (`@equationalapplications/core-llm-wiki`). It returns one row per live sourceRef with a `factCount`. The readback is one query per save.
 
 The `sourceRef` is unique per save (`journal://<time>`), so the readback sees only this save's facts.
 
