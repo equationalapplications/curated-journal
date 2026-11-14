@@ -34,10 +34,12 @@ The engine's result (`IngestDocumentResult`) reports chunk counts only. It does 
 Add a stored-facts guard to `createJournalIngest` in `src/lib/journalIngest.ts`:
 
 1. Call `wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' })` as today.
-2. If the result carries `duplicateOf`, the content was already saved. Return the result unchanged.
-3. Otherwise read the save's content back with `wiki.listSourceRefs(entityId)` and find the row whose `sourceHash` equals `params.sourceHash`.
-4. If no such row exists, or its `factCount` is 0, throw an `Error` whose message names the cause ("The model stored no facts from this note. Try saving again."). The queue keeps the entry, marks it `failed`, and shows the error. The user can RETRY or DISCARD.
-5. Otherwise return the result unchanged.
+2. Read the save's content back with `wiki.listSourceRefs(entityId)` and find the row whose `sourceHash` equals `params.sourceHash`.
+3. If that row exists and its `factCount` is greater than 0, return the result unchanged. This also covers a duplicate of a good save: `duplicateOf` alone is NOT success.
+4. If the readback found no facts but the result carries `duplicateOf`, a factless save already claimed this hash under the canonical ref. Re-ingest once under `sourceRef: result.duplicateOf` — the engine never reports the incoming ref as its own duplicate, so the model runs again and can store the note. If the readback then finds facts, return that result.
+5. Otherwise throw an `Error` whose message names the cause ("The model stored no facts from this note. Try saving again."). The queue keeps the entry, marks it `failed`, and shows the error. The user can RETRY or DISCARD.
+
+Why `duplicateOf` is not success: the engine writes the hash index during every ingest, including one that stored no facts. A RETRY of a factless save therefore reaches the duplicate path with nothing live under the hash; accepting it would drop the note silently — the exact loss this guard exists to stop. Found by the Tier-3 review of this spec's implementation (round 1, BLOCKER 1).
 
 The readback matches by `sourceHash`, not by `sourceRef`. The engine normalizes the stored spelling of a sourceRef (it stores `journal://<n>` with the scheme stripped), and that normalization is not a callable rule, so a raw-ref match would break. The hash round-trips verbatim. `listSourceRefs` is a live API on `WikiMemory` (`@equationalapplications/core-llm-wiki`). It returns one row per live sourceRef with a `factCount`. The readback is one query per save.
 
@@ -45,23 +47,27 @@ The `sourceRef` is unique per save (`journal://<time>`), so the readback sees on
 
 ## Files touched
 
-- `src/lib/journalIngest.ts` — the guard.
-- `__tests__/journalNoFactSave.test.ts` — reproduction tests (already on the branch, one RED).
+- `src/lib/journalIngest.ts` — the guard, including the duplicate re-ingest branch.
+- `__tests__/journalNoFactSave.test.ts` — reproduction and retry tests (one RED before the fix).
+- `__tests__/journalSaveWarning.test.tsx`, `__tests__/journalBackgroundSave.test.tsx` — the queue component stubs answer the readback with one stored fact; they always pass the guard, so the throw path is exercised only by the real-engine tests.
 - `package.json`, `app.json`, `package-lock.json` — version 9.1.1 → 9.1.2.
 - `specs/2026-11-14-no-fact-save-guard/` — this folder.
 
 ## Test plan
 
-1. `__tests__/journalNoFactSave.test.ts` "fails the save when the model returns no facts" flips to: `await expect(ingest(ENTITY, note)).rejects.toThrow(/no facts/i)`. It is RED now and must pass after the fix.
+1. `__tests__/journalNoFactSave.test.ts` "fails the save when the model returns no facts": `await expect(ingest(ENTITY, note)).rejects.toThrow(/no facts/i)`. It is RED before the fix and must pass after.
 2. The same file's "still succeeds when the model returns facts" stays green (control).
-3. `__tests__/journalDuplicateSave.test.ts` stays green: a duplicate save carries `duplicateOf` and skips the guard.
-4. Full `npx jest` suite green; `npx tsc --noEmit` clean.
+3. "does not guard a duplicate of a good save" stays green: a duplicate save with live facts under the hash succeeds.
+4. "recovers on RETRY": factless save rejects, then a good model run with a fresh ref and the same hash stores the note (exercises the duplicate re-ingest branch).
+5. "rejects a RETRY that still stores no facts": a second factless attempt rejects instead of accepting the duplicate.
+6. `__tests__/journalDuplicateSave.test.ts` stays green: a duplicate save carries `duplicateOf` with live facts and skips the guard.
+7. Full `npx jest` suite green; `npx tsc --noEmit` clean.
 
 ## Rejected alternatives
 
 - Engine-side `factsStored` field on `IngestDocumentResult`: a cross-repo engine change, gated by the 14-day dependency gate, and obsolete once roadmap Step 8 ships the engine's source store. The in-app readback uses an API that ships today.
 - Guard inside the queue machine: the machine holds no `wiki` handle and would need a new input contract for a readback. The ingest binding already owns engine fidelity.
-- Wait for Step 8 without a guard: user data loss stays live until the engine ships the store. The guard is cheap and survives Step 8 unchanged (with the store, a note is always findable, so the guard never fires).
+- Wait for Step 8 without a guard: user data loss stays live until the engine ships the store. The guard is cheap and survives Step 8 (with the store, a note is always findable, so the guard never fires).
 
 ## INTENT alignment
 
