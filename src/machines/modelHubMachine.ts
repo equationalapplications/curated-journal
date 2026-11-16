@@ -50,6 +50,8 @@ export type ModelHubApi = {
     pauseState: DownloadPauseStateRecord | null;
   }) => Promise<void>;
   clearDownloadState: () => Promise<void>;
+  /** The saved download row's model id, or null when there is none. May reject. */
+  readDownloadModelId: () => Promise<CuratedModelId | null>;
   setModelPath: (model: CuratedModel) => Promise<void>;
   retireCurrentModel: () => Promise<RetireOutcome>;
   deleteModelFile: (path: string) => Promise<void>;

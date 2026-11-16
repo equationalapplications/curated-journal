@@ -7,8 +7,11 @@ jest.mock('@/hooks/use-color-scheme', () => ({
 
 const mockSend = jest.fn();
 const mockClearRow = jest.fn();
+const mockReadRow = jest.fn();
 jest.mock('@/hooks/useModelHub', () => ({
-  useModelHub: () => ({ send: mockSend, stateValue: 'customImport', clearDownloadState: mockClearRow }),
+  useModelHub: () => ({ send: mockSend, stateValue: 'customImport', clearDownloadState: mockClearRow,
+    readDownloadModelId: () => mockReadRow(),
+  }),
 }));
 
 jest.mock('@/contexts/ModelHubCompletionContext', () => ({
@@ -105,6 +108,7 @@ describe('model-hub custom import', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockOrder.length = 0;
+    mockReadRow.mockResolvedValue(null);
     mockSmokeTest.mockResolvedValue({ ok: true });
     mockClearRow.mockImplementation(async () => {
       mockOrder.push('clear-row');
@@ -257,5 +261,60 @@ describe('model-hub custom import', () => {
     await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
     const dest = (mockCopy.mock.calls[0] as [string, string])[1];
     expect(mockDelete).toHaveBeenCalledWith(dest);
+  });
+
+  describe('with a saved download row for model A', () => {
+    beforeEach(() => {
+      mockReadRow.mockResolvedValue('fast-light');
+      seedInstalledModel('file:///documents/old.gguf');
+      pickFile('fresh.gguf');
+    });
+
+    it('runs the pre-copy sweep keeping the saved download file', async () => {
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalled());
+      expect(mockDeleteOrphans.mock.calls[0][0]).toEqual({
+        keepModelId: 'fast-light',
+        currentModelPath: 'file:///documents/old.gguf',
+      });
+    });
+
+    it('leaves the file and row untouched when the smoke test fails', async () => {
+      mockSmokeTest.mockResolvedValue({ ok: false });
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
+      expect(mockDeleteOrphans).toHaveBeenCalledTimes(1);
+      expect(mockDeleteOrphans.mock.calls[0][0].keepModelId).toBe('fast-light');
+      expect(mockClearRow).not.toHaveBeenCalled();
+    });
+
+    it('leaves the file and row untouched when the copy fails', async () => {
+      mockCopy.mockImplementationOnce(() => {
+        throw new Error('disk full');
+      });
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_FAILED' })));
+      expect(mockDeleteOrphans).toHaveBeenCalledTimes(1);
+      expect(mockDeleteOrphans.mock.calls[0][0].keepModelId).toBe('fast-light');
+      expect(mockClearRow).not.toHaveBeenCalled();
+    });
+
+    it('removes the file and clears the row once the import succeeds', async () => {
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));
+      expect(mockClearRow).toHaveBeenCalled();
+      expect(mockDeleteOrphans).toHaveBeenCalledTimes(2);
+      expect(mockDeleteOrphans.mock.calls[1][0]).toEqual({
+        keepModelId: null,
+        currentModelPath: 'file:///documents/old.gguf',
+      });
+    });
+
+    it('skips the sweep when the row cannot be read', async () => {
+      mockReadRow.mockRejectedValue(new Error('db down'));
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalled());
+      expect(mockDeleteOrphans).not.toHaveBeenCalled();
+    });
   });
 });

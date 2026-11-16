@@ -116,6 +116,7 @@ export function createModelHubApi(store: Store): ModelHubApi {
     },
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),
+    readDownloadModelId: async () => ((await store.get())?.modelId as CuratedModelId | null | undefined) ?? null,
     setModelPath: async (model) => {
       const file = new File(Paths.document, model.filename);
       const previousPath = await getModelPath();
@@ -186,6 +187,8 @@ type ModelHubContextValue = {
   displayName: string | null;
   /** Drops the saved download row (may reject). */
   clearDownloadState: () => Promise<void>;
+  /** The saved download row's model id, or null (may reject). */
+  readDownloadModelId: () => Promise<CuratedModelId | null>;
 };
 
 const ModelHubContext = createContext<ModelHubContextValue | null>(null);
@@ -252,6 +255,7 @@ export function ModelHubProvider({
     pausedReason,
     displayName,
     clearDownloadState: () => api.clearDownloadState(),
+    readDownloadModelId: () => api.readDownloadModelId(),
   };
 
   return <ModelHubContext.Provider value={value}>{children}</ModelHubContext.Provider>;

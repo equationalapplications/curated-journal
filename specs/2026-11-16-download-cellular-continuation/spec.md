@@ -41,6 +41,7 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 - `AwaitingWifi` (`src/components/model-hub/awaiting-wifi.tsx`) is the shared "Connect to Wi-Fi" message and Try again (`CHECK_NETWORK`), used by both screens.
 - `download.tsx` shows "Checking your connection…" in `confirmingNetwork` and `AwaitingWifi` in `awaitingWifi`, and any transition INTO `selecting` (not the initial `selecting` of a restore mount) dismisses to `/model-hub`, where the error banner and list show.
 - Unchanged: `SELECT_MODEL`, restored-paused entry, smoke states.
+- `src/app/model-hub/import.tsx` (#124): the pre-copy orphan sweep keeps the saved download row's model file (`keepModelId` = the row's model, read through a new `readDownloadModelId` on `ModelHubApi`/`useModelHub`; an unreadable row skips the sweep). After a SUCCESSFUL import (row cleared, identity committed) a second sweep with `keepModelId: null` removes that now-abandoned partial. A failed copy or smoke test leaves the file and the row consistent. Why: `LEAVE_WAITING` lets a paused row with resume data reach custom import; if the sweep deleted its Android partial first and the import then failed, a later Resume would `RandomAccessFile.setLength(offset)` on the missing file, zero-filling the head, and the size-only `verifyDownload` would pass a corrupt file into the smoke test.
 
 ## Rejected alternatives
 
@@ -57,6 +58,8 @@ Added for the review round: foreground decline stays paused with resume data and
 
 `__tests__/modelHubLayoutRestoreCellular.test.tsx`: renders the REAL `src/app/model-hub/_layout.tsx` (real machine and provider; store, network gate, download service and router mocked): restore over cellular shows the sheet exactly once, replaces to `/model-hub/download`, downloads nothing until confirm, then Confirm closes the sheet and starts the download; Cancel closes the sheet and starts nothing. Fails if `<CellularConfirm />` is removed from the layout.
 `__tests__/modelHubDownloadSmokeFailed.test.tsx` covers "Choose another model" landing on the list (via the transition effect).
+
+`__tests__/modelHubImport.test.tsx` (#124), with a saved row for model A: the sweep runs keeping A; a failed smoke test and a failed copy each leave A's file (no second sweep) and the row (no clear); a successful import clears the row and sweeps A's file with `keepModelId: null`; an unreadable row skips the sweep. The failure tests are RED on the previous head.
 
 The old "restore downloads without a network check" test now asserts the check runs. RED on main, GREEN after.
 
