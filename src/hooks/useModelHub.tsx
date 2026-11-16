@@ -113,10 +113,13 @@ export function createModelHubApi(store: Store): ModelHubApi {
         return;
       }
       // A surviving paused row owns a partial that a later Resume needs; the
-      // caller's keep id can be stale when its row clear failed. Unknown row: skip.
+      // caller's keep id can be stale when its row clear failed. Only paused rows
+      // restore with resume data (a failed row is never restored), so only they
+      // spare their file. Unknown row: skip.
       let rowModelId: CuratedModelId | null;
       try {
-        rowModelId = ((await store.get())?.modelId as CuratedModelId | null | undefined) ?? null;
+        const row = await store.get();
+        rowModelId = row?.status === 'paused' ? ((row.modelId as CuratedModelId | null | undefined) ?? null) : null;
       } catch (cause) {
         console.warn('[model-hub] skipped orphan cleanup: download row unreadable', cause);
         return;

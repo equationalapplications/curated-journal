@@ -36,6 +36,16 @@ describe('deleteOrphanedCuratedModelFiles', () => {
     expect(mockDeleted).toEqual([]);
   });
 
+  it('alsoKeepModelId spares a second model when keep is a different one', () => {
+    deleteOrphanedCuratedModelFiles({ keepModelId: 'fast-light', alsoKeepModelId: 'smarter-slower', currentModelPath: null });
+    expect(mockDeleted).toEqual([]);
+  });
+
+  it('alsoKeepModelId spares its model when keep is null', () => {
+    deleteOrphanedCuratedModelFiles({ keepModelId: null, alsoKeepModelId: 'smarter-slower', currentModelPath: null });
+    expect(mockDeleted).toEqual([uriOf('fast-light')]);
+  });
+
   it('never propagates a delete failure', () => {
     mockThrow = true;
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});

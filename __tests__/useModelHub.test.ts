@@ -186,7 +186,7 @@ describe('createModelHubApi memory and orphan wiring', () => {
     });
   });
 
-  it('deleteOrphanedModelFiles also keeps the saved row model', async () => {
+  it('deleteOrphanedModelFiles also keeps a paused row model', async () => {
     jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
     jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
     const store = makeStore();
@@ -196,6 +196,20 @@ describe('createModelHubApi memory and orphan wiring', () => {
     expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
       keepModelId: 'fast-light',
       alsoKeepModelId: 'smarter-slower',
+      currentModelPath: null,
+    });
+  });
+
+  it('deleteOrphanedModelFiles does not spare a failed row model', async () => {
+    jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
+    jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
+    const store = makeStore();
+    store.get.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'failed', pauseState: null } as never);
+    const api = createModelHubApi(store as never);
+    await api.deleteOrphanedModelFiles('fast-light');
+    expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
+      keepModelId: 'fast-light',
+      alsoKeepModelId: null,
       currentModelPath: null,
     });
   });

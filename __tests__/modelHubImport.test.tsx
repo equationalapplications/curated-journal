@@ -318,7 +318,7 @@ describe('model-hub custom import', () => {
       expect(mockDeleteOrphans.mock.calls[0][0].keepModelId).toBe('fast-light');
     });
 
-    it('skips the sweep when the row cannot be read', async () => {
+    it('skips the pre-copy sweep when the row cannot be read', async () => {
       mockReadRow.mockRejectedValue(new Error('db down'));
       await pressImport();
       await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));

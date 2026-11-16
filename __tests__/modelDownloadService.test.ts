@@ -111,17 +111,29 @@ describe('modelDownloadService', () => {
 
     it('starts fresh when the partial is missing', async () => {
       partial(false, 0);
-      await resumeDownload(pause, {});
+      await resumeDownload(pause, { onProgress: jest.fn() });
       expect(fromSavable).not.toHaveBeenCalled();
       expect(DownloadTask).toHaveBeenCalledTimes(1);
+      const ctor = jest.mocked(DownloadTask).mock.calls[0];
+      expect(ctor[0]).toBe(pause.url);
+      expect((ctor[1] as { uri: string }).uri).toBe(pause.fileUri);
+      const opts = ctor[2] as { headers?: Record<string, string>; onProgress?: unknown };
+      expect(opts.headers?.['User-Agent']).toMatch(/^CuratedJournal\//);
+      expect(opts.onProgress).toEqual(expect.any(Function));
     });
 
     it('deletes a short partial and starts fresh', async () => {
       const del = partial(true, 999);
-      await resumeDownload(pause, {});
+      await resumeDownload(pause, { onProgress: jest.fn() });
       expect(del).toHaveBeenCalled();
       expect(fromSavable).not.toHaveBeenCalled();
       expect(DownloadTask).toHaveBeenCalledTimes(1);
+      const ctor = jest.mocked(DownloadTask).mock.calls[0];
+      expect(ctor[0]).toBe(pause.url);
+      expect((ctor[1] as { uri: string }).uri).toBe(pause.fileUri);
+      const opts = ctor[2] as { headers?: Record<string, string>; onProgress?: unknown };
+      expect(opts.headers?.['User-Agent']).toMatch(/^CuratedJournal\//);
+      expect(opts.onProgress).toEqual(expect.any(Function));
     });
 
     it('starts fresh when the offset cannot be parsed', async () => {
