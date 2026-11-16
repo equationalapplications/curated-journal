@@ -472,7 +472,8 @@ requires.)*
   the abandoned download and, on success, replace the user's chosen
   model without a "Replace model" confirmation. Picking the same model
   keeps its progress: it resumes from the saved pause state, behind the
-  network check. R10i lists these as deletions the user causes.
+  network check (and, on Android, behind the sink guard, R10c). R10i
+  lists these as deletions the user causes.
 - **The prompt and the retry show on whichever hub screen is in
   front** (review, 2026-11-16). A restore lands on the download screen
   (`router.replace('/model-hub/download')` in `_layout.tsx`), with the
@@ -625,8 +626,9 @@ leaves a `downloading` row with no live transfer and no service record.
 So before the app treats such a row as unkeepable, it runs the plain
 file check on the file the row points at: `verifyDownload` in
 `src/services/modelDownloadService.ts` (the file exists and its size
-matches the manifest). From Settings it does not run the hub machine's
-restore states: the hub is closed and its actor is stopped. Settings
+matches the manifest; size only, #128). From Settings it does not run
+the hub machine's restore states: the hub is closed and its actor is
+stopped. Settings
 mounts no hub machine, and the dialog never waits on a model load. If
 the file is complete, the row is not unkeepable: no warning shows, and
 the smoke test runs later, when the hub next opens and its normal
@@ -803,7 +805,8 @@ Strict privacy can only pause a transfer the app can still reach.
   transfer from a closed hub, still running in the same process; with
   foreground sessions after Step 2, that is the only case), the
   restore stops it before the network check: it pauses it, and when the
-  pause yields resume data, that becomes the restore's pause state.
+  pause yields resume data, that becomes the restore's pause state (on
+  Android, its later resume passes the sink guard, R10c).
   Without this, a restore that the user declines on cellular (→
   `paused`) or leaves while offline (`LEAVE_WAITING` → `selecting`)
   would leave the old transfer running with no machine state that
@@ -833,7 +836,18 @@ it still shows as paused.
   put them, and the app cannot stop iOS from deleting them. If iOS
   has, a later Resume fails and the user can start over from there.
 - Android: the partial model file is kept, and its length is saved as
-  the resume data.
+  the resume data. Resuming onto it is guarded (PR #125's sink guard in
+  `resumeDownload`, `src/services/modelDownloadService.ts`): Android
+  resumes only when the resume data is a decimal byte offset and the
+  file at the pause state's `fileUri` exists with a size at least that
+  offset. Otherwise it deletes any short partial and starts a fresh
+  download of the same URL to the same file. Without the guard,
+  Android's native resume (`RandomAccessFile.setLength(offset)`) would
+  zero-fill a missing or short partial up to the offset, and the
+  size-only check would pass the corrupt file. So a kept partial that
+  has gone missing or short, by any path, makes the next Resume start
+  over cleanly. iOS is unchanged: it has no app-owned partial, and
+  `URLSession` moves only a completed temporary file into place.
 
 **d. Never resumes by itself.** This covers a download paused by
 strict privacy: not when the app comes back to the foreground, not
@@ -983,6 +997,15 @@ running. Then the app warns before the switch:
 happen on the device, so a download that has already finished
 continues through them in strict privacy.
 
+Neither is an integrity check. `verifyDownload` compares only the
+file's size with the manifest, and a smoke test that loads the model
+is not a reliable test for a corrupt file. Hash verification is
+[#128](https://github.com/equationalapplications/curated-journal/issues/128),
+an accepted limitation in PR #125. Wherever this spec says a file is
+"complete", it means its size matches (R8, R10f, R10j). What keeps an
+Android resume from producing a corrupt file of the right size is the
+sink guard (R10c), not the size check.
+
 **i. No deletion unless the user says so.** Switching modes, starting
 the app and opening the hub never delete a kept download (the Android
 partial file, or the iOS resume data). Only a choice the user makes
@@ -994,6 +1017,15 @@ deletes one:
   (with its resume data) when the user picks a model different from
   the row's model, silently today. Step 2 adds a confirmation first
   (below). Picking the same model keeps its progress;
+- **the hub's orphan sweep keeps a kept download** (PR #125's sweep
+  guard). Every sweep through the hub (`deleteOrphanedModelFiles` in
+  `createModelHubApi`, run when `checkingExisting` starts) reads the
+  saved row and also keeps the row's model file while the row is
+  `paused` (a `failed` row is never restored, so its file is not
+  kept). If the row cannot be read, the sweep is skipped. So a kept
+  partial survives a different-model pick whose row clear failed. A
+  partial left with no row at all is freed only by the next such
+  sweep (an accepted limitation in PR #125);
 - **a successful custom import abandons any kept download, in both
   modes** (lead ruling, 2026-11-16; the same principle as PR #125's
   different-model pick). Importing a model is the user's choice of a
@@ -1001,18 +1033,21 @@ deletes one:
   (PR #125: before the import commits the model's identity, and again
   on `IMPORT_SMOKE_OK`), so a later hub open has nothing to restore and
   cannot replace the imported model without a "Replace model"
-  confirmation. Its partial file goes with it, but only on success:
-  the import's orphan sweep (`deleteOrphanedCuratedModelFiles` in
-  `src/app/model-hub/import.tsx`) keeps the saved row's model file
-  until the import succeeds, then deletes it with the row (PR #125).
-  **Only a successful import abandons the download:** a failed import
-  leaves the row and the file intact. (Before that fix, the sweep ran
-  when the file was picked, deleted the kept partial, and left the row
-  behind; on Android a later Resume would then zero-fill and pass the
-  size check.) The sweep must never delete the **current** model's
-  file; #115 covers that guarantee. The import stays available in
-  strict (R11), so this applies there too. Apart from the
-  confirmations below, Step 2 does not change the import path.
+  confirmation. Its partial file goes with it, but only on success
+  (PR #125, `src/app/model-hub/import.tsx`): the sweep before the copy
+  keeps the saved row's model file (an unreadable row skips that
+  sweep), and only after a successful import, with the row cleared and
+  the identity committed, does a second sweep with no model kept
+  remove the abandoned partial. **Only a successful import abandons
+  the download:** a failed copy or smoke test leaves the row and the
+  file intact. (Before that fix, the sweep ran when the file was
+  picked, deleted the kept partial, and left the row behind; on Android
+  a later Resume would then zero-fill and pass the size check. The
+  sink guard, R10c, now backs this up.) The sweep must never delete
+  the **current** model's file; #115 covers that guarantee. The
+  import stays available in strict (R11), so this applies there too.
+  Apart from the confirmations below, Step 2 does not change the
+  import path.
 
   **Import and a different-model pick both ask first** (lead rulings,
   2026-11-16; the owner may overrule). Their basis is this item's own
@@ -1062,6 +1097,19 @@ writes from byte 0 (`prepareDestinationForWrite` with append off in
 2.4 GB model would be fetched again. A `paused` row whose pause state
 has resume data keeps today's restore (B2: no pause call, wait for
 Resume).
+
+R10j and PR #125's sink guard (R10c) both look at a file's size, but
+they answer different questions and never meet. R10j runs at restore,
+only for a `paused` row with **no** pause state, and asks whether the
+file is already complete (size only; #128). The sink guard runs at
+resume, only on Android and only **with** resume data, and asks
+whether the partial still covers the offset. A row with resume data
+never gets R10j's check, and a row without resume data never reaches
+`resumeDownload`. The "will start over" line (R10e) shows only for rows
+without resume data, where it is always true. A row with resume data
+whose Android partial has gone missing or short also starts over,
+through the sink guard, but the screen shows no such line for it in
+advance.
 
 PR #125's declined continuations meet R10j like this. A declined
 continuation keeps whatever pause state it had. When it had resume
@@ -1241,6 +1289,8 @@ plugins or permissions.
   (foreground resume, restore after a kill, manual Resume, Retry)
   through the network check, with the prompt on whichever hub screen is
   in front. It ships first, on its own. Step 2 keeps it in place (R6).
+- **#128**: hash verification of a downloaded model file. Until it
+  lands, "complete" means the size matches (R10h).
 - **#126 and #127**: a Wi-Fi drop after the check falling back to
   cellular silently (and Ethernet counted as offline), and a foreground
   return mid-pause dropping resume data. Both are pre-existing, found in
@@ -1393,10 +1443,23 @@ must pass):
       successful custom import and on picking a different model, and
       kept on picking the same model;
     - import: `__tests__/modelHubImport.test.tsx` (as PR #125 changes
-      it): the row is cleared before the import commits the model's
-      identity, and the sweep keeps the saved row's model file until
-      the import succeeds; a failed import leaves the row and the file
-      intact;
+      it): with a saved row for model A, the sweep before the copy
+      keeps A; a failed smoke test or copy leaves A's file and the row;
+      a successful import clears the row before the identity commit and
+      then sweeps A's file with no model kept; an unreadable row skips
+      the first sweep; a failing row clear runs only the first sweep;
+    - sink guard: the `describe('resumeDownload partial guard')` block
+      in `__tests__/modelDownloadService.test.ts`. On Android, a
+      missing partial, a partial shorter than the offset, or an
+      unparseable offset starts a fresh download with no
+      `fromSavable`; a partial at least the offset resumes as before;
+      iOS resumes unchanged with no partial;
+    - sweep guard: `__tests__/useModelHub.test.ts` (the hub's sweep
+      also keeps the saved row's model; an unreadable row skips the
+      sweep; `readDownloadModelId` returns the row's model, null for a
+      cleared row, and rejects on a read failure) and
+      `__tests__/modelFiles.test.ts` (`alsoKeepModelId` spares a second
+      model);
     - real layout: `__tests__/modelHubLayoutRestoreCellular.test.tsx`
       renders the **real** `src/app/model-hub/_layout.tsx` over a saved
       `downloading` row on cellular. It checks that the cellular sheet
@@ -1606,6 +1669,11 @@ status line, un-drafting or cleanup (AGENTS.md):
       model file is still in the app's documents folder. Kill and
       relaunch: the hub shows paused. Step out: still paused until
       Resume. Resume continues from where it stopped.
+- [ ] Android, sink guard (R10c): with a download paused, delete or
+      truncate its partial file (for example with `adb shell` and
+      `run-as`), then tap Resume. The download starts over from zero,
+      with no corrupt file, and the finished file passes the size check
+      and the smoke test.
 - [ ] iOS (iPhone): the same steps. Resume continues from where it
       stopped. If iOS deleted its temporary file in between, the
       download ends in a state the user can act on, with no error loop.
@@ -1729,9 +1797,10 @@ asked, with the answer and where the spec encodes it.
   in both modes. On success its row is cleared and its partial file is
   not preserved; a failed import leaves both intact (PR #125's sweep
   keeps the kept file until success). So #115 no longer stops the
-  import's cleanup from deleting a kept partial. #115's remaining scope is integrity verification of
-  imported files that match a curated model, and the orphan sweep never
-  deleting the current model's file. *Encoded in:* R10i, R11, Out of
+  import's cleanup from deleting a kept partial. #115's remaining scope
+  is integrity verification of imported files that match a curated
+  model, and the orphan sweep never deleting the current model's
+  file. *Encoded in:* R10i, R11, Out of
   scope.
 - **OQ-3 — Links inside notes, in the default mode.** *Asked:* In
   strict privacy they are blocked (R5). In the default mode, rule 9's
