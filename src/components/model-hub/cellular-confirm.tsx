@@ -9,7 +9,7 @@ import { useModelHub } from '@/hooks/useModelHub';
  */
 export function CellularConfirm() {
   const { send, stateValue } = useModelHub();
-  const { confirm, confirmElement } = useConfirmSheet();
+  const { confirm, dismiss, confirmElement } = useConfirmSheet();
 
   useEffect(() => {
     if (stateValue === 'cellularConfirm') {
@@ -21,8 +21,12 @@ export function CellularConfirm() {
           { text: 'Download over cellular', onPress: () => send({ type: 'CELLULAR_CONFIRM' }) },
         ],
       });
+    } else {
+      // The machine left the prompt (background, foreground on Wi-Fi...): a
+      // stale sheet must not outlive it.
+      dismiss();
     }
-  }, [stateValue, send, confirm]);
+  }, [stateValue, send, confirm, dismiss]);
 
   return confirmElement;
 }

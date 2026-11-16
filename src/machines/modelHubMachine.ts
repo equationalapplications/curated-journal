@@ -286,23 +286,41 @@ export const modelHubMachine = setup({
           {
             guard: ({ event, context }) => event.modelId === context.currentModelId,
             target: 'checkingExisting',
-            actions: assign({
-              modelId: ({ event }) => event.modelId,
-              error: null,
-              pauseState: null,
-              pausedReason: null,
-              continuation: false,
-            }),
+            actions: [
+              // Picking a different model abandons any saved continuation row
+              // (e.g. kept by LEAVE_WAITING): it would otherwise resume later.
+              ({ context, event }) => {
+                if (context.modelId && context.modelId !== event.modelId) {
+                  void context.api.clearDownloadState().catch(() => undefined);
+                }
+              },
+              assign({
+                modelId: ({ event }) => event.modelId,
+                error: null,
+                pauseState: null,
+                pausedReason: null,
+                continuation: false,
+              }),
+            ],
           },
           {
             target: 'retiringCurrent',
-            actions: assign({
-              modelId: ({ event }) => event.modelId,
-              error: null,
-              pauseState: null,
-              pausedReason: null,
-              continuation: false,
-            }),
+            actions: [
+              // Picking a different model abandons any saved continuation row
+              // (e.g. kept by LEAVE_WAITING): it would otherwise resume later.
+              ({ context, event }) => {
+                if (context.modelId && context.modelId !== event.modelId) {
+                  void context.api.clearDownloadState().catch(() => undefined);
+                }
+              },
+              assign({
+                modelId: ({ event }) => event.modelId,
+                error: null,
+                pauseState: null,
+                pausedReason: null,
+                continuation: false,
+              }),
+            ],
           },
         ],
         IMPORT_CUSTOM: { target: 'customImport' },
@@ -632,6 +650,8 @@ export const modelHubMachine = setup({
           target: 'complete',
           actions: ({ context, event }) => {
             if (event.retirePath) void context.api.deleteModelFile(event.retirePath);
+            // A saved row for an abandoned curated download must not outlive the import.
+            void context.api.clearDownloadState().catch(() => undefined);
           },
         },
         IMPORT_FAILED: {
