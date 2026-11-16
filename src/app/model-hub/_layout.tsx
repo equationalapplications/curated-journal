@@ -4,6 +4,7 @@ import { Stack, useRouter, type Href } from 'expo-router';
 import * as SQLite from 'expo-sqlite';
 import { createModelDownloadStateStore } from '@/services/modelDownloadState';
 import { createModelHubApi, ModelHubProvider, toRestoreState, type ModelHubRestoreState } from '@/hooks/useModelHub';
+import { CellularConfirm } from '@/components/model-hub/cellular-confirm';
 import { useTheme } from '@/hooks/use-theme';
 import { getModelId } from '@/lib/entityStorage';
 import { smokeTestSettled, type ModelHubApi } from '@/machines/modelHubMachine';
@@ -80,6 +81,7 @@ export default function ModelHubStackLayout() {
           }}
         />
       </Stack>
+      <CellularConfirm />
     </ModelHubProvider>
   );
 }

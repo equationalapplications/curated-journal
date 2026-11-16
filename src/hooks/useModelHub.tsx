@@ -112,10 +112,23 @@ export function createModelHubApi(store: Store): ModelHubApi {
         console.warn('[model-hub] skipped orphan cleanup: current model path unknown', cause);
         return;
       }
-      deleteOrphanedCuratedModelFiles({ keepModelId, currentModelPath });
+      // A surviving paused row owns a partial that a later Resume needs; the
+      // caller's keep id can be stale when its row clear failed. Only paused rows
+      // restore with resume data (a failed row is never restored), so only they
+      // spare their file. Unknown row: skip.
+      let rowModelId: CuratedModelId | null;
+      try {
+        const row = await store.get();
+        rowModelId = row?.status === 'paused' ? ((row.modelId as CuratedModelId | null | undefined) ?? null) : null;
+      } catch (cause) {
+        console.warn('[model-hub] skipped orphan cleanup: download row unreadable', cause);
+        return;
+      }
+      deleteOrphanedCuratedModelFiles({ keepModelId, alsoKeepModelId: rowModelId, currentModelPath });
     },
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),
+    readDownloadModelId: async () => ((await store.get())?.modelId as CuratedModelId | null | undefined) ?? null,
     setModelPath: async (model) => {
       const file = new File(Paths.document, model.filename);
       const previousPath = await getModelPath();
@@ -184,6 +197,10 @@ type ModelHubContextValue = {
   error: { code: string; message: string } | null;
   pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
+  /** Drops the saved download row (may reject). */
+  clearDownloadState: () => Promise<void>;
+  /** The saved download row's model id, or null (may reject). */
+  readDownloadModelId: () => Promise<CuratedModelId | null>;
 };
 
 const ModelHubContext = createContext<ModelHubContextValue | null>(null);
@@ -249,6 +266,8 @@ export function ModelHubProvider({
     error,
     pausedReason,
     displayName,
+    clearDownloadState: () => api.clearDownloadState(),
+    readDownloadModelId: () => api.readDownloadModelId(),
   };
 
   return <ModelHubContext.Provider value={value}>{children}</ModelHubContext.Provider>;
