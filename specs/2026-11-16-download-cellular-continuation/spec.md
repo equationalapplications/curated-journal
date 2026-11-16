@@ -1,6 +1,6 @@
 # Spec: continued downloads ask before using cellular data
 
-**Status: Implemented** — 2026-11-16 (PR #<n>, 9.2.1)
+**Status: Implemented** — 2026-11-16 (PR #125, 9.2.1)
 Approved by the owner: the ruling of 2026-11-16 on #124 served as spec approval (Reviewed); no further review gate.
 Date: 2026-11-16
 Version cost: PATCH (9.2.0 → 9.2.1) per `docs/VERSIONING.md`
