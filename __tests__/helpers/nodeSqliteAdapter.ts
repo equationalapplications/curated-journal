@@ -43,3 +43,39 @@ export function createNodeSqliteAdapter(): SQLiteAdapter {
   };
   return adapter;
 }
+
+/**
+ * Report failures the way expo-sqlite does on device: "Error code N: <message>"
+ * with N the PRIMARY result code (a unique violation is 19, not 2067).
+ * expo-sqlite never enables sqlite3_extended_result_codes (see
+ * ios/SQLiteResult.swift and android SQLiteError.h in expo-sqlite 58.0.14),
+ * so the message carries `sqlite3_errcode() & 0xff`. node:sqlite puts the
+ * extended code in `errcode` instead. `extendedCodes: true` emits the
+ * extended code, only for a test of what the engine would do if expo-sqlite
+ * ever enabled them.
+ */
+export function withExpoSqliteErrors(
+  inner: SQLiteAdapter,
+  options: { extendedCodes?: boolean } = {},
+): SQLiteAdapter {
+  const toExpoShape = (err: unknown) => {
+    const errcode = (err as { errcode?: unknown } | null)?.errcode;
+    return typeof errcode === 'number'
+      ? new Error(`Error code ${options.extendedCodes ? errcode : errcode & 0xff}: ${(err as Error).message}`)
+      : err;
+  };
+  const wrapped: SQLiteAdapter = {
+    ...inner,
+    async runAsync(sql, params) {
+      try {
+        return await inner.runAsync(sql, params);
+      } catch (err) {
+        throw toExpoShape(err);
+      }
+    },
+    async withTransactionAsync(fn) {
+      return inner.withTransactionAsync(() => fn(wrapped));
+    },
+  };
+  return wrapped;
+}

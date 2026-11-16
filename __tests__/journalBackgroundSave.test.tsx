@@ -16,8 +16,17 @@ const mockIngest = jest.fn(
 );
 const mockRefetch = jest.fn();
 
+// The stored-facts guard (issue #112) reads the save back after ingest:
+// echo one stored fact under the hash the save carried.
+const mockListSourceRefs = jest.fn(async (_entityId: string) => {
+  const call = mockIngest.mock.calls.at(-1)?.[1] as { sourceHash: string } | undefined;
+  return [
+    { sourceRef: 'journal://stub', sourceHash: call?.sourceHash, factCount: 1, lastIngestedAt: 0 },
+  ];
+});
+
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
-  useWiki: () => ({ ingestDocument: mockIngest }),
+  useWiki: () => ({ ingestDocument: mockIngest, listSourceRefs: mockListSourceRefs }),
 }));
 
 jest.mock('expo-router', () => ({
