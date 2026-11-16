@@ -2,6 +2,7 @@
 
 Status: Implemented
 Amended 2026-11-16 after review: partial-ingest path.
+Amended 2026-11-16 (review round 4): the O10 row and helper description were rewritten to expo-sqlite's primary error code 19 (device behavior; refs engine issue #403), with two device O10 tests plus two extended-code engine tests.
 Amended 2026-11-16 (review round 3): the first readback counts the duplicate holder's facts (a re-save could wipe an earlier note); the guard is restated as invariants I1–I4 checked against every engine outcome; m4 and the readback cost corrected; error message covers an empty note; merged with main (engine 9.2.0), version 9.2.1.
 Spec approved by the owner 2026-11-16.
 Date: 2026-11-14
@@ -148,13 +149,15 @@ Mutation check: each mutation of `journalIngest.ts`, run against the file.
 | M8: second readback reads X instead of R | O6 MAJOR ×2, O8 (3) |
 | M9: re-ingest under X instead of R | O6 MAJOR ×2, O7, O8, O9 ×3, O10 factless winner, queue RETRY (9) |
 
+(Counts from the round-3 pass of 20 tests; the two round-4 O10 device tests add failures — e.g. a never-throw mutation now fails 14, re-verified in review round 5.)
+
 Some tests pin engine behavior and have no guard code of their own: O1 (control), O5 (the engine error propagates), O11 (the flag is ignored; it also fails under M4), and the normalization pin.
 
 ## Verification
 
 - [x] `npx tsc --noEmit` clean.
 - [x] `npm run lint`: 0 errors (30 pre-existing warnings, none in touched files).
-- [x] `npx jest --maxWorkers=2`: 68/68 suites, 515/515 tests.
+- [x] `npx jest --maxWorkers=2`: 68/68 suites, 517/517 tests.
 - [ ] On device (user, not blocking): save a note while the model returns no facts. The entry stays failed with Try again / Discard and the new message. Try again after switching to a model that extracts facts, and the note appears once.
 
 ## Rejected alternatives
