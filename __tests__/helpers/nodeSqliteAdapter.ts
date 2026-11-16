@@ -43,3 +43,32 @@ export function createNodeSqliteAdapter(): SQLiteAdapter {
   };
   return adapter;
 }
+
+/**
+ * Report constraint failures the way expo-sqlite does on device
+ * ("Error code 2067: …"). node:sqlite puts the code in `errcode` instead,
+ * which the engine's `extractSqliteCode` does not read, so without this a
+ * test cannot reach the engine's duplicate-hash race translation.
+ */
+export function withExpoSqliteErrors(inner: SQLiteAdapter): SQLiteAdapter {
+  const toExpoShape = (err: unknown) => {
+    const errcode = (err as { errcode?: unknown } | null)?.errcode;
+    return typeof errcode === 'number'
+      ? new Error(`Error code ${errcode}: ${(err as Error).message}`)
+      : err;
+  };
+  const wrapped: SQLiteAdapter = {
+    ...inner,
+    async runAsync(sql, params) {
+      try {
+        return await inner.runAsync(sql, params);
+      } catch (err) {
+        throw toExpoShape(err);
+      }
+    },
+    async withTransactionAsync(fn) {
+      return inner.withTransactionAsync(() => fn(wrapped));
+    },
+  };
+  return wrapped;
+}

@@ -15,82 +15,78 @@ export function normalizeJournalSourceRef(ref: string): string | null {
   return value === '' ? null : value;
 }
 
+/** Shown on the failed entry's "Save failed" sheet (buttons: Try again, Discard). */
+export const NO_FACTS_SAVE_ERROR =
+  'Nothing could be stored from this note. Try again, or discard it and write it again with more text.';
+
 /**
- * The journal's ingest call. Every save gets a fresh `journal://<time>`
- * sourceRef, so saving a note whose exact content already exists would put a
- * second live sourceRef on the same content hash, which the wiki's unique
- * index rejects ("UNIQUE constraint failed: …source_ref_index…"), failing the
- * save. `onDuplicateHash: 'skip'` checks first and returns the existing
- * sourceRef as `duplicateOf`: the content is already saved, so the save
- * succeeds without storing a second copy.
+ * The journal's ingest call, with the stored-facts guard (issue #112; spec
+ * `specs/2026-11-14-no-fact-save-guard/spec.md`, which holds the full
+ * outcome table).
  *
- * `useWikiIngest().execute` cannot pass ingest options, so this calls
- * `ingestDocument` directly.
+ * Every save gets a fresh `journal://<time>` sourceRef and ingests with
+ * `onDuplicateHash: 'skip'`: content that is already saved comes back as
+ * `duplicateOf` (the ref holding that hash) instead of failing the unique
+ * hash index. `useWikiIngest().execute` cannot pass ingest options, so this
+ * calls `ingestDocument` directly.
  *
- * Stored-facts guard (issue #112): the engine's result reports chunk counts
- * only, and a chunk whose reply parses with an empty `facts` list counts as
- * ingested. The app keeps no other copy of a note's text, so a clean result
- * can mean the note is gone. Every save is verified by readback: list the
- * entity's source refs and require a live fact under the save's hash OR the save's normalized ref (OR the canonical duplicate ref after a re-ingest).
- * Rejecting keeps the entry in the queue as failed (RETRY/DISCARD) instead
- * of dropping the text. Owner ruling 2026-11-14: forcing a manual discard
- * of a factless note is the intended UX until Step 8's source store lands.
+ * The engine's result reports chunk counts only, and a chunk whose reply
+ * parses with an empty `facts` list counts as ingested. The app keeps no
+ * other copy of a note's text, so the guard reads the engine back and
+ * decides from what is stored.
  *
- * The readback counts a live fact under the save's hash (compared
- * case-insensitively; the engine lowercases hashes) OR under the save's
- * normalized sourceRef. The second match matters: when some chunks fail and
- * others succeed, the engine stores the partial facts with a NULL
- * `source_hash` and no hash-index row, so only the ref identifies them. The
- * engine strips every character outside `[A-Za-z0-9._\- ]` from a stored
- * ref (so `journal://<n>` becomes `journal<n>`); `normalizeJournalSourceRef`
- * mirrors that rule, and a real-engine test pins it.
+ * Stored facts: live facts under the HOLDER (`duplicateOf` when the engine
+ * reported one, else this save's ref), plus live facts under any ref whose
+ * latest hash is this note's hash. The holder match is by ref because
+ * partial rows (some chunks failed) carry a NULL hash; the hash match covers
+ * imported rows, which carry the hash but no index entry. Hashes compare
+ * case-insensitively (the engine lowercases them).
  *
- * `duplicateOf` is NOT success by itself. The engine writes the hash index
- * during every ingest, including one that stored no facts, so a retry of a
- * factless save reaches the duplicate path with nothing live under the hash.
- * Accepting it would drop the note silently — the exact loss this guard
- * exists to stop. When the readback finds no facts but the engine reports a
- * duplicate, the save is re-ingested under the canonical ref (the engine
- * never reports the incoming ref as its own duplicate, so the model runs
- * again and can store facts this time). If the readback still finds no
- * facts, the save throws and the entry stays failed.
+ *   1. Ingest under this save's ref. Engine errors propagate.
+ *   2. Holder has stored facts → return the result (success or warning).
+ *   3. `duplicateOf` and nothing stored → an earlier save left the hash
+ *      indexed with no facts. Re-ingest once under that ref, then re-read.
+ *   4. Still nothing stored → throw; the queue keeps the entry as failed.
  *
- * Step 8 assumption: each save's sourceRef carries exactly one hash (a fresh
- * `journal://<time>` ref per save, never edited in place). If the store
- * later lets a ref carry a new hash of edited text, the readback — which
- * sees only each ref's latest hash and its live fact count — must be
- * revisited.
+ * Invariants:
+ *   I1 Never a destructive re-ingest: the only extra ingest is step 3, run
+ *      only after step 2's readback found no live facts under that ref, so
+ *      the engine's supersede step has nothing to delete.
+ *   I2 Never success without stored facts: every return follows a readback
+ *      that counted some.
+ *   I3 Never a rejection while the content has stored facts: the throw
+ *      follows a readback that counted none.
+ *   I4 RETRY never duplicates: a rejection means nothing is stored for the
+ *      content, so a RETRY stores the first copy.
+ *
+ * Assumes a journal ref only ever carries one note's text (a fresh ref per
+ * save, never edited in place). Step 8's note editing must revisit the
+ * holder match, which counts every live row under the ref.
  */
 export function createJournalIngest(wiki: WikiMemory): JournalSaveQueueInput['ingest'] {
   return async (entityId, params) => {
-    const liveFactCount = async (extraRef?: string): Promise<number> => {
-      const refs = await wiki.listSourceRefs(entityId);
-      const hash = params.sourceHash.toLowerCase();
-      const ref = normalizeJournalSourceRef(params.sourceRef);
-      const extra = extraRef == null ? null : normalizeJournalSourceRef(extraRef);
-      return refs
-        .filter(
-          (r) =>
-            (r.sourceHash != null && r.sourceHash.toLowerCase() === hash) ||
-            (ref != null && r.sourceRef === ref) ||
-            (extra != null && r.sourceRef === extra),
-        )
+    const hash = params.sourceHash.toLowerCase();
+    const storedFacts = async (holder: string): Promise<number> => {
+      const ref = normalizeJournalSourceRef(holder);
+      const rows = await wiki.listSourceRefs(entityId);
+      return rows
+        .filter((r) => r.sourceRef === ref || r.sourceHash?.toLowerCase() === hash)
         .reduce((n, r) => n + r.factCount, 0);
     };
 
-    const result = await wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' });
-    if ((await liveFactCount()) > 0) return result;
+    const first = await wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' });
+    if ((await storedFacts(first.duplicateOf ?? params.sourceRef)) > 0) return first;
 
-    if (result.duplicateOf) {
-      const retry = await wiki.ingestDocument(
+    if (first.duplicateOf) {
+      const canonical = first.duplicateOf;
+      const second = await wiki.ingestDocument(
         entityId,
-        { ...params, sourceRef: result.duplicateOf },
+        { ...params, sourceRef: canonical },
         { onDuplicateHash: 'skip' },
       );
-      // A partial re-ingest stores facts under the canonical ref with a NULL hash.
-      if ((await liveFactCount(result.duplicateOf)) > 0) return retry;
+      if ((await storedFacts(second.duplicateOf ?? canonical)) > 0) return second;
     }
 
-    throw new Error('The model stored no facts from this note. Try saving again.');
+    throw new Error(NO_FACTS_SAVE_ERROR);
   };
 }
