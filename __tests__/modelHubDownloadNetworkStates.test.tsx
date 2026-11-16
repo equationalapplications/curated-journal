@@ -82,12 +82,15 @@ describe('download screen network states', () => {
     mockState = 'confirmingNetwork';
     const screen = await render(<Hub />);
     expect(screen.getByText('Checking your connection…')).toBeTruthy();
+    expect(screen.getByText('Downloading your AI')).toBeTruthy();
+    expect(screen.queryByText('Setting up your AI')).toBeNull();
   });
 
   it('awaitingWifi shows Try again, which sends CHECK_NETWORK', async () => {
     mockState = 'awaitingWifi';
     const screen = await render(<Hub />);
     expect(screen.getByTestId('awaiting-wifi')).toBeTruthy();
+    expect(screen.getByText('Downloading your AI')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
     expect(mockSend).toHaveBeenCalledWith({ type: 'CHECK_NETWORK' });
   });

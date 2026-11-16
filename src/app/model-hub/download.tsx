@@ -102,10 +102,9 @@ export default function ModelHubDownloadScreen() {
   }, [stateValue, router]);
 
   const chooseAnother = () => {
+    // CHOOSE_ANOTHER always lands in `selecting`; the transition effect above
+    // then dismisses to the list (or onto it when a restore replaced it).
     send({ type: 'CHOOSE_ANOTHER' });
-    // Back to the list, or onto it when a restore replaced it: a plain back()
-    // there would leave the hub for whatever screen opened it.
-    router.dismissTo('/model-hub' as Href);
   };
 
   const oldest = samples.current[0];
@@ -117,8 +116,16 @@ export default function ModelHubDownloadScreen() {
   const etaSeconds = speedBps > 0 ? remainingBytes / speedBps : -1;
   const pct = progress.totalBytes > 0 ? Math.min(100, (progress.bytesWritten / progress.totalBytes) * 100) : null;
   const model = modelId ? getCuratedModel(modelId) : null;
-  // Restored or post-download states carry no live progress to show.
-  const downloadPhase = stateValue === 'downloading' || stateValue === 'paused' || stateValue === 'failed';
+  // Restored or post-download states carry no live progress to show. The
+  // network checks keep the download framing: a continued download is only
+  // being re-checked, not set up from scratch.
+  const downloadPhase =
+    stateValue === 'downloading' ||
+    stateValue === 'paused' ||
+    stateValue === 'failed' ||
+    stateValue === 'confirmingNetwork' ||
+    stateValue === 'cellularConfirm' ||
+    stateValue === 'awaitingWifi';
 
   return (
     <Screen>

@@ -41,7 +41,10 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 
 `__tests__/modelHubMachine.test.ts`: restore on cellular → `cellularConfirm`, no download until confirmed, then resumes from the saved pause state; restore on Wi-Fi → resumes from the saved pause state with no prompt; foreground resume on cellular → `cellularConfirm`, then resumes; foreground resume on Wi-Fi → resumes. Note: the machine test that restores a `resumeData` record under status `downloading` is synthetic (production persists no pause state there). The foreground Wi-Fi test also asserts `checkNetwork` ran.
 
-`__tests__/modelHubDownloadNetworkStates.test.tsx` (testID/role based): sheet visible once on `cellularConfirm` with both buttons sending CELLULAR_CONFIRM / CELLULAR_CANCEL; sheet renders once with list and download screens both mounted; checking line on `confirmingNetwork`; Try again sends CHECK_NETWORK on `awaitingWifi`; transition into `selecting` dismisses to `/model-hub`; initial `selecting` does not.
+`__tests__/modelHubDownloadNetworkStates.test.tsx` (testID/role based): sheet visible once on `cellularConfirm` with both buttons sending CELLULAR_CONFIRM / CELLULAR_CANCEL; sheet renders once with list and download screens both mounted; checking line on `confirmingNetwork`; Try again sends CHECK_NETWORK on `awaitingWifi`; transition into `selecting` dismisses to `/model-hub`; initial `selecting` does not; the download framing ("Downloading your AI") stays during `confirmingNetwork`/`awaitingWifi`.
+
+`__tests__/modelHubLayoutRestoreCellular.test.tsx`: renders the REAL `src/app/model-hub/_layout.tsx` (real machine and provider; store, network gate, download service and router mocked): restore over cellular shows the sheet exactly once, replaces to `/model-hub/download`, downloads nothing until confirm, then Confirm closes the sheet and starts the download; Cancel closes the sheet and starts nothing. Fails if `<CellularConfirm />` is removed from the layout.
+`__tests__/modelHubDownloadSmokeFailed.test.tsx` covers "Choose another model" landing on the list (via the transition effect).
 
 The old "restore downloads without a network check" test now asserts the check runs. RED on main, GREEN after.
 
