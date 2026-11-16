@@ -77,6 +77,27 @@ module.exports = defineConfig([
     },
   },
   {
+    // Notes must render through NoteMarkdown, which forces markdownRules (no
+    // remote image fetch, INTENT rule 9). Importing the library directly
+    // would silently bring back the default image rule.
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['src/components/NoteMarkdown.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react-native-markdown-display',
+              allowTypeImports: true,
+              message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     ignores: ["dist/*"],
   }
 ]);

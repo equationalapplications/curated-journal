@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { Fonts, Radius, Space, Type, tint, type Theme } from '@/constants/theme';
+import { Fonts, Radius, Space, Type, type Theme } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 const heading = (size: number, lineHeight: number, weight: '500' | '600', color: string) => ({
@@ -104,7 +104,8 @@ export function markdownStyles(theme: Theme) {
     link: { textDecorationLine: 'underline' as const, color: theme.primary },
     blocklink: { flex: 1, borderColor: theme.primary, borderBottomWidth: 1 },
 
-    image: { flex: 1, borderRadius: Radius.sm, backgroundColor: tint(theme.onSurface, 6) },
+    // Images are never rendered (see markdownRules); `image` styles the muted text placeholder.
+    image: { color: theme.onSurfaceVar, fontStyle: 'italic' as const },
 
     text: { color: theme.onSurface },
     textgroup: {},

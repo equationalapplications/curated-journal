@@ -1,5 +1,6 @@
 import { Image } from 'react-native';
 import { render } from '@testing-library/react-native';
+import { NoteMarkdown } from '@/components/NoteMarkdown';
 import { JournalPane } from '@/components/journal/JournalPane';
 import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
 import EntryScreen from '@/app/entry/[factId]';
@@ -39,8 +40,8 @@ function expectNoRemoteImage(screen: ReturnType<typeof render>, getSize: jest.Sp
   const imgs = ([] as Json[]).concat(...[tree].flat().map((t) => collectImages(t)));
   expect(imgs).toHaveLength(0);
   expect(screen.getAllByTestId('markdown-image-placeholder').length).toBeGreaterThanOrEqual(4);
-  expect(screen.queryByText(/https:\/\/example\.com\/b\.png/)).not.toBeNull();
-  expect(screen.queryByText(/https:\/\/example\.com\/a\.png/)).not.toBeNull();
+  expect(screen.queryByText('https://example.com/b.png', { exact: false })).not.toBeNull();
+  expect(screen.queryByText('https://example.com/a.png', { exact: false })).toBeNull();
   expect(getSize).not.toHaveBeenCalled();
   expect(prefetch).not.toHaveBeenCalled();
 }
@@ -68,5 +69,37 @@ describe('notes never load remote images (#118)', () => {
       getSize,
       prefetch,
     );
+  });
+});
+
+describe('image placeholder details', () => {
+  const longUrl = `https://example.com/${'a'.repeat(120)}.png`;
+  const md = [
+    '![d](data:image/png;base64,QUJDREVGRw==)',
+    `![long](${longUrl})`,
+    '[![linked](https://example.com/linked-src.png)](https://example.com/target)',
+    '![](https://example.com/noalt.png)',
+  ].join('\n\n');
+
+  it('shows only the media type for data: sources', async () => {
+    const s = await render(<NoteMarkdown>{md}</NoteMarkdown>);
+    expect(s.queryByText('(embedded image/png)', { exact: false })).not.toBeNull();
+    expect(s.queryByText('QUJDREVGRw', { exact: false })).toBeNull();
+    expect(s.queryByText('base64', { exact: false })).toBeNull();
+  });
+  it('truncates long sources to 80 chars with an ellipsis', async () => {
+    const s = await render(<NoteMarkdown>{md}</NoteMarkdown>);
+    expect(s.queryByText(`${longUrl.slice(0, 80)}…`, { exact: false })).not.toBeNull();
+    expect(s.queryByText(longUrl, { exact: false })).toBeNull();
+  });
+  it('omits the src when the image is inside a link', async () => {
+    const s = await render(<NoteMarkdown>{md}</NoteMarkdown>);
+    expect(s.queryByText('linked-src.png', { exact: false })).toBeNull();
+    expect(s.queryByText('[image not loaded: linked]', { exact: false })).not.toBeNull();
+  });
+  it('labels the placeholder for accessibility', async () => {
+    const s = await render(<NoteMarkdown>{md}</NoteMarkdown>);
+    expect(s.queryByLabelText('Image not loaded: d')).not.toBeNull();
+    expect(s.queryByLabelText('Image not loaded')).not.toBeNull();
   });
 });

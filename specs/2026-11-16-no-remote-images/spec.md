@@ -1,10 +1,9 @@
 # Spec: never load remote images inside notes
 
-**Status: Implemented** — 2026-11-16 (PR #120, 9.1.2)
-Approved by the owner: ruling of 2026-11-16 on #118 (behavior approved; no further review gate).
-The owner's ruling on #118 (2026-11-16) served as spec approval (Reviewed).
+**Status: Implemented** — 2026-11-16 (PR #120, 9.2.1)
+Approved by the owner: ruling of 2026-11-16 on #118 served as spec approval (Reviewed); no further review gate.
 Date: 2026-11-16
-Version cost: PATCH (9.1.1 → 9.1.2) per `docs/VERSIONING.md`
+Version cost: PATCH (9.2.0 → 9.2.1) per `docs/VERSIONING.md`
 Closes: #118
 
 ## Problem
@@ -23,8 +22,9 @@ RED on `main` (94296e7 plus the new test, fix not applied): `__tests__/markdownN
 
 ## Change
 
-- New `src/lib/markdownRules.tsx` exports one `markdownRules` override whose `image` rule never renders an `Image`. It renders a plain `Text` (testID `markdown-image-placeholder`): `[image: <alt>]` (or `[image]`) followed by the source as non-link text.
-- All three renderers pass `rules={markdownRules}`.
+- New `src/lib/markdownRules.tsx` exports one `markdownRules` override whose `image` rule never renders an `Image`. It renders a muted, italic plain `Text` (testID `markdown-image-placeholder`, `accessibilityLabel` `Image not loaded: <alt>` or `Image not loaded`): `[image not loaded: <alt>]` (or `[image not loaded]`) followed by the source as non-link text. A `data:` source shows only its media type, `(embedded image/png)`; any other source over 80 characters is truncated with an ellipsis; inside a link (`link`/`blocklink` parent) the source is omitted so the shown URL cannot differ from the tap target.
+- New `src/components/NoteMarkdown.tsx` wraps `react-native-markdown-display` and always passes `rules={markdownRules}`. All three renderers use `NoteMarkdown`.
+- ESLint `no-restricted-imports` (eslint.config.js) forbids importing `react-native-markdown-display` anywhere except `NoteMarkdown.tsx`, so a future renderer cannot silently bring back the default image rule.
 - Local sources: nothing in the app produces local image sources (notes are text; no attachments, no asset store). So ALL images are blocked, remote or not, with no scheme allowlist to get wrong (`http:`, `https:`, `//`, `data:`, `file:` and anything else alike).
 - Links stay unchanged (not auto-fetched; out of scope).
 
@@ -37,7 +37,7 @@ RED on `main` (94296e7 plus the new test, fix not applied): `__tests__/markdownN
 
 ## Tests
 
-`__tests__/markdownNoRemoteImages.test.tsx`: renders each of the three renderers with a note holding `![alt text](https://example.com/x.png)` and `![p](//example.com/y.png)`. Asserts the rendered tree holds no `Image`/`source` node (structural, per the jest-expo gotcha), that the `markdown-image-placeholder` is present, and that `Image.getSize` / `Image.prefetch` spies are never called. RED on main, GREEN after.
+`__tests__/markdownNoRemoteImages.test.tsx`: renders each of the three renderers with a note holding all four image forms (plain `![alt text](https://…)`, protocol-relative `![p](//…)`, linked `[![x](…)](…)`, reference-style `![y][r]`). Asserts the rendered tree holds no `Image`/`source` node (structural, per the jest-expo gotcha), that the placeholders are present, and that `Image.getSize` / `Image.prefetch` spies are never called. Further cases cover a `data:` source (media type only, no base64 shown), long-URL truncation, src omission inside a link, and the placeholder `accessibilityLabel`. RED on main, GREEN after.
 
 ## INTENT check
 

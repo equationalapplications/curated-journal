@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ScrollView, ScrollViewInstance, StyleSheet } from 'react-native';
 import type { MemoryBundle } from '@equationalapplications/core-llm-wiki';
-import Markdown from 'react-native-markdown-display';
-import { markdownRules } from '@/lib/markdownRules';
+import { NoteMarkdown } from '@/components/NoteMarkdown';
 import { ThemedText } from '@/components/themed-text';
 import { EmptyState } from '@/components/ui/states';
 import { useMarkdownStyles } from '@/components/ui/markdown-styles';
@@ -53,7 +52,7 @@ export function JournalPane({ facts }: JournalPaneProps) {
   return (
     <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       <ThemedText type="title">{title}</ThemedText>
-      <Markdown style={markdown} rules={markdownRules}>{body}</Markdown>
+      <NoteMarkdown style={markdown}>{body}</NoteMarkdown>
     </ScrollView>
   );
 }
