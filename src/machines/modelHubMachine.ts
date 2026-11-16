@@ -19,6 +19,7 @@ export type ModelHubMachineEvents =
   | { type: 'FAIL'; code: 'network' | 'disk-full' | 'unknown'; message: string }
   | { type: 'RETRY' }
   | { type: 'CHOOSE_ANOTHER' }
+  | { type: 'LEAVE_WAITING' }
   | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
   | { type: 'SET_DISPLAY_NAME'; displayName: string }
@@ -82,6 +83,10 @@ type Context = {
   pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
   smokeKilled: boolean;
+  /** The network check guards a continuation of an existing download (restore, resume, retry), not a fresh start. */
+  continuation: boolean;
+  /** Paused with no live download to pause (left the network check): the pause state is already the truth. */
+  idlePause: boolean;
 };
 
 export function smokeFailureMessage(displayName: string, memoryLikely: boolean): string {
@@ -216,10 +221,20 @@ export const modelHubMachine = setup({
           modelId: CuratedModelId | null;
           pausedReason: Context['pausedReason'];
           pauseState: DownloadPauseStateRecord | null;
+          idlePause: boolean;
         };
       }) => {
-        // A restored pause has no live download to pause, and its row is
-        // already persisted — hand back what was restored.
+        // No live download to pause. A pause from the network check persists
+        // the row as paused with the kept pause state; a restored pause's row
+        // is already persisted.
+        if (input.idlePause) {
+          await input.api.persistDownloadState({
+            modelId: input.modelId,
+            status: 'paused',
+            pauseState: input.pauseState,
+          });
+          return input.pauseState;
+        }
         if (input.pausedReason === 'restored') return input.pauseState;
         const pauseState = await input.api.pauseDownload();
         await input.api.persistDownloadState({ modelId: input.modelId, status: 'paused', pauseState });
@@ -258,6 +273,8 @@ export const modelHubMachine = setup({
     pausedReason: null,
     displayName: null,
     smokeKilled: false,
+    continuation: false,
+    idlePause: false,
   }),
   on: {
     SET_DISPLAY_NAME: { actions: assign({ displayName: ({ event }) => event.displayName }) },
@@ -274,6 +291,7 @@ export const modelHubMachine = setup({
               error: null,
               pauseState: null,
               pausedReason: null,
+              continuation: false,
             }),
           },
           {
@@ -283,6 +301,7 @@ export const modelHubMachine = setup({
               error: null,
               pauseState: null,
               pausedReason: null,
+              continuation: false,
             }),
           },
         ],
@@ -295,6 +314,7 @@ export const modelHubMachine = setup({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
               pausedReason: 'restored' as const,
+              idlePause: false,
               error: null,
             }),
           },
@@ -313,6 +333,7 @@ export const modelHubMachine = setup({
             actions: assign({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
+              continuation: true,
               error: null,
             }),
           },
@@ -380,6 +401,14 @@ export const modelHubMachine = setup({
       },
     },
     confirmingNetwork: {
+      on: {
+        // Nothing is downloading yet: re-pause so the next foreground re-checks.
+        APP_BACKGROUND: {
+          guard: ({ context }) => context.continuation,
+          target: 'paused',
+          actions: assign({ pausedReason: 'background' as const, idlePause: true }),
+        },
+      },
       invoke: {
         src: 'checkNetworkActor',
         input: ({ context }) => ({ api: context.api }),
@@ -399,17 +428,34 @@ export const modelHubMachine = setup({
       },
     },
     awaitingWifi: {
-      on: { CHECK_NETWORK: { target: 'confirmingNetwork' } },
+      on: {
+        CHECK_NETWORK: { target: 'confirmingNetwork' },
+        // The saved row stays as it is: a continuation resumes on a later open.
+        LEAVE_WAITING: { target: 'selecting' },
+      },
     },
     cellularConfirm: {
       on: {
         CELLULAR_CONFIRM: { target: 'downloading' },
-        CELLULAR_CANCEL: { target: 'selecting' },
+        CELLULAR_CANCEL: [
+          {
+            // Declining a continuation keeps the download and its progress.
+            guard: ({ context }) => context.continuation,
+            target: 'paused',
+            actions: assign({ pausedReason: 'restored' as const, idlePause: true }),
+          },
+          { target: 'selecting' },
+        ],
+        APP_BACKGROUND: {
+          guard: ({ context }) => context.continuation,
+          target: 'paused',
+          actions: assign({ pausedReason: 'background' as const, idlePause: true }),
+        },
       },
     },
     downloading: {
       entry: [
-        assign({ pausedReason: null }),
+        assign({ pausedReason: null, idlePause: false }),
         ({ context }) => {
           void context.api.persistDownloadState({
             modelId: context.modelId,
@@ -459,6 +505,7 @@ export const modelHubMachine = setup({
           modelId: context.modelId,
           pausedReason: context.pausedReason,
           pauseState: context.pauseState,
+          idlePause: context.idlePause,
         }),
         onDone: { actions: assign({ pauseState: ({ event }) => event.output }) },
         onError: {
@@ -469,11 +516,12 @@ export const modelHubMachine = setup({
         },
       },
       on: {
-        RESUME: { target: 'downloading' },
+        // Resume asks first on cellular, like every continuation.
+        RESUME: { target: 'confirmingNetwork', actions: assign({ continuation: true }) },
         APP_FOREGROUND: {
           guard: ({ context }) => context.pausedReason === 'background',
-          // Same network check as a fresh download: cellular asks first.
           target: 'confirmingNetwork',
+          actions: assign({ continuation: true }),
         },
       },
     },
@@ -607,7 +655,11 @@ export const modelHubMachine = setup({
             target: 'selecting',
             actions: assign({ modelId: null, pauseState: null, error: null }),
           },
-          { guard: ({ context }) => context.pauseState !== null, target: 'downloading' },
+          {
+            guard: ({ context }) => context.pauseState !== null,
+            target: 'confirmingNetwork',
+            actions: assign({ continuation: true }),
+          },
           { target: 'selecting' },
         ],
       },

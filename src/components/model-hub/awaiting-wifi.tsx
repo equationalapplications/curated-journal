@@ -11,6 +11,11 @@ export function AwaitingWifi() {
     <View style={styles.wifi} testID="awaiting-wifi">
       <ThemedText type="strong">Connect to Wi-Fi to continue</ThemedText>
       <Button label="Try again" variant="default" onPress={() => send({ type: 'CHECK_NETWORK' })} />
+      <Button
+        label="Choose another model"
+        variant="default"
+        onPress={() => send({ type: 'LEAVE_WAITING' })}
+      />
     </View>
   );
 }

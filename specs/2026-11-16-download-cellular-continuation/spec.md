@@ -24,13 +24,18 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 - `checkingExisting` (no verified file, or verify threw) always goes to `confirmingNetwork`. The `afterCheck` context flag existed only to skip the check on restore, so it is removed.
 - `paused` + `APP_FOREGROUND` (background reason) goes to `confirmingNetwork` instead of `downloading`.
 - `confirmingNetwork` exits are unchanged: Wi-Fi → `downloading`, cellular → `cellularConfirm`, else `awaitingWifi`. `downloading` already reads `context.pauseState`, which the restore event (or the pause task) set and `confirmingNetwork`/`cellularConfirm` do not touch, so a confirmed continuation resumes from a saved pause state when one exists. In production the `downloading` entry persists `pauseState: null`, so a download killed mid-flight restores with no pause state and starts over (behind the network check); resume-from-pause-state applies only when a pause state was saved (a background pause).
-- After a declined cellular prompt (Cancel) the saved row stays, and the next hub open asks again.
+- Declining the cellular prompt (Cancel) on a CONTINUATION (restore, foreground resume, Resume, Retry; tracked by a `continuation` context flag) goes to `paused` (reason `restored`), keeping `pauseState` and persisting the row as `paused` with it. A fresh download's Cancel still returns to `selecting`.
+- Manual `RESUME` from `paused`, and `RETRY` from `failed` with a pause state, now also go through `confirmingNetwork`: they ask only on cellular; Wi-Fi proceeds silently. Resume therefore asks again after a decline.
+- `APP_BACKGROUND` in `confirmingNetwork` or `cellularConfirm` (continuations) goes to `paused` (reason `background`, `idlePause` so no live download is paused and the pause state is kept); the next `APP_FOREGROUND` re-runs the check.
+- `awaitingWifi` gains `LEAVE_WAITING` → `selecting`, with a "Choose another model" button in `AwaitingWifi`; the saved row is left as is, so an offline restore no longer traps the user (the list and "Import custom .gguf" are reachable).
+- `download.tsx` shows "Starting download…" only in `downloading`.
+- Known, not fixed here (separate issue): a Wi-Fi drop after the check falls back to cellular silently; this also affects fresh downloads.
 
 `src/app/model-hub/_layout.tsx`, `download.tsx`, `index.tsx`: a continued download lands on `download.tsx` (restore replaces the list; foreground leaves it beneath), so the network states need UI there.
 - The cellular confirm sheet has ONE owner, `CellularConfirm` (`src/components/model-hub/cellular-confirm.tsx`), rendered by the hub layout inside `ModelHubProvider`; `index.tsx` no longer renders it, so it shows exactly once whichever screen is on top.
 - `AwaitingWifi` (`src/components/model-hub/awaiting-wifi.tsx`) is the shared "Connect to Wi-Fi" message and Try again (`CHECK_NETWORK`), used by both screens.
 - `download.tsx` shows "Checking your connection…" in `confirmingNetwork` and `AwaitingWifi` in `awaitingWifi`, and any transition INTO `selecting` (not the initial `selecting` of a restore mount) dismisses to `/model-hub`, where the error banner and list show.
-- Unchanged: manual `RESUME` (the user just tapped it), `SELECT_MODEL`, restored-paused, smoke states.
+- Unchanged: `SELECT_MODEL`, restored-paused entry, smoke states.
 
 ## Rejected alternatives
 
@@ -42,6 +47,8 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 `__tests__/modelHubMachine.test.ts`: restore on cellular → `cellularConfirm`, no download until confirmed, then resumes from the saved pause state; restore on Wi-Fi → resumes from the saved pause state with no prompt; foreground resume on cellular → `cellularConfirm`, then resumes; foreground resume on Wi-Fi → resumes. Note: the machine test that restores a `resumeData` record under status `downloading` is synthetic (production persists no pause state there). The foreground Wi-Fi test also asserts `checkNetwork` ran.
 
 `__tests__/modelHubDownloadNetworkStates.test.tsx` (testID/role based): sheet visible once on `cellularConfirm` with both buttons sending CELLULAR_CONFIRM / CELLULAR_CANCEL; sheet renders once with list and download screens both mounted; checking line on `confirmingNetwork`; Try again sends CHECK_NETWORK on `awaitingWifi`; transition into `selecting` dismisses to `/model-hub`; initial `selecting` does not; the download framing ("Downloading your AI") stays during `confirmingNetwork`/`awaitingWifi`.
+
+Added for the review round: foreground decline stays paused with resume data and Resume on cellular re-asks; Resume on Wi-Fi proceeds silently; fresh-download cancel still goes to `selecting`; restore decline persists the paused row; APP_BACKGROUND during the check and on the cellular prompt re-pauses and the next foreground re-checks; offline restore exits via `LEAVE_WAITING` and reaches custom import. UI: Choose another model sends `LEAVE_WAITING`; "Starting download…" only in `downloading`.
 
 `__tests__/modelHubLayoutRestoreCellular.test.tsx`: renders the REAL `src/app/model-hub/_layout.tsx` (real machine and provider; store, network gate, download service and router mocked): restore over cellular shows the sheet exactly once, replaces to `/model-hub/download`, downloads nothing until confirm, then Confirm closes the sheet and starts the download; Cancel closes the sheet and starts nothing. Fails if `<CellularConfirm />` is removed from the layout.
 `__tests__/modelHubDownloadSmokeFailed.test.tsx` covers "Choose another model" landing on the list (via the transition effect).

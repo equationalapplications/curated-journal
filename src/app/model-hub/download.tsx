@@ -144,9 +144,11 @@ export default function ModelHubDownloadScreen() {
         </View>
 
         {!downloadPhase ? null : pct === null ? (
+          stateValue === 'downloading' ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             Starting download…
           </ThemedText>
+          ) : null
         ) : (
           <ProgressBar value={pct / 100} />
         )}

@@ -82,6 +82,7 @@ describe('download screen network states', () => {
     mockState = 'confirmingNetwork';
     const screen = await render(<Hub />);
     expect(screen.getByText('Checking your connection…')).toBeTruthy();
+    expect(screen.queryByText('Starting download…')).toBeNull();
     expect(screen.getByText('Downloading your AI')).toBeTruthy();
     expect(screen.queryByText('Setting up your AI')).toBeNull();
   });
@@ -93,6 +94,20 @@ describe('download screen network states', () => {
     expect(screen.getByText('Downloading your AI')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
     expect(mockSend).toHaveBeenCalledWith({ type: 'CHECK_NETWORK' });
+    expect(screen.queryByText('Starting download…')).toBeNull();
+  });
+
+  it('awaitingWifi offers Choose another model, which sends LEAVE_WAITING', async () => {
+    mockState = 'awaitingWifi';
+    const screen = await render(<Hub />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Choose another model' }));
+    expect(mockSend).toHaveBeenCalledWith({ type: 'LEAVE_WAITING' });
+  });
+
+  it('shows Starting download… only while downloading', async () => {
+    mockState = 'downloading';
+    const screen = await render(<Hub />);
+    expect(screen.getByText('Starting download…')).toBeTruthy();
   });
 
   it('a transition into selecting from cellularConfirm dismisses to the list', async () => {
