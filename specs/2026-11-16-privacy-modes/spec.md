@@ -943,7 +943,22 @@ deletes one:
   `keepModelId: null`, in `src/app/model-hub/import.tsx`) may delete
   it. The sweep must never delete the **current** model's file; #115
   covers that guarantee. The import stays available in strict (R11),
-  so this applies there too. Step 2 does not change the import path.
+  so this applies there too. Apart from the confirmation below, Step 2
+  does not change the import path.
+
+  **The import warns first** (lead ruling (2026-11-16), per rule 12;
+  owner may overrule). When a saved download row is `paused` or
+  `downloading`, in either mode, the custom-import flow shows a
+  confirmation **before** the file picker opens, naming the row's
+  model:
+
+  > Importing your own model stops the download of `<model name>`.
+  > What it downloaded so far is removed.
+  > [Cancel] [Import anyway]
+
+  Cancel opens no picker and leaves the row as it is. Import anyway
+  opens the picker, and the import goes on as above. With no such row,
+  no confirmation shows and the picker opens at once.
 
 **j. A paused row with no resume data is checked first** (review,
 2026-11-16). In either mode, when the hub restores a `paused` row
@@ -995,7 +1010,8 @@ After a read failure (R3), the notice starts with that sentence.
   It has no manifest byte or integrity check today. #115 adds
   integrity checks for an imported file that matches a curated model,
   and makes sure the orphan sweep never deletes the current model's
-  file. A successful import abandons any kept download (R10i).
+  file. A successful import abandons any kept download, and the import
+  flow asks first when one exists (R10i).
 
 *(Rules 1, 2, 11.)*
 
@@ -1377,7 +1393,13 @@ must pass):
   - switching modes, launching and opening the hub delete no model
     file (R10i); a successful custom import in strict clears a
     strict-paused download's row, so the next hub open restores
-    nothing (R10i, lead ruling).
+    nothing (R10i, lead ruling);
+  - import confirmation (R10i, lead ruling): with a `paused` or
+    `downloading` row saved, starting "Import custom .gguf" shows the
+    confirmation naming the row's model before any picker call; Cancel
+    makes no `DocumentPicker.getDocumentAsync` call and leaves the row
+    unchanged; Import anyway opens the picker. With no such row, no
+    confirmation shows and the picker opens at once.
 - Hub notices: the strict notices in R7, R11 and R12 show in strict and
   not in Standard; the read-failure sentence shows after a read
   failure; the Step out button opens R9's confirmation.
