@@ -128,7 +128,7 @@ survey is re-run on every engine bump (R17).
 | 4 | Launch-time native update check | Off: `updates.checkAutomatically: 'NEVER'` in `app.config.ts`, asserted by `__tests__/appConfig.test.ts` and checked on every built artifact (VERSIONING.md train step 4). | — | Nothing | Never runs | Never runs |
 | 5 | Tip jar (iOS, Android) | `openTipJar` in `src/lib/tipJarStore.ts` (`expo-iap` `initConnection`, `fetchProducts`, `getAvailablePurchases`, `requestPurchase`, `finishTransaction`, `endConnection`). Reached from Open and the tip buttons in `src/components/settings/TipJarSection.tsx`. Gated today by `canUseStorePurchases()` at the start and before `requestPurchase`. | Apple App Store or Google Play | The user | Allowed | Blocked (alert exists) |
 | 6 | Support link (web build only) | `Linking.openURL(SUPPORT_PAYPAL_URL)` in `TipJarSection.tsx`. Already gated by `canOpenSupportLink()`. | PayPal | The user | Allowed | Blocked (alert exists) |
-| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. No renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`a08cc92` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; a `no-restricted-imports` lint rule in `eslint.config.js` forbids importing the library anywhere else. The wrapper passes every other prop through, `onLinkPress` included. That text comes from the model or from an imported OKF bundle. | Whatever site, app or service the link names | The user (a tap) | `http`/`https`: opens in the browser (owner, OQ-3). Any other scheme, or none: blocked with an alert (owner, OQ-8) | Blocked, every scheme |
+| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. No renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`a08cc92` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; a `no-restricted-imports` lint rule in `eslint.config.js` forbids value-importing the library anywhere else (type imports, such as `markdownRules.tsx`'s `import type { RenderRules }`, are allowed). The wrapper passes every other prop through, `onLinkPress` included. That text comes from the model or from an imported OKF bundle. | Whatever site, app or service the link names | The user (a tap) | `http`/`https`: opens in the browser (owner, OQ-3). Any other scheme, or none: blocked with an alert (owner, OQ-8) | Blocked, every scheme |
 | 8 | Images inside notes | The same library's `image` rule renders `![…](url)` with `react-native-fit-image`, which fetches the URL as soon as the note is shown. By default it allows `https://` and `http://`, and it adds `https://` to a source with no scheme. | Whatever host the image names | **Nothing; it happens on its own** | Blocked by #118 (owner, OQ-4) | Blocked by #118 |
 | 9 | iOS StoreKit listeners at launch | Two sources in `expo-iap` 6.4.1, both before any JavaScript: (a) `ExpoIapAppDelegateSubscriber` creates `OpenIapModule.shared` in `didFinishLaunching`, and OpenIAP's StoreKit module then starts a `PurchaseIntent.intents` listener (iOS 16.4 and later) or adds an `SKPaymentQueue` observer (earlier iOS); (b) `ExpoIapModule`'s `OnCreate` calls `ExpoIapHelper.setupStore` when the native module is created, which adds the purchase-updated, purchase-error, promoted-product and billing-issue listeners. On Android, billing loads only on the first `initConnection`. | Apple's StoreKit on the device. This survey found no request that it sends, but cannot rule out StoreKit doing something on its own. | The app, at every launch | Runs today | Must go (owner, OQ-5): #119, MAJOR. JS cannot gate it. |
 
@@ -387,7 +387,9 @@ rule 11 already requires.)*
   link itself or shows the alert. It never returns `true`, which would
   make the library call `Linking.openURL` on its own.
 - Remote images in notes (path 8) never load, in Standard or in
-  strict. The note shows the image's alt text instead. **#118 delivers
+  strict. The note renders `[image not loaded: <alt>]` with the
+  truncated source instead, as muted text (the alt text alone shows
+  only when the image sits inside a link). **#118 delivers
   this now, as a PATCH, before Step 2** (owner, OQ-4). Step 2 only has
   to keep it, and its test, in place: every markdown renderer keeps
   using #118's image rule, and the coverage test checks that.
@@ -612,8 +614,10 @@ app was killed mid-download, or the paused row was never saved) is
 restored under strict as paused, not restarted, and the row is
 **rewritten** as `paused`, so that stepping out and relaunching
 doesn't restart it through the hub's restore. Such a row has no resume
-data, so the screen says "Paused. This download will start over when
-you resume."
+data, so under the mode-tracking label (R10e's "Paused — strict
+privacy is on", or "Paused" after stepping out — not a competing
+label) the screen adds the explanation "This download will start over
+when you resume."
 
 Before the rewrite, the hub's normal restore path runs
 (`checkingExisting` → `verifyDownload` → smoke test), exactly as R8
@@ -892,9 +896,10 @@ must pass):
   - It fails if a file outside two reviewed allowlists uses one:
     - **Gated:** each file must import its gate from
       `@/lib/privacyMode`. Markdown renderers must use the shared
-      wrapper: only `src/components/NoteMarkdown.tsx` may import
+      wrapper: only `src/components/NoteMarkdown.tsx` may value-import
       `react-native-markdown-display` (#120's lint rule enforces this
-      too), it must pass #118's image rule and the shared
+      too; type imports, such as `markdownRules.tsx`'s
+      `import type { RenderRules }`, are allowed), it must pass #118's image rule and the shared
       `onLinkPress`, and its props must leave out `rules` and
       `onLinkPress`.
     - **No gate needed:** files that use such an API but send
@@ -944,7 +949,10 @@ must pass):
     strict-paused row shows the "Paused — strict privacy is on" label,
     a Step out of strict privacy button that opens R9's confirmation,
     and a way back to the model list, so Import custom .gguf is
-    reachable from it; after stepping out, the label reads "Paused";
+    reachable from it; after stepping out, the label reads "Paused"; a
+paused-for-strict row with no resume data (R10f) also shows the
+explanation "This download will start over when you resume." under
+the label;
   - `SELECT_MODEL` in strict is refused before `retiringCurrent`;
   - a download that can't be kept (no resume data, a failed pause, no
     live handle) shows the warning before the mode changes; after a
@@ -1234,7 +1242,7 @@ needs is decided by INTENT.md, the ROADMAP and the answers above.
   still be moving bytes, neither reachable from JavaScript. How should
   the copy read until then — qualify it (for example, "The app itself
   doesn't go online; on iPhone, a few system- and update-related
-  connections may still occur until update 9.x"), or keep the plain
+  connections may still occur until the next MAJOR update"), or keep the plain
   promise and carry the caveat elsewhere (the policy page, R15)?
 - **INTENT rule 9, paragraph 2 (amendment).** Rule 9 ¶2 lists the
   default mode's traffic — model downloads, update checks, tips — as
