@@ -55,6 +55,12 @@ Owner rulings, 2026-11-16, encoded below:
   (PATCH), and `expo-iap`'s launch-time StoreKit listeners are removed
   by [#119](https://github.com/equationalapplications/curated-journal/issues/119)
   (MAJOR).
+- A model download the user started keeps carrying on by itself, after
+  a background pause and after a kill, but both continuations go
+  through the same network check as a fresh download, which asks first
+  on cellular data. That ships now as its own PATCH,
+  [#124](https://github.com/equationalapplications/curated-journal/issues/124)
+  (R6).
 
 ## INTENT check
 
@@ -75,7 +81,15 @@ tensions. INTENT wins each one, or the owner has ruled on it:
    (path 8). The owner confirmed the block in both modes (OQ-4), and
    #118 ships it now as a PATCH. Once #118 lands, Standard is today's
    behavior with no exception, and Step 2 only keeps the block in place
-   (R6).
+   (R6). A later review found a second gap: a download the user started
+   carries on by itself after a background pause, and restarts by
+   itself when the hub opens after a kill, and both skip the cellular
+   prompt that a fresh download shows. The owner kept the continuation
+   (the user started the download) and ruled that both paths go through
+   the same network check (2026-11-16). #124 ships that now as a PATCH,
+   and Step 2 only keeps it (R6). The Standard copy names the
+   continuation, so its "Nothing else goes online on its own" leans on
+   rule 9 ¶2's "else" (see the second open question).
 3. **Native work at launch.** Rule 11 expects "strict from launch" to
    ship as "a native, MAJOR change". ROADMAP Step 2 expects MINOR,
    because the launch-time update check was already set to never run.
@@ -114,16 +128,17 @@ communication in strict privacy" and "Silent model installs".
 ## Survey: every path that can go off-device
 
 Read from `main` at `94296e7` (9.1.1) on 2026-11-16, and re-checked
-the same day against `main` at `748e11e` (9.2.0, after PR #116). #116 changed only the engine pins and the version stamps, so
-the app's own code is the same at both commits. The list is meant to
-be complete for the app's own code. A path added later must be added
+the same day against `main` at `748e11e` (9.2.0, after PR #116). #116
+changed only the engine pins and the version stamps, so the app's own
+code is the same at both commits. The list is meant to be complete for
+the app's own code. A path added later must be added
 here, and the coverage test in Verification fails until it is. The
 survey is re-run on every engine bump (R17).
 
 | # | Path | Code | Who it reaches | Started by | Standard | Strict |
 |---|---|---|---|---|---|---|
-| 1 | Model download, fresh start | `startDownload` in `src/services/modelDownloadService.ts` (`expo-file-system` `DownloadTask`, User-Agent from `src/lib/buildUserAgent.ts`). It sets no `sessionType`, so on iOS the installed expo-file-system 58.0.13 runs it in a background `URLSession`, which can keep transferring after the app is suspended or killed (Android ignores the option; its transfer runs inside the app process). Reached from `modelHubMachine` state `downloading`, which is entered by `SELECT_MODEL` (through `retiringCurrent`, `checkingExisting` and `confirmingNetwork`), `CELLULAR_CONFIRM`, `CHECK_NETWORK`, `RETRY` from `failed`, and `RESTORE_DOWNLOAD` of a `downloading` record when the hub opens (`src/app/model-hub/_layout.tsx`). | Hugging Face (`huggingface.co`, URLs in `src/catalog/modelManifest.ts`) and the file hosts it redirects to | The user. A download the app was killed during restarts on its own when the hub next opens. | Allowed | Blocked |
-| 2 | Model download, resume | `resumeDownload` (`DownloadTask.fromSavable`). Reached from `RESUME` (`src/app/model-hub/download.tsx`), from `APP_FOREGROUND` after a background pause (automatic), and from `RETRY` with saved resume data. | Same as 1 | The user, or the app on return to the foreground | Allowed | Blocked |
+| 1 | Model download, fresh start | `startDownload` in `src/services/modelDownloadService.ts` (`expo-file-system` `DownloadTask`, User-Agent from `src/lib/buildUserAgent.ts`). It sets no `sessionType`, so on iOS the installed expo-file-system 58.0.13 runs it in a background `URLSession`, which can keep transferring after the app is suspended or killed (Android ignores the option; its transfer runs inside the app process). Reached from `modelHubMachine` state `downloading`, which is entered by `SELECT_MODEL` (through `retiringCurrent`, `checkingExisting` and `confirmingNetwork`), `CELLULAR_CONFIRM`, `CHECK_NETWORK`, `RETRY` from `failed`, and `RESTORE_DOWNLOAD` of a `downloading` record when the hub opens (`src/app/model-hub/_layout.tsx`). | Hugging Face (`huggingface.co`, URLs in `src/catalog/modelManifest.ts`) and the file hosts it redirects to | The user. A download the app was killed during restarts by itself when the hub next opens; #124 routes that restart through the network check, which asks first on cellular. | Allowed | Blocked |
+| 2 | Model download, resume | `resumeDownload` (`DownloadTask.fromSavable`). Reached from `RESUME` (`src/app/model-hub/download.tsx`), from `APP_FOREGROUND` after a background pause (automatic), and from `RETRY` with saved resume data. | Same as 1 | The user, or the app on return to the foreground (a download the user started; #124 routes this through the network check, which asks first on cellular) | Allowed | Blocked |
 | 3 | Update check | `checkForAppUpdates` in `src/lib/updateCheck.ts` (`expo-updates` `checkForUpdateAsync`, then `fetchUpdateAsync`). Reached only from the Check button in `src/components/settings/UpdateCheckRow.tsx`. | Expo's update service (`u.expo.dev`). It receives the platform, runtime version, channel, current and embedded update IDs, and a random ID for this install (the `EAS-Client-ID` header, set by `expo-updates`' native downloader). | The user | Allowed | Blocked |
 | 4 | Launch-time native update check | Off: `updates.checkAutomatically: 'NEVER'` in `app.config.ts`, asserted by `__tests__/appConfig.test.ts` and checked on every built artifact (VERSIONING.md train step 4). | — | Nothing | Never runs | Never runs |
 | 5 | Tip jar (iOS, Android) | `openTipJar` in `src/lib/tipJarStore.ts` (`expo-iap` `initConnection`, `fetchProducts`, `getAvailablePurchases`, `requestPurchase`, `finishTransaction`, `endConnection`). Reached from Open and the tip buttons in `src/components/settings/TipJarSection.tsx`. Gated today by `canUseStorePurchases()` at the start and before `requestPurchase`. | Apple App Store or Google Play | The user | Allowed | Blocked (alert exists) |
@@ -204,12 +219,15 @@ requirements allow.
 > - To download an AI model you pick. It comes from Hugging Face, which
 >   hosts the model files.
 > - To check for an app update, when you tap Check. Expo runs the
->   update service.
+>   update service, and it also gets a random ID for this copy of the
+>   app.
 > - To leave a tip. The App Store or Google Play handles it.
 > - To open a web link in one of your notes, when you tap it. Your
 >   browser opens it, and that website gets the link.
 >
-> Nothing goes online on its own. Your journal stays on this device
+> Nothing else goes online on its own. A model download you started
+> keeps going: it picks up when you come back to the app, and asks
+> first if you're on cellular data. Your journal stays on this device
 > unless you export or share it.
 
 On the web build the tip line reads: "To open the Support page, when
@@ -361,12 +379,21 @@ rule 11 already requires.)*
 **R6 — Standard, the default mode.**
 
 - Paths 1, 2, 3, 5 and 6 run when the user starts them, as they do
-  today. A user-started download also carries on as it does today: it
+  today.
+- **A download the user started carries on** (owner, 2026-11-16): it
   resumes when the app returns to the foreground after a background
   pause, and it restarts when the hub opens after the app was killed
-  mid-download. On iOS, a download stops while the app is suspended
-  with the hub closed, and never outlives the app process (R10b, owner
-  OQ-7).
+  mid-download. Both continuations go through the same network check
+  as a fresh download (`confirmingNetwork`): on Wi-Fi they go ahead,
+  and on cellular they show the cellular prompt first. Today they skip
+  it: the restore goes from `checkingExisting` straight to
+  `downloading`, and `APP_FOREGROUND` resumes a background pause with
+  no check (`src/machines/modelHubMachine.ts`). **#124 delivers this
+  now, as a PATCH, before Step 2.** Step 2 only has to keep it, and its
+  test, in place. The Standard copy names it ("A model download you
+  started keeps going…").
+- On iOS, a download stops while the app is suspended with the hub
+  closed, and never outlives the app process (R10b, owner OQ-7).
 - **Web links only** (owner, OQ-3 and OQ-8). A tap on an `http` or
   `https` link in a note opens it in the browser, as today. The
   on-screen copy names this. Every other scheme (`mailto:`, `tel:`,
@@ -393,7 +420,8 @@ rule 11 already requires.)*
   this now, as a PATCH, before Step 2** (owner, OQ-4). Step 2 only has
   to keep it, and its test, in place: every markdown renderer keeps
   using #118's image rule, and the coverage test checks that.
-- Nothing else runs on its own.
+- Nothing else runs on its own. The continuation above is the user's
+  own download carrying on, and the copy says so.
 - Nothing connects to anything new: no sync, no pairing, no automatic
   update checks. Those are Step 3 unlocks.
 
@@ -434,16 +462,22 @@ service holds no live transfer for it), the confirmation adds R10g's
 warning, and its button reads "Turn on and remove". "No live transfer"
 alone is not enough: a download that **completed** while the hub was
 closed also leaves a `downloading` row with no live transfer and no
-service record. So before the app treats a row as unkeepable, it runs
-the hub's normal restore path (`checkingExisting` → `verifyDownload` →
-smoke test) on the file the row points at. If the file is complete,
-the download is not unkeepable: no warning, and verification and the
-smoke test continue as R10h says. Only a row that fails the restore
-path counts as "no live handle".
+service record. So before the app treats a row as unkeepable, Settings
+runs the plain file check on the file the row points at:
+`verifyDownload` in `src/services/modelDownloadService.ts` (the file
+exists and its size matches the manifest). It does not run the hub
+machine's restore states: the hub is closed and its actor is stopped.
+Settings mounts no hub machine, and the dialog never waits on a model
+load. If the file is complete, the row is not unkeepable: no warning
+shows, and the smoke test runs later, when the hub next opens and its
+normal restore runs (R10f, R10h). Only a row whose file fails the size
+check counts as "no live handle".
 
 On Turn on, in this order:
 
-1. A live model download pauses (R10a, R10c). Pausing sends nothing;
+1. A live model download pauses (R10a, R10c). First its row is saved
+   as `paused`, with no pause state yet. Then the transfer pauses, and
+   the row is saved again with its pause state. Pausing sends nothing;
    it stops the transfer. It comes first because only the pause shows
    whether the download can be resumed later. If it can't, R10g's
    warning shows now, before anything below happens. Nothing may
@@ -461,6 +495,18 @@ On Turn on, in this order:
 5. An update check that is already running does not go on to its fetch
    step. A request already sent cannot be called back. The row then
    says "Strict privacy is on. The update check stopped."
+
+**The kill window between steps 1 and 3.** If the app dies after step
+1 starts and before step 3 has saved the mode, it relaunches in
+Standard, because the mode was never saved. The row was saved as
+`paused` before the pause, so the hub shows the download as paused and
+does not restart it; the user resumes it. If the app dies before the
+pause state is saved, the row has no resume data (on iOS the resume
+data is lost; on Android the byte offset is), so the user's Resume
+starts the download over. This corner is accepted. Without the first
+save, the row would still say `downloading`, and the relaunch would
+restart the download from zero by itself when the hub opens (behind
+#124's network check).
 
 *(Rule 11.)*
 
@@ -530,8 +576,9 @@ stops when the hub closes. So the pause owner is the download service
 - The strict pause checks the task's state first. `pauseAsync()`
   throws unless the task is `active`, so any other state counts as "no
   live transfer", not as an error.
-- It pauses, saves the row as `paused` with its pause state (or none),
-  and reports whether the download can be resumed later.
+- It saves the row as `paused` (no pause state yet), pauses, saves the
+  row again with its pause state (or none), and reports whether the
+  download can be resumed later (R8, step 1, and its kill window).
 - The hub machine has a path for this too: it hears a machine event
   (named by the plan, for example `STRICT_PRIVACY_ON`) and moves to
   `paused` with a new pause reason, `strict`, taking the pause state
@@ -569,7 +616,8 @@ Strict privacy can only pause a transfer the app can still reach.
   ignored there).
 - The owner accepted the costs and risks listed with OQ-7 (Resolved
   questions): with the hub closed, an iOS download stops while the app
-  is suspended and starts over when the hub next opens; a hub pause
+  is suspended and starts over when the hub next opens (through the
+  network check, R6); a hub pause
   that loses the race with suspension may restart the download; and a
   download paused under the old background session may not resume.
   Their on-device checks stay in Verification, unchecked.
@@ -589,8 +637,10 @@ it still shows as paused.
 strict privacy: not when the app comes back to the foreground, not
 after a restart, and not when strict privacy turns off. It resumes
 only when the user, outside strict privacy, taps Resume. (It is scoped
-to strict pauses on purpose: a Standard download the app was killed
-during does restart on its own when the hub next opens, as R6 says.)
+to strict pauses on purpose. In Standard, a download the user started
+carries on by itself, after a background pause or when the hub next
+opens after a kill, but only through the same network check as a fresh
+download, which asks first on cellular: R6, #124.)
 
 **e. Blocked in strict.** In strict privacy, Resume and Retry show the
 downloads-off alert (R5). While the mode is strict, the download screen
@@ -620,8 +670,9 @@ label) the screen adds the explanation "This download will start over
 when you resume."
 
 Before the rewrite, the hub's normal restore path runs
-(`checkingExisting` → `verifyDownload` → smoke test), exactly as R8
-requires before the can't-keep warning. If the file on disk is already
+(`checkingExisting` → `verifyDownload` → smoke test). This is the
+hub-side counterpart of the plain file check that R8 runs in Settings
+before the can't-keep warning. If the file on disk is already
 complete — a download that finished while the hub was closed leaves a
 `downloading` row, a complete file, and no service record — the row is
 not rewritten and no warning shows: the download continues through
@@ -644,8 +695,8 @@ running. Then the app warns before the switch:
 - No live handle: the app knows before the confirmation, so the
   warning is part of the confirmation (R8), without the sentence about
   cancelling. As R8 says, "no live handle" is decided only after the
-  restore path has run: a row whose file is already complete is kept,
-  not warned about.
+  plain file check (`verifyDownload`) has run: a row whose file is
+  already complete is kept, not warned about.
 - No resume data, or a failed pause: only the pause shows this, so the
   warning shows after R8 step 1 and before step 2. The pause has
   already stopped the transfer. If it is still running after a failed
@@ -750,9 +801,15 @@ next restart, because that step happens on the device. *(Rules 10,
 11.)*
 
 **R15 — The privacy policy matches.** Step 2 updates
-`docs/privacy/index.html` to describe Standard and strict privacy. The
-policy's "The app makes no network connections on its own" becomes true
-again with #118, and Step 2 keeps it true. What the policy says about
+`docs/privacy/index.html` to describe Standard and strict privacy.
+The policy says "The app makes no network connections on its own",
+under the heading "The only network activity — and you start each
+one". After #118 that is true only under the charter's "else" reading:
+a model download the user started carries on after a background pause
+or a kill (R6, #124), which is a connection the app makes without a
+new tap. Step 2 rewords the policy to match the Standard copy: nothing
+else goes online on its own, and a model download you started keeps
+going and asks first on cellular data. What the policy says about
 strict privacy on iOS must match R3 until #119 ships. *(Rule 9:
 "privacy is the product".)*
 
@@ -797,10 +854,13 @@ launch-time update check set to never run, is in the binaries Step 2
 can reach. It is checked on each built artifact (VERSIONING.md train
 step 4).
 
-Two changes ship on their own:
+Three changes ship on their own:
 
 - **#118, PATCH, now.** Remote images in notes stop loading, in both
   modes. JS only.
+- **#124, PATCH, now.** A download the user started carries on after a
+  background pause or a kill only through the same network check as a
+  fresh download, which asks first on cellular. JS only.
 - **#119, MAJOR, on the release train.** `expo-iap`'s StoreKit
   listeners stop starting at launch on iOS: both the app-delegate
   subscriber and `ExpoIapModule`'s `OnCreate` `setupStore`. It changes
@@ -821,6 +881,9 @@ plugins or permissions.
   cleanup from deleting a kept download. It needs its own spec.
 - **#118**: blocking remote images in notes. It ships first, on its
   own. Step 2 keeps it in place (R6).
+- **#124**: routing a download's automatic continuation (foreground
+  resume, restore after a kill) through the network check. It ships
+  first, on its own. Step 2 keeps it in place (R6).
 - **#119**: removing `expo-iap`'s launch-time StoreKit listeners on
   iOS. A separate MAJOR with its own spec.
 - **Step 3**: modes less strict than Standard (sync, pairing), and
@@ -866,6 +929,14 @@ must pass):
     starts each path (a download start and a resume, an update check,
     opening the tip jar, a link tap). So a silent spy in strict means
     the path was blocked, not that the spy was never wired up.
+  - The update-check control needs two mocks. `src/lib/updateCheck.ts`
+    returns `'unavailable'` before any network call when
+    `__DEV__ || !Updates.isEnabled`, and under jest-expo that
+    condition is always true. So the test mocks `expo-updates` with
+    `isEnabled: true` and sets `global.__DEV__ = false`, restoring it
+    afterwards, as `__tests__/updateCheck.test.ts` already does. The
+    strict run uses the same mocks, so that the gate refuses the
+    check, not the dev guard.
   - Run in strict, on the mock LLM provider and the node SQLite adapter
     (`__tests__/helpers/nodeSqliteAdapter.ts`): save a note through the
     save queue, run a Night Shift librarian pass, ask a question and
@@ -899,9 +970,9 @@ must pass):
       wrapper: only `src/components/NoteMarkdown.tsx` may value-import
       `react-native-markdown-display` (#120's lint rule enforces this
       too; type imports, such as `markdownRules.tsx`'s
-      `import type { RenderRules }`, are allowed), it must pass #118's image rule and the shared
-      `onLinkPress`, and its props must leave out `rules` and
-      `onLinkPress`.
+      `import type { RenderRules }`, are allowed), it must pass
+      #118's image rule and the shared `onLinkPress`, and its props
+      must leave out `rules` and `onLinkPress`.
     - **No gate needed:** files that use such an API but send
       nothing, each with the reason written next to it:
       `src/lib/networkGate.ts` (asks only the OS) and
@@ -932,19 +1003,29 @@ must pass):
   - starting or resuming while a transfer is live stops the old one
     first, so there is never a second transfer;
   - start and resume pass `sessionType: 'foreground'` (R10b);
-  - no automatic resume on foreground, on restart, or on leaving
-    strict;
+  - a strict-paused download does not resume by itself on
+    foreground, on restart, or on leaving strict (R10d);
+  - the strict pause saves the row as `paused` before it calls
+    `pauseAsync`, then saves it again with the pause state; a relaunch
+    in Standard after a kill between the two shows the download paused
+    and creates no `DownloadTask` until Resume (R8, kill window);
+  - Standard continuation (R6): #124's tests stay in place. A restored
+    `downloading` row and a foreground resume after a background pause
+    both go through the network check: on Wi-Fi they continue, and on
+    cellular the prompt shows before any `DownloadTask` call;
   - a `downloading` row restored under strict creates no
     `DownloadTask`, and the row is rewritten as `paused`; after
     stepping out, reopening the hub shows it paused, not downloading
     (R10f);
-  - **completed-while-closed (R10f, R10g):** a `downloading` row whose
-    file on disk is already complete, with no live service record,
-    runs the normal restore path (`checkingExisting` →
-    `verifyDownload` → smoke test) under strict: the row is not
-    rewritten as `paused`, the can't-keep warning does not show, and
-    the download reaches `complete` through verification and the smoke
-    test (R10h);
+  - **completed-while-closed (R8, R10f, R10g):** a `downloading` row
+    whose file on disk is already complete, with no live service
+    record. When strict is turned on in Settings, only `verifyDownload`
+    runs: no hub machine is created, the dialog does not wait on a
+    model load, and the can't-keep warning does not show. When the hub
+    next opens under strict, the normal restore path runs
+    (`checkingExisting` → `verifyDownload` → smoke test): the row is
+    not rewritten as `paused`, and the download reaches `complete`
+    through verification and the smoke test (R10h);
   - **paused-for-strict screen (R10e):** the download screen for a
     strict-paused row shows the "Paused — strict privacy is on" label,
     a Step out of strict privacy button that opens R9's confirmation,
@@ -989,8 +1070,11 @@ the label;
   strict on does not stop the install step; at the next restart the
   update still installs.
 - R15: `docs/privacy/index.html` names Standard and strict privacy,
-  matches the modes' copy, and its iOS strict wording matches R3's
-  caveats (#119 and the pre-Step-2 download drain).
+  matches the modes' copy (including "Nothing else goes online on its
+  own" and the download-continuation sentence, in place of "The app
+  makes no network connections on its own"), and its iOS strict
+  wording matches R3's caveats (#119 and the pre-Step-2 download
+  drain).
 - `updateCheck.test.ts`, `updateCheckRow.test.tsx`: a check is refused
   in strict; the gate is asked again between check and fetch.
 - `tipJarStore.test.ts`, `tipJarSection.test.tsx`: the session closes
@@ -1055,6 +1139,13 @@ status line, un-drafting or cleanup (AGENTS.md):
 - [ ] R14: with an update downloaded but not yet installed, turn
       strict privacy on and restart the app. The update installs at
       that restart.
+- [ ] In Standard (#124): start a download on Wi-Fi, then switch to
+      cellular data. Background the app and come back, and separately
+      kill and relaunch it: each time, the cellular prompt shows before
+      the download continues.
+- [ ] Kill window (R8): kill the app right after tapping Turn on,
+      mid-download. It relaunches in Standard with the download
+      paused, not restarted.
 - [ ] In Standard: a `mailto:` or other non-web link in a note shows
       the "Only web links open" alert; an `https` link opens in the
       browser.
@@ -1252,3 +1343,6 @@ needs is decided by INTENT.md, the ROADMAP and the answers above.
   not name it. INTENT.md is static and wins on intent; amending it
   goes through PR review. Should rule 9 ¶2 be amended to name tapped
   web links, or is "the user starts" already read as covering them?
+  The new Standard copy, "Nothing else goes online on its own" next to
+  a download the user started that carries on by itself (R6, #124),
+  leans on the same "else", so the answer bears on that wording too.
