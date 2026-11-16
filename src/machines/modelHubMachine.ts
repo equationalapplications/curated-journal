@@ -316,9 +316,14 @@ export const modelHubMachine = setup({
               assign({
                 modelId: ({ event }) => event.modelId,
                 error: null,
-                pauseState: null,
+                // Re-picking the model whose saved row is still held keeps its
+                // resume data: it resumes (behind the network check) instead
+                // of restarting from zero over the saved row.
+                pauseState: ({ context, event }) =>
+                  event.modelId === context.modelId ? context.pauseState : null,
                 pausedReason: null,
-                continuation: false,
+                continuation: ({ context, event }) =>
+                  event.modelId === context.modelId && context.pauseState !== null,
               }),
             ],
           },

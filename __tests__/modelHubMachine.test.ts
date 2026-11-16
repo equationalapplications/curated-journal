@@ -1001,6 +1001,23 @@ describe('modelHubMachine', () => {
       actor.stop();
     });
 
+    it('LEAVE_WAITING then re-selecting the same model resumes with its resume data', async () => {
+      let net: 'offline' | 'wifi' = 'offline';
+      const api = makeApi({ checkNetwork: jest.fn(async () => net) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      net = 'wifi';
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
     it('RETRY from failed with a pause state re-checks the network; declining pauses it', async () => {
       const api = makeApi({
         checkNetwork: jest.fn(async () => 'cellular' as const),

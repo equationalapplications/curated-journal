@@ -6,8 +6,9 @@ jest.mock('@/hooks/use-color-scheme', () => ({
 }));
 
 const mockSend = jest.fn();
+const mockClearRow = jest.fn();
 jest.mock('@/hooks/useModelHub', () => ({
-  useModelHub: () => ({ send: mockSend, stateValue: 'customImport' }),
+  useModelHub: () => ({ send: mockSend, stateValue: 'customImport', clearDownloadState: mockClearRow }),
 }));
 
 jest.mock('@/contexts/ModelHubCompletionContext', () => ({
@@ -61,7 +62,10 @@ const mockGetModelPath = jest.fn();
 const mockSetModelPath = jest.fn();
 jest.mock('@/lib/entityStorage', () => ({
   getModelPath: () => mockGetModelPath(),
-  setModelPath: (path: string) => mockSetModelPath(path),
+  setModelPath: (path: string) => {
+    mockOrder.push('identity-commit');
+    return mockSetModelPath(path);
+  },
   setModelId: jest.fn(async () => undefined),
 }));
 
@@ -102,6 +106,32 @@ describe('model-hub custom import', () => {
     jest.clearAllMocks();
     mockOrder.length = 0;
     mockSmokeTest.mockResolvedValue({ ok: true });
+    mockClearRow.mockImplementation(async () => {
+      mockOrder.push('clear-row');
+    });
+  });
+
+  it('clears the download row before committing the model identity', async () => {
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockOrder.indexOf('clear-row')).toBeGreaterThan(-1);
+    expect(mockOrder.indexOf('clear-row')).toBeLessThan(mockOrder.indexOf('identity-commit'));
+  });
+
+  it('still imports when clearing the download row fails', async () => {
+    mockClearRow.mockRejectedValue(new Error('store down'));
+    seedInstalledModel('file:///documents/old.gguf');
+    pickFile('fresh.gguf');
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await pressImport();
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));
+    warn.mockRestore();
   });
 
   it('finishes copying the model before smoke testing it', async () => {
@@ -117,7 +147,7 @@ describe('model-hub custom import', () => {
     await pressImport();
 
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
-    expect(mockOrder).toEqual(['orphans', 'copy-done', 'smoke']);
+    expect(mockOrder).toEqual(['orphans', 'copy-done', 'smoke', 'clear-row', 'identity-commit']);
   });
 
   it('cleans orphaned catalog files after the pick and before the copy', async () => {

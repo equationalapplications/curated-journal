@@ -184,6 +184,8 @@ type ModelHubContextValue = {
   error: { code: string; message: string } | null;
   pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
+  /** Drops the saved download row (may reject). */
+  clearDownloadState: () => Promise<void>;
 };
 
 const ModelHubContext = createContext<ModelHubContextValue | null>(null);
@@ -249,6 +251,7 @@ export function ModelHubProvider({
     error,
     pausedReason,
     displayName,
+    clearDownloadState: () => api.clearDownloadState(),
   };
 
   return <ModelHubContext.Provider value={value}>{children}</ModelHubContext.Provider>;

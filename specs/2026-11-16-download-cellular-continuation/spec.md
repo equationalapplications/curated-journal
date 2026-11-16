@@ -29,7 +29,8 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 - `APP_BACKGROUND` in `confirmingNetwork` or `cellularConfirm` (continuations) goes to `paused` (reason `background`, `idlePause` so no live download is paused and the pause state is kept); the next `APP_FOREGROUND` re-runs the check.
 - `awaitingWifi` gains `LEAVE_WAITING` → `selecting`, with a "Choose another model" button in `AwaitingWifi`; the saved row is left as is, so an offline restore no longer traps the user (the list and "Import custom .gguf" are reachable).
 - `download.tsx` shows "Starting download…" only in `downloading`.
-- Abandoning a continuation clears its row: a successful custom import (`IMPORT_SMOKE_OK`) and `SELECT_MODEL` of a model different from the row's model both call `clearDownloadState` (errors swallowed). Otherwise a later hub open would restore the abandoned download and, on success, replace the user's imported or chosen model without a "Replace model" confirmation. `LEAVE_WAITING` alone keeps the row ("not now"); same-model `SELECT_MODEL` keeps today's behavior.
+- Abandoning a continuation clears its row: a successful custom import (`IMPORT_SMOKE_OK`) and `SELECT_MODEL` of a model different from the row's model both call `clearDownloadState` (errors swallowed). Otherwise a later hub open would restore the abandoned download and, on success, replace the user's imported or chosen model without a "Replace model" confirmation. `LEAVE_WAITING` alone keeps the row ("not now"); same-model `SELECT_MODEL` of an already-installed model (`currentModelId`) keeps today's behavior. Re-selecting the model whose saved row is held (e.g. PAUSE, Resume offline, Choose another model, tap the same model) keeps `pauseState` and sets `continuation`, so it resumes via `resumeDownload` behind the network check (a cellular decline returns to `paused`) instead of restarting from zero over the saved resume data.
+- Import kill window: `import.tsx` `runImport` clears the download row (via the hub context's `clearDownloadState`; errors swallowed and logged) BEFORE the identity commit (`setModelPath`), so a kill between the commit and `IMPORT_SMOKE_OK` cannot leave an abandoned row that a later Wi-Fi open would download over the import. The machine's `IMPORT_SMOKE_OK` clear stays as a second guard.
 - `CellularConfirm` closes its sheet whenever the machine is not in `cellularConfirm` (e.g. `APP_BACKGROUND` moves to `paused`, then foreground on Wi-Fi goes to `downloading`), via `dismiss` from `useConfirmSheet`.
 - `RETRY` from `failed` with a pause state IS reachable (a declined continuation whose `paused` write fails errors `pauseTask` into `failed` keeping the pause state; also a resumed download whose user pause rejects). It goes `confirmingNetwork` → `cellularConfirm`, and Cancel returns to `paused`. This corrects an earlier note calling it unreachable.
 - Known, not fixed here (separate issue to be filed): a pre-existing pause race, `APP_FOREGROUND` while the background `pauseTask` is still in flight leaves a stale pause state.
@@ -59,6 +60,10 @@ Added for the review round: foreground decline stays paused with resume data and
 
 The old "restore downloads without a network check" test now asserts the check runs. RED on main, GREEN after.
 
+## Accepted limitations
+
+- `paused` has no import or choose-another exit on cellular: a declined continuation is resumed with consent, waits for Wi-Fi, or the user leaves the hub.
+
 ## INTENT check
 
 Rule 9 (no surprise network use) is better served: cellular use is always consented to. No new network, state, or store. No contradiction.
@@ -68,3 +73,4 @@ Rule 9 (no surprise network use) is better served: cellular use is always consen
 - [x] `npx tsc --noEmit`, `npm run lint`, `npx jest --maxWorkers=2` pass.
 - [ ] On device: start a download on Wi-Fi, kill the app, reopen the hub on cellular → cellular prompt appears.
 - [ ] On device: start on Wi-Fi, background, return on cellular → cellular prompt appears; returning on Wi-Fi resumes with no prompt.
+- [ ] On device: `cellularConfirm` then background then foreground on cellular in quick succession re-presents the sheet (RN iOS Modal re-present timing).

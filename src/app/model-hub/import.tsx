@@ -15,7 +15,7 @@ import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
 export default function ModelHubImportScreen() {
   const router = useRouter();
-  const { send, stateValue } = useModelHub();
+  const { send, stateValue, clearDownloadState } = useModelHub();
   const completeOnboarding = useModelHubCompletion();
   const [status, setStatus] = useState('');
 
@@ -69,6 +69,14 @@ export default function ModelHubImportScreen() {
         send({ type: 'IMPORT_FAILED', message: 'This model could not run on your device.' });
         router.back();
         return;
+      }
+      // Clear any abandoned download row BEFORE the identity commit: a kill
+      // between the commit and the machine's IMPORT_SMOKE_OK clear would leave
+      // the row, and the next Wi-Fi open would download over this import.
+      try {
+        await clearDownloadState();
+      } catch (cause) {
+        console.warn('[model-hub] could not clear the download row before import', cause);
       }
       await setModelPath(dest.uri);
       committedPath = true;
