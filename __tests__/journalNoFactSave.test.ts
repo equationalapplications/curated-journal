@@ -136,7 +136,7 @@ describe('a save whose ingest stores no facts (issue #112)', () => {
   };
 
   it('resolves (not throws) when one chunk fails and the others store facts', async () => {
-    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: partialLlm(true), config: { maxChunkLength: 120 } });
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: partialLlm(true), config: { maxChunkLength: 120, chunkOverlap: 10 } });
     await wiki.setup();
     const ingest = createJournalIngest(wiki);
 
@@ -146,11 +146,37 @@ describe('a save whose ingest stores no facts (issue #112)', () => {
   });
 
   it('still throws when one chunk fails and the successful chunks stored no facts', async () => {
-    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: partialLlm(false), config: { maxChunkLength: 120 } });
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: partialLlm(false), config: { maxChunkLength: 120, chunkOverlap: 10 } });
     await wiki.setup();
     const ingest = createJournalIngest(wiki);
 
     await expect(ingest(ENTITY, { ...longNote, sourceRef: 'journal://1' })).rejects.toThrow(/no facts/i);
+  });
+
+  it('resolves a RETRY whose duplicate re-ingest is partial (facts stored under the canonical ref)', async () => {
+    let phase: 'empty' | 'partial' = 'empty';
+    let calls = 0;
+    const llm: LLMProvider = {
+      generateText: async ({ userPrompt }) => {
+        if (phase === 'partial' && calls++ === 1) return 'not json {{{';
+        const facts =
+          phase === 'partial' ? [{ title: `Fact ${calls}`, body: userPrompt.slice(0, 80), confidence: 'inferred' }] : [];
+        return JSON.stringify({ facts, tasks: [] });
+      },
+    };
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: llm, config: { maxChunkLength: 120, chunkOverlap: 10 } });
+    await wiki.setup();
+    const ingest = createJournalIngest(wiki);
+
+    await expect(ingest(ENTITY, { ...longNote, sourceRef: 'journal://1' })).rejects.toThrow(/no facts/i);
+
+    phase = 'partial';
+    const result = await ingest(ENTITY, { ...longNote, sourceRef: 'journal://2' });
+    expect(result.failedChunks).toBeGreaterThan(0);
+
+    const refs = await wiki.listSourceRefs(ENTITY);
+    const r0 = refs.find((r) => r.sourceRef === normalizeJournalSourceRef('journal://1'));
+    expect(r0?.factCount).toBeGreaterThan(0);
   });
 
   it('pins normalizeJournalSourceRef to the engine stored ref', async () => {

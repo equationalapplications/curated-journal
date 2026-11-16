@@ -49,13 +49,16 @@ Partial-ingest path (amendment, review M1): when some chunks fail and others suc
 
 `listSourceRefs` is a live API on `WikiMemory` (`@equationalapplications/core-llm-wiki`). It returns one row per live sourceRef with a `factCount`. The readback is one query per save.
 
-The `sourceRef` is unique per save (`journal://<time>`), so the readback sees only this save's facts.
+The ref match is unique per save (`journal://<time>`). A hash match can intentionally count an earlier identical save's facts: that is the duplicate-of-a-good-save case.
+
+Duplicate-then-partial path (review MAJOR): a factless save indexes the hash under R0; the RETRY (fresh ref, same text) hits `duplicateOf = R0` and re-ingests under R0. If that re-ingest is partial, the engine stores the facts under R0 with a NULL hash, which matches neither the save's hash nor the save's fresh ref. The second readback therefore also counts facts under `result.duplicateOf` (`liveFactCount(extraRef)`, normalized; normalization is idempotent), so the retry resolves with `failedChunks > 0` instead of throwing with facts stored.
 
 ## Files touched
 
 - `src/lib/journalIngest.ts` — the guard, including the duplicate re-ingest branch.
 - `__tests__/journalNoFactSave.test.ts` — reproduction and retry tests (one RED before the fix).
 - `__tests__/journalSaveWarning.test.tsx`, `__tests__/journalBackgroundSave.test.tsx` — the queue component stubs answer the readback with one stored fact; they always pass the guard, so the throw path is exercised only by the real-engine tests.
+- `__tests__/journalPaneToggle.test.tsx`, `__tests__/journalSaveSourceHash.test.tsx` — queue/pane stubs updated for the readback.
 - `package.json`, `app.json`, `package-lock.json` — version 9.1.1 → 9.1.2.
 - `specs/2026-11-14-no-fact-save-guard/` — this folder.
 
@@ -68,6 +71,7 @@ The `sourceRef` is unique per save (`journal://<time>`), so the readback sees on
 5. "rejects a RETRY that still stores no facts": a second factless attempt rejects instead of accepting the duplicate.
 6. `journalNoFactSave` test 3 proves a duplicate of a good save succeeds with exactly one live fact. (`journalDuplicateSave.test.ts` does not go through `createJournalIngest`.)
 6a. Partial ingest: one failed chunk with facts elsewhere resolves with `failedChunks > 0`; one failed chunk with empty facts elsewhere still throws; the stored ref equals `normalizeJournalSourceRef`.
+6b. Duplicate-then-partial: factless save rejects; the retry (fresh ref) re-ingests under R0 partially and resolves with `failedChunks > 0`, facts listed under R0.
 7. Full `npx jest` suite green; `npx tsc --noEmit` clean.
 
 ## Accepted limitation (m4)

@@ -2,6 +2,20 @@ import type { WikiMemory } from '@equationalapplications/core-llm-wiki';
 import type { JournalSaveQueueInput } from '@/machines/journalSaveQueueMachine';
 
 /**
+ * Mirrors core-llm-wiki's `utils/pure.ts normalizeSourceRef`, which is not
+ * exported. A real-engine test (journalNoFactSave) pins that the engine's
+ * stored ref equals this function's output.
+ */
+export function normalizeJournalSourceRef(ref: string): string | null {
+  const value = ref
+    .replace(/[^A-Za-z0-9._\- ]/g, '')
+    .trim()
+    .slice(0, 255)
+    .trimEnd();
+  return value === '' ? null : value;
+}
+
+/**
  * The journal's ingest call. Every save gets a fresh `journal://<time>`
  * sourceRef, so saving a note whose exact content already exists would put a
  * second live sourceRef on the same content hash, which the wiki's unique
@@ -17,7 +31,7 @@ import type { JournalSaveQueueInput } from '@/machines/journalSaveQueueMachine';
  * only, and a chunk whose reply parses with an empty `facts` list counts as
  * ingested. The app keeps no other copy of a note's text, so a clean result
  * can mean the note is gone. Every save is verified by readback: list the
- * entity's source refs and require a live fact under the save's hash.
+ * entity's source refs and require a live fact under the save's hash OR the save's normalized ref (OR the canonical duplicate ref after a re-ingest).
  * Rejecting keeps the entry in the queue as failed (RETRY/DISCARD) instead
  * of dropping the text. Owner ruling 2026-11-14: forcing a manual discard
  * of a factless note is the intended UX until Step 8's source store lands.
@@ -47,31 +61,19 @@ import type { JournalSaveQueueInput } from '@/machines/journalSaveQueueMachine';
  * sees only each ref's latest hash and its live fact count — must be
  * revisited.
  */
-/**
- * Mirrors core-llm-wiki's `utils/pure.ts normalizeSourceRef`, which is not
- * exported. A real-engine test (journalNoFactSave) pins that the engine's
- * stored ref equals this function's output.
- */
-export function normalizeJournalSourceRef(ref: string): string | null {
-  const value = ref
-    .replace(/[^A-Za-z0-9._\- ]/g, '')
-    .trim()
-    .slice(0, 255)
-    .trimEnd();
-  return value === '' ? null : value;
-}
-
 export function createJournalIngest(wiki: WikiMemory): JournalSaveQueueInput['ingest'] {
   return async (entityId, params) => {
-    const liveFactCount = async (): Promise<number> => {
+    const liveFactCount = async (extraRef?: string): Promise<number> => {
       const refs = await wiki.listSourceRefs(entityId);
       const hash = params.sourceHash.toLowerCase();
       const ref = normalizeJournalSourceRef(params.sourceRef);
+      const extra = extraRef == null ? null : normalizeJournalSourceRef(extraRef);
       return refs
         .filter(
           (r) =>
             (r.sourceHash != null && r.sourceHash.toLowerCase() === hash) ||
-            (ref != null && r.sourceRef === ref),
+            (ref != null && r.sourceRef === ref) ||
+            (extra != null && r.sourceRef === extra),
         )
         .reduce((n, r) => n + r.factCount, 0);
     };
@@ -85,7 +87,8 @@ export function createJournalIngest(wiki: WikiMemory): JournalSaveQueueInput['in
         { ...params, sourceRef: result.duplicateOf },
         { onDuplicateHash: 'skip' },
       );
-      if ((await liveFactCount()) > 0) return retry;
+      // A partial re-ingest stores facts under the canonical ref with a NULL hash.
+      if ((await liveFactCount(result.duplicateOf)) > 0) return retry;
     }
 
     throw new Error('The model stored no facts from this note. Try saving again.');
