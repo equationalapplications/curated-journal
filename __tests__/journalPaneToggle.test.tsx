@@ -3,9 +3,16 @@ import JournalScreen from '@/app/(tabs)/journal';
 import { JournalProvider } from '@/contexts/JournalContext';
 import { JournalSaveQueueProvider } from '@/contexts/JournalSaveQueueContext';
 
+const mockIngest = jest.fn();
+// The stored-facts guard (issue #112) reads the save back: echo one fact.
+const mockListSourceRefs = jest.fn(async (_entityId: string) => {
+  const params = mockIngest.mock.calls.at(-1)?.[1] as { sourceHash: string } | undefined;
+  return [{ sourceRef: 'journal://stub', sourceHash: params?.sourceHash ?? null, factCount: 1, lastIngestedAt: 0 }];
+});
+
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
   // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
-  useWiki: () => ({ ingestDocument: jest.fn() }),
+  useWiki: () => ({ ingestDocument: mockIngest, listSourceRefs: mockListSourceRefs }),
 }));
 
 jest.mock('expo-router', () => ({

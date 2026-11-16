@@ -1,6 +1,7 @@
 # Spec: fail a journal save that stores no facts
 
 Status: Implemented
+Amended 2026-11-16 after review: partial-ingest path.
 Spec approved by the owner 2026-11-16.
 Date: 2026-11-14
 Version cost: PATCH (9.1.1 → 9.1.2) per `docs/VERSIONING.md`
@@ -35,14 +36,18 @@ The engine's result (`IngestDocumentResult`) reports chunk counts only. It does 
 Add a stored-facts guard to `createJournalIngest` in `src/lib/journalIngest.ts`:
 
 1. Call `wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' })` as today.
-2. Read the save's content back with `wiki.listSourceRefs(entityId)` and find the row whose `sourceHash` equals `params.sourceHash`.
-3. If that row exists and its `factCount` is greater than 0, return the result unchanged. This also covers a duplicate of a good save: `duplicateOf` alone is NOT success.
+2. Read the save's content back with `wiki.listSourceRefs(entityId)` and sum `factCount` over rows whose `sourceHash` equals `params.sourceHash` (case-insensitive) OR whose `sourceRef` equals the save's normalized ref.
+3. If that sum is greater than 0, return the result unchanged. This also covers a duplicate of a good save: `duplicateOf` alone is NOT success.
 4. If the readback found no facts but the result carries `duplicateOf`, a factless save already claimed this hash under the canonical ref. Re-ingest once under `sourceRef: result.duplicateOf` — the engine never reports the incoming ref as its own duplicate, so the model runs again and can store the note. If the readback then finds facts, return that result.
 5. Otherwise throw an `Error` whose message names the cause ("The model stored no facts from this note. Try saving again."). The queue keeps the entry, marks it `failed`, and shows the error. The user can RETRY or DISCARD.
 
 Why `duplicateOf` is not success: the engine writes the hash index during every ingest, including one that stored no facts. A RETRY of a factless save therefore reaches the duplicate path with nothing live under the hash; accepting it would drop the note silently — the exact loss this guard exists to stop. Found by the Tier-3 review of this spec's implementation (round 1, BLOCKER 1).
 
-The readback matches by `sourceHash`, not by `sourceRef`. The engine normalizes the stored spelling of a sourceRef (it stores `journal://<n>` with the scheme stripped), and that normalization is not a callable rule, so a raw-ref match would break. The hash round-trips verbatim. `listSourceRefs` is a live API on `WikiMemory` (`@equationalapplications/core-llm-wiki`). It returns one row per live sourceRef with a `factCount`. The readback is one query per save.
+The readback matches by hash OR by normalized ref. The engine stores a ref with every character outside `[A-Za-z0-9._\- ]` stripped (so `journal://<n>` is stored as `journal<n>`), trimmed, cut to 255 characters. Core's `normalizeSourceRef` is not exported, so `normalizeJournalSourceRef` in `journalIngest.ts` mirrors it and a real-engine test pins that the stored ref equals it. Hashes are compared case-insensitively (the engine lowercases them).
+
+Partial-ingest path (amendment, review M1): when some chunks fail and others succeed, the engine (core-llm-wiki 8.4.0, `appendPartialFacts`) stores the surviving facts with `source_hash` NULL and writes no hash-index row. `listSourceRefs` then shows `{sourceRef, sourceHash: null, factCount: N}`. A hash-only readback would find nothing, throw, and a RETRY would duplicate the facts. The ref match counts those facts, so the save resolves with `failedChunks > 0` and the queue's existing "saved with a warning" path (`onDone`, `countIngestFailures`) still applies. If the successful chunks stored nothing, the guard still throws.
+
+`listSourceRefs` is a live API on `WikiMemory` (`@equationalapplications/core-llm-wiki`). It returns one row per live sourceRef with a `factCount`. The readback is one query per save.
 
 The `sourceRef` is unique per save (`journal://<time>`), so the readback sees only this save's facts.
 
@@ -61,8 +66,13 @@ The `sourceRef` is unique per save (`journal://<time>`), so the readback sees on
 3. "does not guard a duplicate of a good save" stays green: a duplicate save with live facts under the hash succeeds.
 4. "recovers on RETRY": factless save rejects, then a good model run with a fresh ref and the same hash stores the note (exercises the duplicate re-ingest branch).
 5. "rejects a RETRY that still stores no facts": a second factless attempt rejects instead of accepting the duplicate.
-6. `__tests__/journalDuplicateSave.test.ts` stays green: a duplicate save carries `duplicateOf` with live facts and skips the guard.
+6. `journalNoFactSave` test 3 proves a duplicate of a good save succeeds with exactly one live fact. (`journalDuplicateSave.test.ts` does not go through `createJournalIngest`.)
+6a. Partial ingest: one failed chunk with facts elsewhere resolves with `failedChunks > 0`; one failed chunk with empty facts elsewhere still throws; the stored ref equals `normalizeJournalSourceRef`.
 7. Full `npx jest` suite green; `npx tsc --noEmit` clean.
+
+## Accepted limitation (m4)
+
+A factless RETRY can run two model passes (the first ingest, then the duplicate re-ingest) inside the single 120s `saveTimeoutMs`. After a timeout the cancelled signal makes the second pass fail fast. This is accepted.
 
 ## Rejected alternatives
 

@@ -22,10 +22,14 @@ import type { JournalSaveQueueInput } from '@/machines/journalSaveQueueMachine';
  * of dropping the text. Owner ruling 2026-11-14: forcing a manual discard
  * of a factless note is the intended UX until Step 8's source store lands.
  *
- * The readback matches by `sourceHash`, not by `sourceRef`: the engine
- * normalizes the stored spelling of a sourceRef (a `journal://<n>` ref is
- * stored with the scheme stripped), and that normalization is not a callable
- * rule. The hash round-trips verbatim.
+ * The readback counts a live fact under the save's hash (compared
+ * case-insensitively; the engine lowercases hashes) OR under the save's
+ * normalized sourceRef. The second match matters: when some chunks fail and
+ * others succeed, the engine stores the partial facts with a NULL
+ * `source_hash` and no hash-index row, so only the ref identifies them. The
+ * engine strips every character outside `[A-Za-z0-9._\- ]` from a stored
+ * ref (so `journal://<n>` becomes `journal<n>`); `normalizeJournalSourceRef`
+ * mirrors that rule, and a real-engine test pins it.
  *
  * `duplicateOf` is NOT success by itself. The engine writes the hash index
  * during every ingest, including one that stored no facts, so a retry of a
@@ -43,11 +47,33 @@ import type { JournalSaveQueueInput } from '@/machines/journalSaveQueueMachine';
  * sees only each ref's latest hash and its live fact count — must be
  * revisited.
  */
+/**
+ * Mirrors core-llm-wiki's `utils/pure.ts normalizeSourceRef`, which is not
+ * exported. A real-engine test (journalNoFactSave) pins that the engine's
+ * stored ref equals this function's output.
+ */
+export function normalizeJournalSourceRef(ref: string): string | null {
+  const value = ref
+    .replace(/[^A-Za-z0-9._\- ]/g, '')
+    .trim()
+    .slice(0, 255)
+    .trimEnd();
+  return value === '' ? null : value;
+}
+
 export function createJournalIngest(wiki: WikiMemory): JournalSaveQueueInput['ingest'] {
   return async (entityId, params) => {
     const liveFactCount = async (): Promise<number> => {
       const refs = await wiki.listSourceRefs(entityId);
-      return refs.find((r) => r.sourceHash === params.sourceHash)?.factCount ?? 0;
+      const hash = params.sourceHash.toLowerCase();
+      const ref = normalizeJournalSourceRef(params.sourceRef);
+      return refs
+        .filter(
+          (r) =>
+            (r.sourceHash != null && r.sourceHash.toLowerCase() === hash) ||
+            (ref != null && r.sourceRef === ref),
+        )
+        .reduce((n, r) => n + r.factCount, 0);
     };
 
     const result = await wiki.ingestDocument(entityId, params, { onDuplicateHash: 'skip' });

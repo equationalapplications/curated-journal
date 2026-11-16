@@ -1,5 +1,5 @@
 import { createWiki, type LLMProvider, type WikiMemory } from '@equationalapplications/core-llm-wiki';
-import { createJournalIngest } from '@/lib/journalIngest';
+import { createJournalIngest, normalizeJournalSourceRef } from '@/lib/journalIngest';
 import { createNodeSqliteAdapter } from './helpers/nodeSqliteAdapter';
 
 // Issue #112: the model answers every chunk with valid JSON and no facts.
@@ -81,6 +81,9 @@ describe('a save whose ingest stores no facts (issue #112)', () => {
     const second = await ingest(ENTITY, save(2));
     expect(second.duplicateOf).toEqual(expect.any(String));
     expect(second.ingestedChunks).toBe(0);
+
+    const dump = await wiki.exportDump([ENTITY]);
+    expect(dump.entities[ENTITY].facts.filter((f) => f.deleted_at == null)).toHaveLength(1);
   });
 
   it('recovers on RETRY: a factless save, then a good model run, stores the note', async () => {
@@ -111,5 +114,52 @@ describe('a save whose ingest stores no facts (issue #112)', () => {
     await expect(ingest(ENTITY, save(1))).rejects.toThrow(/no facts/i);
     // Second save, fresh ref, same hash: duplicateOf again, still no facts.
     await expect(ingest(ENTITY, save(2))).rejects.toThrow(/no facts/i);
+  });
+
+  // Partial ingest: the engine stores the surviving chunks' facts with a NULL
+  // source_hash and no hash-index row, so the guard must match by ref too.
+  const longNote = {
+    sourceHash: 'b'.repeat(64),
+    documentChunk: Array.from({ length: 6 }, (_, i) => `# Section ${i}\n\n${'word '.repeat(20)}`).join('\n\n'),
+  };
+  const partialLlm = (okFacts: boolean): LLMProvider => {
+    let calls = 0;
+    return {
+      generateText: async ({ userPrompt }) => {
+        if (calls++ === 1) return 'not json {{{';
+        return JSON.stringify({
+          facts: okFacts ? [{ title: `Fact ${calls}`, body: userPrompt.slice(0, 80), confidence: 'inferred' }] : [],
+          tasks: [],
+        });
+      },
+    };
+  };
+
+  it('resolves (not throws) when one chunk fails and the others store facts', async () => {
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: partialLlm(true), config: { maxChunkLength: 120 } });
+    await wiki.setup();
+    const ingest = createJournalIngest(wiki);
+
+    const result = await ingest(ENTITY, { ...longNote, sourceRef: 'journal://1' });
+    expect(result.failedChunks).toBeGreaterThan(0);
+    expect(result.ingestedChunks).toBeGreaterThan(0);
+  });
+
+  it('still throws when one chunk fails and the successful chunks stored no facts', async () => {
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: partialLlm(false), config: { maxChunkLength: 120 } });
+    await wiki.setup();
+    const ingest = createJournalIngest(wiki);
+
+    await expect(ingest(ENTITY, { ...longNote, sourceRef: 'journal://1' })).rejects.toThrow(/no facts/i);
+  });
+
+  it('pins normalizeJournalSourceRef to the engine stored ref', async () => {
+    wiki = createWiki(createNodeSqliteAdapter(), { llmProvider: goodLlm });
+    await wiki.setup();
+    const params = save(7);
+    await createJournalIngest(wiki)(ENTITY, params);
+
+    const refs = await wiki.listSourceRefs(ENTITY);
+    expect(refs.map((r) => r.sourceRef)).toContain(normalizeJournalSourceRef(params.sourceRef));
   });
 });
