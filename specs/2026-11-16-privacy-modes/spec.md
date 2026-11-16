@@ -41,7 +41,8 @@ Owner rulings, 2026-11-16, encoded below:
 - A model download that is running when the user turns on strict
   privacy **pauses at once, and what it has so far is kept**. It never
   resumes on its own. It resumes only after the user leaves strict
-  privacy and asks to resume (R10).
+  privacy and asks to resume (R10). A successful custom import, which
+  the user chooses, abandons it (R10i).
 - Picking a model file already on the device, with the manifest's
   integrity checks, is issue
   [#115](https://github.com/equationalapplications/curated-journal/issues/115).
@@ -894,10 +895,9 @@ running. Then the app warns before the switch:
     `downloading` row restores when the hub next opens, through PR
     #125's check, which asks on cellular and waits offline.
 
-  This split is the spec's reconciliation of the owner's Cancel ruling
-  ("resumes the download") with #124's ruling that a continuation asks
-  first on cellular; it is flagged for the owner in PR #117's round
-  note. Re-saving the row as `downloading` matters either way:
+  This split is a lead ruling (2026-11-16), consistent with the #124
+  owner ruling that a continuation asks first on cellular; the owner
+  may overrule it. Re-saving the row as `downloading` matters either way:
   otherwise R8 step 1's first save would leave a `paused` row behind a
   running transfer, and if that transfer then finished with the hub
   closed, the restore would show a paused download that Resume fetches
@@ -923,30 +923,27 @@ continues through them in strict privacy.
 
 **i. No deletion unless the user says so.** Switching modes, starting
 the app and opening the hub never delete a kept download (the Android
-partial file, or the iOS resume data). The deletions that remain:
+partial file, or the iOS resume data). Only a choice the user makes
+deletes one:
 
 - the cleanup the user confirms in g;
 - picking a different model in Standard, which replaces the old
   download, as today; PR #125 also clears the saved download row
   (with its resume data) when the user picks a model different from
   the row's model. Picking the same model keeps its progress;
-- until #115 ships, "Import custom .gguf": its cleanup
-  (`deleteOrphanedCuratedModelFiles` with `keepModelId: null`, in
-  `src/app/model-hub/import.tsx`) deletes every curated model file that
-  isn't the current model, which includes a kept Android partial file.
-  #115 stops that (owner, OQ-2). Step 2 does not change the import
-  path;
-- a successful custom import also clears the saved download row (PR
-  #125: before the import commits the model's identity, and again on
-  `IMPORT_SMOKE_OK`), so a later hub open cannot restore the abandoned
-  download and replace the imported model without a "Replace model"
-  confirmation. That drops a kept download's resume data, in either
-  mode, since the import stays available in strict (R11). **This
-  bears on OQ-2's answer:** #115 is to stop the import from deleting a
-  kept partial download, but once PR #125 clears the row, a kept
-  Android partial file has no row left to resume it. #115 has to
-  decide whether an import keeps a kept download's row, or whether
-  importing a model abandons that download on purpose.
+- **a successful custom import abandons any kept download, in both
+  modes** (lead ruling, 2026-11-16; the same principle as PR #125's
+  different-model pick). Importing a model is the user's choice of a
+  model, so it ends the download they had kept. Its row is cleared
+  (PR #125: before the import commits the model's identity, and again
+  on `IMPORT_SMOKE_OK`), so a later hub open has nothing to restore and
+  cannot replace the imported model without a "Replace model"
+  confirmation. Its partial file is not preserved either: the import's
+  orphan sweep (`deleteOrphanedCuratedModelFiles` with
+  `keepModelId: null`, in `src/app/model-hub/import.tsx`) may delete
+  it. The sweep must never delete the **current** model's file; #115
+  covers that guarantee. The import stays available in strict (R11),
+  so this applies there too. Step 2 does not change the import path.
 
 **j. A paused row with no resume data is checked first** (review,
 2026-11-16). In either mode, when the hub restores a `paused` row
@@ -995,8 +992,10 @@ After a read failure (R3), the notice starts with that sentence.
 - **"Import custom .gguf" stays available in strict privacy** (owner,
   OQ-2). It hands the app a file through the OS document picker, which
   the charter's picker exception covers, and it reaches nothing itself.
-  It has no manifest byte or integrity check today. #115 adds those
-  checks, and stops its cleanup from deleting a kept download (R10i).
+  It has no manifest byte or integrity check today. #115 adds
+  integrity checks for an imported file that matches a curated model,
+  and makes sure the orphan sweep never deletes the current model's
+  file. A successful import abandons any kept download (R10i).
 
 *(Rules 1, 2, 11.)*
 
@@ -1129,9 +1128,11 @@ plugins or permissions.
 
 ## Out of scope
 
-- **#115**: loading a model from a file the user picks, with the
-  manifest's byte and integrity checks, and stopping the import
-  cleanup from deleting a kept download. It needs its own spec.
+- **#115**: integrity verification of an imported model file that
+  matches a curated model (the manifest's byte and integrity checks),
+  and the import's orphan sweep never deleting the current model's
+  file. It needs its own spec. (Keeping a kept download through an
+  import is no longer part of it: an import abandons it, R10i.)
 - **#118**: blocking remote images in notes. It ships first, on its
   own. Step 2 keeps it in place (R6).
 - **#124** (PR #125): routing every continuation of a download
@@ -1374,7 +1375,9 @@ must pass):
   - in strict, a finished download on disk goes through `verifying`
     and `smokeTest` to `complete`, and no network spy fires (R10h);
   - switching modes, launching and opening the hub delete no model
-    file (R10i).
+    file (R10i); a successful custom import in strict clears a
+    strict-paused download's row, so the next hub open restores
+    nothing (R10i, lead ruling).
 - Hub notices: the strict notices in R7, R11 and R12 show in strict and
   not in Standard; the read-failure sentence shows after a read
   failure; the Step out button opens R9's confirmation.
@@ -1570,6 +1573,14 @@ asked, with the answer and where the spec encodes it.
   integrity checks and stop its cleanup from deleting a kept partial
   download. *Encoded in:* R10i, R11, R12, the strict copy, R8's
   confirmation.
+  **Superseded in part (lead ruling, 2026-11-16; the owner may
+  overrule):** a successful custom import abandons any kept download,
+  in both modes. Its row is cleared and its partial file is not
+  preserved, so #115 no longer stops the import's cleanup from deleting
+  a kept partial. #115's remaining scope is integrity verification of
+  imported files that match a curated model, and the orphan sweep never
+  deleting the current model's file. *Encoded in:* R10i, R11, Out of
+  scope.
 - **OQ-3 — Links inside notes, in the default mode.** *Asked:* In
   strict privacy they are blocked (R5). In the default mode, rule 9's
   list (downloads, update checks, tips) does not name them. Should a
