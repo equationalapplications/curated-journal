@@ -4,7 +4,7 @@ import Markdown from 'react-native-markdown-display';
 
 import { markdownRules } from '@/lib/markdownRules';
 
-type Props = Omit<ComponentProps<typeof Markdown>, 'rules'>;
+type Props = Omit<ComponentProps<typeof Markdown>, 'rules' | 'renderer'>;
 
 /**
  * The only way to render note Markdown. Always applies `markdownRules`
@@ -12,5 +12,5 @@ type Props = Omit<ComponentProps<typeof Markdown>, 'rules'>;
  * `react-native-markdown-display` are lint-forbidden elsewhere.
  */
 export function NoteMarkdown(props: Props) {
-  return <Markdown {...props} rules={markdownRules} />;
+  return <Markdown {...props} renderer={undefined} rules={markdownRules} />;
 }

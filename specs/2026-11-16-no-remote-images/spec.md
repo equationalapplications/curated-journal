@@ -24,7 +24,7 @@ RED on `main` (94296e7 plus the new test, fix not applied): `__tests__/markdownN
 
 - New `src/lib/markdownRules.tsx` exports one `markdownRules` override whose `image` rule never renders an `Image`. It renders a muted, italic plain `Text` (testID `markdown-image-placeholder`, `accessibilityLabel` `Image not loaded: <alt>` or `Image not loaded`): `[image not loaded: <alt>]` (or `[image not loaded]`) followed by the source as non-link text. A `data:` source shows only its media type, `(embedded image/png)`; any other source over 80 characters is truncated with an ellipsis; inside a link (`link`/`blocklink` parent) the source is omitted so the shown URL cannot differ from the tap target.
 - New `src/components/NoteMarkdown.tsx` wraps `react-native-markdown-display` and always passes `rules={markdownRules}`. All three renderers use `NoteMarkdown`.
-- ESLint `no-restricted-imports` (eslint.config.js) forbids importing `react-native-markdown-display` anywhere except `NoteMarkdown.tsx`, so a future renderer cannot silently bring back the default image rule.
+- ESLint `no-restricted-imports` (eslint.config.js) forbids value imports (type imports allowed) of `react-native-markdown-display` anywhere except `NoteMarkdown.tsx` (which carries the one inline exemption); `no-restricted-syntax` selectors also catch a dynamic `import()` and `require()` of it, so a future renderer cannot silently bring back the default image rule.
 - Local sources: nothing in the app produces local image sources (notes are text; no attachments, no asset store). So ALL images are blocked, remote or not, with no scheme allowlist to get wrong (`http:`, `https:`, `//`, `data:`, `file:` and anything else alike).
 - Links stay unchanged (not auto-fetched; out of scope).
 
@@ -41,7 +41,7 @@ RED on `main` (94296e7 plus the new test, fix not applied): `__tests__/markdownN
 
 ## INTENT check
 
-Rule 9 ¶2 (nothing runs on its own) is restored; the change adds no network, no state, no second store. Rule 1 (works offline) is unaffected. No contradiction.
+Rule 9 ¶2 (nothing runs on its own) is restored; the change adds no network, no state, no second store. Rule 1 (works offline) is unaffected. Rule 11 (strict privacy) is also served: no note content triggers a network request. No contradiction.
 
 ## Verification
 

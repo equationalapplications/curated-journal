@@ -73,6 +73,16 @@ module.exports = defineConfig([
           message:
             "This ES2023 Array method is not implemented by Hermes (React Native on Android) and will crash on device, even though Jest on Node passes. Use the ES2019 equivalent — e.g. [...xs].sort() instead of xs.toSorted().",
         },
+        // Dynamic import / require of the markdown library bypass
+        // no-restricted-imports; NoteMarkdown is the only sanctioned entry.
+        {
+          selector: 'ImportExpression[source.value=/^react-native-markdown-display/]',
+          message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
+        },
+        {
+          selector: "CallExpression[callee.name='require'][arguments.0.value=/^react-native-markdown-display/]",
+          message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
+        },
       ],
     },
   },
@@ -80,8 +90,7 @@ module.exports = defineConfig([
     // Notes must render through NoteMarkdown, which forces markdownRules (no
     // remote image fetch, INTENT rule 9). Importing the library directly
     // would silently bring back the default image rule.
-    files: ['**/*.{ts,tsx}'],
-    ignores: ['src/components/NoteMarkdown.tsx'],
+    files: ['**/*.{js,jsx,ts,tsx,mjs,cjs}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -89,6 +98,13 @@ module.exports = defineConfig([
           paths: [
             {
               name: 'react-native-markdown-display',
+              allowTypeImports: true,
+              message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['react-native-markdown-display/*'],
               allowTypeImports: true,
               message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
             },

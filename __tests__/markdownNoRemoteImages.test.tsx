@@ -1,4 +1,6 @@
-import { Image } from 'react-native';
+import { Image, StyleSheet } from 'react-native';
+import { Colors } from '@/constants/theme';
+import { markdownStyles } from '@/components/ui/markdown-styles';
 import { render } from '@testing-library/react-native';
 import { NoteMarkdown } from '@/components/NoteMarkdown';
 import { JournalPane } from '@/components/journal/JournalPane';
@@ -101,5 +103,14 @@ describe('image placeholder details', () => {
     const s = await render(<NoteMarkdown>{md}</NoteMarkdown>);
     expect(s.queryByLabelText('Image not loaded: d')).not.toBeNull();
     expect(s.queryByLabelText('Image not loaded')).not.toBeNull();
+  });
+  it('styles the placeholder muted and italic', async () => {
+    const theme = Colors.light;
+    const s = await render(
+      <NoteMarkdown style={markdownStyles(theme)}>{'![alt](https://example.com/a.png)'}</NoteMarkdown>,
+    );
+    const flat = StyleSheet.flatten(s.getByTestId('markdown-image-placeholder').props.style);
+    expect(flat.fontStyle).toBe('italic');
+    expect(flat.color).toBe(theme.onSurfaceVar);
   });
 });

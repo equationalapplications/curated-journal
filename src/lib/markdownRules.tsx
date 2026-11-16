@@ -30,7 +30,7 @@ export const markdownRules: RenderRules = {
     return (
       <Text
         key={node.key}
-        style={[styles.text, styles.image]}
+        style={[styles.text, styles.imagePlaceholder]}
         testID="markdown-image-placeholder"
         accessibilityLabel={alt ? `Image not loaded: ${alt}` : 'Image not loaded'}
       >
