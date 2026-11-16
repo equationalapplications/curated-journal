@@ -5,6 +5,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AwaitingWifi } from '@/components/model-hub/awaiting-wifi';
 import { Note } from '@/components/ui/states';
 import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
@@ -85,15 +86,17 @@ export default function ModelHubDownloadScreen() {
     }
   }, [stateValue, completeOnboarding, router]);
 
-  // RETRY from `failed` with nothing to resume goes back to the list: follow
-  // it, or this screen is left showing no actions. Keyed on the transition,
-  // not on `selecting` alone — a restore mounts this screen before the
-  // RESTORE_DOWNLOAD event has left `selecting`.
+  // Any move back to `selecting` (RETRY from `failed` with nothing to resume,
+  // a declined cellular prompt, a network-check error) lands on the list,
+  // which shows the error banner: follow it, or this screen is left showing
+  // no actions. Keyed on the transition INTO `selecting`, not on `selecting`
+  // alone — a restore mounts this screen before the RESTORE_DOWNLOAD event
+  // has left `selecting`.
   const previousState = useRef(stateValue);
   useEffect(() => {
     const previous = previousState.current;
     previousState.current = stateValue;
-    if (previous === 'failed' && stateValue === 'selecting') {
+    if (previous !== 'selecting' && stateValue === 'selecting') {
       router.dismissTo('/model-hub' as Href);
     }
   }, [stateValue, router]);
@@ -150,6 +153,13 @@ export default function ModelHubDownloadScreen() {
             {formatSpeed(speedBps)} — {formatEta(etaSeconds)}
           </ThemedText>
         ) : null}
+
+        {stateValue === 'confirmingNetwork' ? (
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            Checking your connection…
+          </ThemedText>
+        ) : null}
+        {stateValue === 'awaitingWifi' ? <AwaitingWifi /> : null}
 
         {stateValue === 'downloading' ? (
           <Button

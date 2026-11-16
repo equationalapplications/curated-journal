@@ -853,9 +853,11 @@ describe('modelHubMachine', () => {
 
     it('foreground resume on Wi-Fi resumes with no prompt', async () => {
       const { api, actor } = await backgrounded('wifi');
+      const checksBefore = (api.checkNetwork as jest.Mock).mock.calls.length;
       actor.send({ type: 'APP_FOREGROUND' });
       await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
       await until(() => (api.resumeDownload as jest.Mock).mock.calls.length === 1);
+      expect((api.checkNetwork as jest.Mock).mock.calls.length).toBe(checksBefore + 1);
       actor.stop();
     });
   });

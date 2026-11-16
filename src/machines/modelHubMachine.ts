@@ -274,7 +274,7 @@ export const modelHubMachine = setup({
               error: null,
               pauseState: null,
               pausedReason: null,
-                      }),
+            }),
           },
           {
             target: 'retiringCurrent',

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
+import { AwaitingWifi } from '@/components/model-hub/awaiting-wifi';
 import { Card, ListGroup, ListRow } from '@/components/ui/card';
 import { ErrorBanner } from '@/components/ui/states';
 import { useConfirmSheet } from '@/components/ui/confirm-sheet';
@@ -42,20 +43,6 @@ export default function ModelHubIndexScreen() {
       if (inInstall) router.push('/model-hub/download' as Href);
     }, [inInstall, router]),
   );
-
-  useEffect(() => {
-    if (stateValue === 'cellularConfirm') {
-      confirm({
-        title: 'Download over cellular',
-        message:
-          'This model is a large file and may use a significant amount of cellular data.',
-        buttons: [
-          { text: 'Cancel', style: 'cancel', onPress: () => send({ type: 'CELLULAR_CANCEL' }) },
-          { text: 'Download over cellular', onPress: () => send({ type: 'CELLULAR_CONFIRM' }) },
-        ],
-      });
-    }
-  }, [stateValue, router, send, confirm]);
 
   const currentModelName = () => {
     if (!currentModelId) return 'Your current model';
@@ -125,16 +112,7 @@ export default function ModelHubIndexScreen() {
 
         {error ? <ErrorBanner message={error.message} /> : null}
 
-        {stateValue === 'awaitingWifi' ? (
-          <View style={styles.wifi}>
-            <ThemedText type="strong">Connect to Wi-Fi to continue</ThemedText>
-            <Button
-              label="Try again"
-              variant="default"
-              onPress={() => send({ type: 'CHECK_NETWORK' })}
-            />
-          </View>
-        ) : null}
+        {stateValue === 'awaitingWifi' ? <AwaitingWifi /> : null}
 
         <ThemedText type="label">Models</ThemedText>
         <ListGroup>
@@ -204,7 +182,6 @@ const styles = StyleSheet.create({
   backRow: { alignSelf: 'flex-start', minHeight: TouchTarget, justifyContent: 'center' },
   intro: { gap: Space[2] },
   modelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  wifi: { gap: Space[3] },
   warning: { gap: Space[3] },
   warningActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Space[2] },
 });

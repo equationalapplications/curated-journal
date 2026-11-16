@@ -23,7 +23,13 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 `src/machines/modelHubMachine.ts`:
 - `checkingExisting` (no verified file, or verify threw) always goes to `confirmingNetwork`. The `afterCheck` context flag existed only to skip the check on restore, so it is removed.
 - `paused` + `APP_FOREGROUND` (background reason) goes to `confirmingNetwork` instead of `downloading`.
-- `confirmingNetwork` exits are unchanged: Wi-Fi → `downloading`, cellular → `cellularConfirm`, else `awaitingWifi`. `downloading` already reads `context.pauseState`, which the restore event (or the pause task) set and `confirmingNetwork`/`cellularConfirm` do not touch, so a confirmed continuation RESUMES the saved download rather than starting fresh.
+- `confirmingNetwork` exits are unchanged: Wi-Fi → `downloading`, cellular → `cellularConfirm`, else `awaitingWifi`. `downloading` already reads `context.pauseState`, which the restore event (or the pause task) set and `confirmingNetwork`/`cellularConfirm` do not touch, so a confirmed continuation resumes from a saved pause state when one exists. In production the `downloading` entry persists `pauseState: null`, so a download killed mid-flight restores with no pause state and starts over (behind the network check); resume-from-pause-state applies only when a pause state was saved (a background pause).
+- After a declined cellular prompt (Cancel) the saved row stays, and the next hub open asks again.
+
+`src/app/model-hub/_layout.tsx`, `download.tsx`, `index.tsx`: a continued download lands on `download.tsx` (restore replaces the list; foreground leaves it beneath), so the network states need UI there.
+- The cellular confirm sheet has ONE owner, `CellularConfirm` (`src/components/model-hub/cellular-confirm.tsx`), rendered by the hub layout inside `ModelHubProvider`; `index.tsx` no longer renders it, so it shows exactly once whichever screen is on top.
+- `AwaitingWifi` (`src/components/model-hub/awaiting-wifi.tsx`) is the shared "Connect to Wi-Fi" message and Try again (`CHECK_NETWORK`), used by both screens.
+- `download.tsx` shows "Checking your connection…" in `confirmingNetwork` and `AwaitingWifi` in `awaitingWifi`, and any transition INTO `selecting` (not the initial `selecting` of a restore mount) dismisses to `/model-hub`, where the error banner and list show.
 - Unchanged: manual `RESUME` (the user just tapped it), `SELECT_MODEL`, restored-paused, smoke states.
 
 ## Rejected alternatives
@@ -33,7 +39,11 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 
 ## Tests
 
-`__tests__/modelHubMachine.test.ts`: restore on cellular → `cellularConfirm`, no download until confirmed, then resumes from the saved pause state; restore on Wi-Fi → resumes from the saved pause state with no prompt; foreground resume on cellular → `cellularConfirm`, then resumes; foreground resume on Wi-Fi → resumes. The old "restore downloads without a network check" test now asserts the check runs. RED on main, GREEN after.
+`__tests__/modelHubMachine.test.ts`: restore on cellular → `cellularConfirm`, no download until confirmed, then resumes from the saved pause state; restore on Wi-Fi → resumes from the saved pause state with no prompt; foreground resume on cellular → `cellularConfirm`, then resumes; foreground resume on Wi-Fi → resumes. Note: the machine test that restores a `resumeData` record under status `downloading` is synthetic (production persists no pause state there). The foreground Wi-Fi test also asserts `checkNetwork` ran.
+
+`__tests__/modelHubDownloadNetworkStates.test.tsx` (testID/role based): sheet visible once on `cellularConfirm` with both buttons sending CELLULAR_CONFIRM / CELLULAR_CANCEL; sheet renders once with list and download screens both mounted; checking line on `confirmingNetwork`; Try again sends CHECK_NETWORK on `awaitingWifi`; transition into `selecting` dismisses to `/model-hub`; initial `selecting` does not.
+
+The old "restore downloads without a network check" test now asserts the check runs. RED on main, GREEN after.
 
 ## INTENT check
 
