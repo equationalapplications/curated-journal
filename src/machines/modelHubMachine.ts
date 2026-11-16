@@ -82,7 +82,6 @@ type Context = {
   pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
   smokeKilled: boolean;
-  afterCheck: 'network' | 'download';
 };
 
 export function smokeFailureMessage(displayName: string, memoryLikely: boolean): string {
@@ -259,7 +258,6 @@ export const modelHubMachine = setup({
     pausedReason: null,
     displayName: null,
     smokeKilled: false,
-    afterCheck: 'network' as const,
   }),
   on: {
     SET_DISPLAY_NAME: { actions: assign({ displayName: ({ event }) => event.displayName }) },
@@ -276,8 +274,7 @@ export const modelHubMachine = setup({
               error: null,
               pauseState: null,
               pausedReason: null,
-              afterCheck: 'network' as const,
-            }),
+                      }),
           },
           {
             target: 'retiringCurrent',
@@ -316,7 +313,6 @@ export const modelHubMachine = setup({
             actions: assign({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
-              afterCheck: 'download' as const,
               error: null,
             }),
           },
@@ -335,11 +331,9 @@ export const modelHubMachine = setup({
         }),
         onDone: [
           { guard: ({ event }) => event.output === true, target: 'smokeTest' },
-          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
           { target: 'confirmingNetwork' },
         ],
         onError: [
-          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
           { target: 'confirmingNetwork' },
         ],
       },
@@ -355,7 +349,7 @@ export const modelHubMachine = setup({
           {
             guard: ({ event }) => event.output.identityCleared,
             target: 'checkingExisting',
-            actions: assign({ currentModelId: null, afterCheck: 'network' as const }),
+            actions: assign({ currentModelId: null }),
           },
           {
             // The model really was removed — only its stored identity outlived
@@ -478,7 +472,8 @@ export const modelHubMachine = setup({
         RESUME: { target: 'downloading' },
         APP_FOREGROUND: {
           guard: ({ context }) => context.pausedReason === 'background',
-          target: 'downloading',
+          // Same network check as a fresh download: cellular asks first.
+          target: 'confirmingNetwork',
         },
       },
     },
