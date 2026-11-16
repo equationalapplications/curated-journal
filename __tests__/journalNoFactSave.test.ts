@@ -258,9 +258,12 @@ describe('stored-facts guard, one test per outcome-table row (issue #112)', () =
 
   // Race: a second engine instance on the same database claims the hash while
   // this save's model pass runs, so this save's write loses the unique-index
-  // race, rolls back, and reports the winner as duplicateOf.
-  async function raceSetup(winner: Mode) {
-    const adapter = withExpoSqliteErrors(createNodeSqliteAdapter());
+  // race and rolls back. On device expo-sqlite reports the PRIMARY code
+  // ("Error code 19"), which the engine's extractSqliteCode maps to
+  // SQLITE_CONSTRAINT, not _UNIQUE, so the duplicate translation misses and the
+  // save rejects (engine issue: extractSqliteCode ignores primary code 19).
+  async function raceSetup(winner: Mode, extendedCodes = false) {
+    const adapter = withExpoSqliteErrors(createNodeSqliteAdapter(), { extendedCodes });
     const a = scriptedModel('facts');
     const b = scriptedModel(winner);
     const wikiA = await makeWiki(a.llm, adapter);
@@ -269,8 +272,37 @@ describe('stored-facts guard, one test per outcome-table row (issue #112)', () =
     return { wikiA, a };
   }
 
-  it('O10 race lost to a writer that stored facts: resolves as its duplicate after one model pass', async () => {
+  it('O10 race lost to a writer that stored facts (device, primary code 19): rejects; winner intact; RETRY is a duplicate of the winner with one copy', async () => {
     const { wikiA, a } = await raceSetup('facts');
+    const ingest = createJournalIngest(wikiA);
+
+    await expect(ingest(ENTITY, save(1))).rejects.toThrow();
+    expect(await factsUnder(wikiA, 'journal://1')).toBe(0);
+    expect(await factsUnder(wikiA, 'journal://900')).toBe(1);
+
+    a.model.beforeReply = undefined;
+    const retry = await ingest(ENTITY, save(2));
+    expect(retry.duplicateOf).toBe(normalizeJournalSourceRef('journal://900'));
+    expect(await liveFactIds(wikiA)).toHaveLength(1);
+    expect(await factsUnder(wikiA, 'journal://900')).toBe(1);
+  });
+
+  it('O10 race lost to a factless writer (device, primary code 19): rejects; RETRY stores exactly one copy under the winner', async () => {
+    const { wikiA, a } = await raceSetup('empty');
+    const ingest = createJournalIngest(wikiA);
+
+    await expect(ingest(ENTITY, save(1))).rejects.toThrow();
+    expect(await liveFactIds(wikiA)).toEqual([]);
+
+    a.model.beforeReply = undefined;
+    const retry = await ingest(ENTITY, save(2));
+    expect(retry.failedChunks).toBe(0);
+    expect(await liveFactIds(wikiA)).toHaveLength(1);
+    expect(await factsUnder(wikiA, 'journal://900')).toBe(1);
+  });
+
+  it('O10 engine-level, if expo-sqlite ever enables extended codes (2067): resolves as a duplicate of a winner with facts after one pass', async () => {
+    const { wikiA, a } = await raceSetup('facts', true);
 
     const result = await createJournalIngest(wikiA)(ENTITY, save(1));
     expect(result.duplicateOf).toBe(normalizeJournalSourceRef('journal://900'));
@@ -279,8 +311,8 @@ describe('stored-facts guard, one test per outcome-table row (issue #112)', () =
     expect(await factsUnder(wikiA, 'journal://900')).toBe(1);
   });
 
-  it('O10 race lost to a factless writer: re-ingests under the winner (the only two-pass path)', async () => {
-    const { wikiA, a } = await raceSetup('empty');
+  it('O10 engine-level, extended codes (2067), factless winner: re-ingests under the winner in two passes', async () => {
+    const { wikiA, a } = await raceSetup('empty', true);
 
     const result = await createJournalIngest(wikiA)(ENTITY, save(1));
     expect(result.failedChunks).toBe(0);

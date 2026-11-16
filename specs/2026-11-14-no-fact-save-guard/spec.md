@@ -72,7 +72,7 @@ One `ingestDocument(X, H, { onDuplicateHash: 'skip' })` call ends in one of thes
 | O7 | Duplicate skip; R has none (left by O2 or O9); re-ingest under R succeeds in full | facts under R stamped H | resolve | 1 | O7 |
 | O8 | Same, re-ingest partial | NULL-hash facts under R | resolve (warning) | 1 | O8 |
 | O9 | Same, re-ingest stores nothing (all empty, partial with empty survivors, or every chunk failed) | index H→R rewritten, or nothing | reject (`WikiIngestEmptyError` propagates for every chunk failed) | 1 | O9 (three tests) |
-| O10 | Race: another writer claims H during this save's model pass; the write hits the unique hash index, rolls back, and the result names the winner W in `duplicateOf` | nothing under X | as O6 if W has facts, else as O7–O9 under W | 1, or 2 if W has none | O10 (two tests) |
+| O10 | Race: another writer claims H during this save's model pass; the write hits the unique hash index, rolls back, and the result names the winner W in `duplicateOf` | nothing under X | **On device** (expo-sqlite reports primary code 19, which the engine does not translate; engine issue: extractSqliteCode ignores primary code 19): the save rejects with `WikiTransactionError`, W's facts intact, nothing lost or duplicated; a RETRY is a duplicate of W (one copy). If expo-sqlite ever enables extended codes (2067), the engine translates it: as O6 if W has facts, else as O7–O9 under W | 1 (2 if W has none and extended codes) | O10 (two device tests, two engine-level tests) |
 | O11 | `truncated: true`: a hard split with no boundary; no text is dropped | as O1–O4 | flag ignored; O1–O4 decide | as O1–O4 | O11 |
 | O12 | No chunks (whitespace-only document) | nothing; no `duplicateOf` | reject | 0 | none: unreachable, the journal's document always starts with `# ` |
 | O13 | Content imported from an OKF bundle: facts stamped H under its own ref, no index row; this save is then O1–O4 | as O1–O4 | the hash match counts the imported facts: resolve even if this save stored none | 1 | O13 (uppercase hash) |
@@ -109,13 +109,14 @@ The failed-entry sheet offers Try again and Discard, and a failed entry cannot b
 ## Accepted limitations
 
 - I3 blind spot (a): a NULL-hash partial save of the same text under an earlier ref is invisible. A later identical save rejects (text kept) if its model stores nothing. If its model stores facts, it adds a second copy. This is engine behavior (partial rows carry no hash), and Step 8's source store is the place to fix it.
+- A re-save resolved via a NULL-hash partial holder (R) reports a clean duplicate with no "saved with warnings". Cosmetic: the warning was shown on the earlier RETRY.
 - m4 and the readback cost, above.
 
 ## Files touched
 
 - `src/lib/journalIngest.ts`: the guard, `NO_FACTS_SAVE_ERROR`, `normalizeJournalSourceRef`.
 - `__tests__/journalNoFactSave.test.ts`: real-engine tests, one per outcome row, plus two queue tests on the real engine and guard.
-- `__tests__/helpers/nodeSqliteAdapter.ts`: `withExpoSqliteErrors`, which reports constraint failures in expo-sqlite's shape so the race row (O10) reaches the engine's duplicate translation under node:sqlite.
+- `__tests__/helpers/nodeSqliteAdapter.ts`: `withExpoSqliteErrors`, which reports failures in expo-sqlite's shape: "Error code N" with the primary code (`errcode & 0xff`), because expo-sqlite 58.0.14 never enables extended result codes (ios/SQLiteResult.swift, android SQLiteError.h). An `extendedCodes` option emits 2067 for the engine-level O10 tests.
 - `__tests__/journalSaveWarning.test.tsx`, `__tests__/journalBackgroundSave.test.tsx`, `__tests__/journalPaneToggle.test.tsx`, `__tests__/journalSaveSourceHash.test.tsx`: the queue/screen stubs answer the readback with one fact stamped with the save's hash, so they always pass the guard. The guard's reject path is exercised only on the real engine.
 - `package.json`, `app.json`, `package-lock.json`: version 9.2.0 → 9.2.1.
 - `specs/2026-11-14-no-fact-save-guard/`: this folder.
@@ -127,7 +128,7 @@ The failed-entry sheet offers Try again and Discard, and a failed entry cannot b
 - O1–O5, O7, O8, O11, O13: one test each.
 - O6: three tests. The first is a duplicate of a hash-stamped save: no model call, one copy. The other two are the round-3 MAJOR, factless save, then a partial RETRY, then the same text saved again with an empty model, for lowercase and uppercase hashes. Each resolves with no model call and leaves R1's facts untouched.
 - O9: three tests (empty, partial with empty survivors, every chunk failed). Each rejects, stores nothing, and a later RETRY stores one copy.
-- O10: two tests. A second engine instance on the same database claims the hash during the model pass. One winner has facts (one pass), one is factless (two passes, facts under the winner).
+- O10: four tests. A second engine instance on the same database claims the hash during the model pass. Two assert device behavior (primary code 19): the save rejects, the winner's facts are intact, a RETRY is a duplicate with one copy (winner with facts, factless winner). Two assert the engine's translation under extended code 2067 (one pass; two passes with a factless winner).
 - A pin that `normalizeJournalSourceRef` equals the engine's stored ref.
 - Queue tests on the real engine and guard:
   - A factless save ends `failed` with its title and body kept and the message shown; RETRY then stores it once.

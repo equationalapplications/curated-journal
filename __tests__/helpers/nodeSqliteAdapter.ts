@@ -45,16 +45,23 @@ export function createNodeSqliteAdapter(): SQLiteAdapter {
 }
 
 /**
- * Report constraint failures the way expo-sqlite does on device
- * ("Error code 2067: …"). node:sqlite puts the code in `errcode` instead,
- * which the engine's `extractSqliteCode` does not read, so without this a
- * test cannot reach the engine's duplicate-hash race translation.
+ * Report failures the way expo-sqlite does on device: "Error code N: <message>"
+ * with N the PRIMARY result code (a unique violation is 19, not 2067).
+ * expo-sqlite never enables sqlite3_extended_result_codes (see
+ * ios/SQLiteResult.swift and android SQLiteError.h in expo-sqlite 58.0.14),
+ * so the message carries `sqlite3_errcode() & 0xff`. node:sqlite puts the
+ * extended code in `errcode` instead. `extendedCodes: true` emits the
+ * extended code, only for a test of what the engine would do if expo-sqlite
+ * ever enabled them.
  */
-export function withExpoSqliteErrors(inner: SQLiteAdapter): SQLiteAdapter {
+export function withExpoSqliteErrors(
+  inner: SQLiteAdapter,
+  options: { extendedCodes?: boolean } = {},
+): SQLiteAdapter {
   const toExpoShape = (err: unknown) => {
     const errcode = (err as { errcode?: unknown } | null)?.errcode;
     return typeof errcode === 'number'
-      ? new Error(`Error code ${errcode}: ${(err as Error).message}`)
+      ? new Error(`Error code ${options.extendedCodes ? errcode : errcode & 0xff}: ${(err as Error).message}`)
       : err;
   };
   const wrapped: SQLiteAdapter = {
