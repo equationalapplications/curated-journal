@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ScrollView, StyleSheet } from 'react-native';
 import Markdown from 'react-native-markdown-display';
+import { markdownRules } from '@/lib/markdownRules';
 import { ThemedText } from '@/components/themed-text';
 import { EmptyState } from '@/components/ui/states';
 import { useMarkdownStyles } from '@/components/ui/markdown-styles';
@@ -37,7 +38,7 @@ export default function EntryScreen() {
   return (
     <ScrollView contentContainerStyle={styles.pad} style={{ backgroundColor: theme.bg }}>
       <ThemedText type="title">{fact.title ?? 'Untitled'}</ThemedText>
-      <Markdown style={markdown}>{fact.body ?? ''}</Markdown>
+      <Markdown style={markdown} rules={markdownRules}>{fact.body ?? ''}</Markdown>
     </ScrollView>
   );
 }
