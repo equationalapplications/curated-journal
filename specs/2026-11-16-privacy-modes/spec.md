@@ -3,18 +3,21 @@
 **Status: Draft** — 2026-11-16 (owner answers and review round 1 the
 same day). ROADMAP Step 1 (BINDING).
 
-How this spec moves (AGENTS.md lifecycle, ROADMAP Steps 1 and 2):
+How this spec moves (INTENT "How changes are made", item 1, followed
+literally — owner ruling 2026-11-16; AGENTS.md lifecycle):
 
-- This pull request is the spec only. When the owner approves it, the
-  status line above becomes `Reviewed` and this PR merges with the spec
-  alone. The ROADMAP gates the spec (Step 1) and the build (Step 2)
-  separately; INTENT check item 4 covers how that fits INTENT.
-- The build is ROADMAP Step 2, in its own pull request. That PR adds
-  `plan.md` and `LEDGER.md` to this folder, builds the requirements,
-  flips the status line to `Implemented` once automated verification
-  passes, and deletes `plan.md` and `LEDGER.md` in its own cleanup
-  commit before it merges.
-- Step 2 also waits on the two open questions, OQ-7 and OQ-8.
+- Spec, plan and implementation go in one pull request: #117. It stays
+  open as a draft for the whole cycle.
+- When the owner approves the spec, the status line above becomes
+  `Reviewed`. Then `plan.md` and `LEDGER.md` are added to this folder,
+  and the Step 2 implementation lands in this same pull request.
+- When the implementation is complete and automated verification
+  passes (type check, lint, tests), the status line becomes
+  `Implemented`. A cleanup commit in this pull request then deletes
+  `plan.md` and `LEDGER.md`, and only after that does the pull request
+  leave draft. On-device checks never hold any of these steps.
+- No questions are open. Step 2 waits only on the owner's approval of
+  this spec.
 
 ## Why this cycle exists
 
@@ -42,8 +45,9 @@ Owner rulings, 2026-11-16, encoded below:
   [#115](https://github.com/equationalapplications/curated-journal/issues/115).
   It needs its own spec and is **out of scope** here.
 - The default mode is today's behavior, given a name (ROADMAP Step 1).
-- The answers to OQ-1 through OQ-6, listed under Resolved questions.
-  Two of them ship as their own changes: remote images in notes are
+- The answers to OQ-1 through OQ-8, the Cancel behavior in OQ-6, and
+  the lifecycle above, all listed under Resolved questions. Two of them
+  ship as their own changes: remote images in notes are
   blocked now, in both modes, by
   [#118](https://github.com/equationalapplications/curated-journal/issues/118)
   (PATCH), and `expo-iap`'s launch-time StoreKit listeners are removed
@@ -78,29 +82,24 @@ tensions. INTENT wins each one, or the owner has ruled on it:
    must go (OQ-5): that is #119, a separate MAJOR on the release train,
    which matches rule 11's expectation. Step 2 stays MINOR. Strict
    privacy from launch on iOS is complete only once #119 ships (R3).
-4. **One pull request, or two.** INTENT's "How changes are made", item
-   1, says spec, plan and implementation go in one pull request. The
-   merged ROADMAP splits this cycle in two: Step 1, this spec (gate:
-   none), and Step 2, the build (gate: "Step 1 spec approved"). This PR
-   follows the ROADMAP and merges spec-only once Reviewed. INTENT's
-   purpose still holds: nothing is built before the spec is approved,
-   and the plan and the implementation land in this same folder against
-   this spec. If the owner reads item 1 as ruling out a spec-only
-   merge, this PR stays draft and Step 2's commits join it. Nothing
-   else in the spec changes.
-5. **Links in notes (OQ-8), and downloads that outlive the app
-   (OQ-7).** Rule 9 ¶2's list of default-mode traffic does not name a
-   tap on a link in a note. Today's code opens such links, only on the
-   user's tap, so "nothing else runs on its own" holds, and the owner
-   ruled that Standard keeps it (OQ-3). The on-screen copy names it, so
-   the mode says everything it allows (rule 12). Today's code opens a
-   link of any scheme, but the owner's answer names the browser, and
-   INTENT does not say which schemes Standard may hand to the OS or to
-   other apps. Rule 12 does require the copy to name whatever Standard
-   allows, so the answer and the copy must agree: that is OQ-8.
-   Separately, the fix the review proposes for downloads that outlive
-   the app on iOS changes how Standard downloads behave there, so it is
-   the owner's call (OQ-7), not this spec's.
+4. **One pull request.** INTENT's "How changes are made", item 1,
+   says spec, plan and implementation go in one pull request. The
+   ROADMAP splits this cycle into Step 1 (this spec, gate: none) and
+   Step 2 (the build, gate: "Step 1 spec approved"). The owner ruled
+   (2026-11-16) that INTENT is followed literally: both steps happen in
+   #117. The ROADMAP's split becomes two gates inside one pull request.
+   Step 1's gate is the `Reviewed` status line. Step 2 is the plan and
+   the implementation, added to the same pull request after that.
+5. **Links in notes, and downloads that outlive the app.** Rule 9 ¶2's
+   list of default-mode traffic does not name a tap on a link in a
+   note. Today's code opens such links only on the user's tap, so
+   "nothing else runs on its own" holds, and the owner ruled that
+   Standard keeps web links (OQ-3) and nothing else (OQ-8). The
+   on-screen copy names web links, so the mode says everything it
+   allows (rule 12). Separately, the owner ruled (OQ-7) that iOS
+   downloads run in a foreground session. That changes how a Standard
+   download behaves on iOS while the app is suspended, and the owner
+   accepted that cost.
 
 Rules each requirement rests on: rule 1 (the journal works with no
 network), rule 2 (models are installed only by the user, in the model
@@ -128,7 +127,7 @@ survey is re-run on every engine bump (R17).
 | 4 | Launch-time native update check | Off: `updates.checkAutomatically: 'NEVER'` in `app.config.ts`, asserted by `__tests__/appConfig.test.ts` and checked on every built artifact (VERSIONING.md train step 4). | — | Nothing | Never runs | Never runs |
 | 5 | Tip jar (iOS, Android) | `openTipJar` in `src/lib/tipJarStore.ts` (`expo-iap` `initConnection`, `fetchProducts`, `getAvailablePurchases`, `requestPurchase`, `finishTransaction`, `endConnection`). Reached from Open and the tip buttons in `src/components/settings/TipJarSection.tsx`. Gated today by `canUseStorePurchases()` at the start and before `requestPurchase`. | Apple App Store or Google Play | The user | Allowed | Blocked (alert exists) |
 | 6 | Support link (web build only) | `Linking.openURL(SUPPORT_PAYPAL_URL)` in `TipJarSection.tsx`. Already gated by `canOpenSupportLink()`. | PayPal | The user | Allowed | Blocked (alert exists) |
-| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. No renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`; PR #120 routes all three through one wrapper, `src/components/NoteMarkdown.tsx`. That text comes from the model or from an imported OKF bundle. | Whatever site, app or service the link names | The user (a tap) | `http`/`https`: opens in the browser (owner, OQ-3). Any other scheme: OQ-8 | Blocked, every scheme |
+| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. No renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`a08cc92` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; a `no-restricted-imports` lint rule in `eslint.config.js` forbids importing the library anywhere else. The wrapper passes every other prop through, `onLinkPress` included. That text comes from the model or from an imported OKF bundle. | Whatever site, app or service the link names | The user (a tap) | `http`/`https`: opens in the browser (owner, OQ-3). Any other scheme, or none: blocked with an alert (owner, OQ-8) | Blocked, every scheme |
 | 8 | Images inside notes | The same library's `image` rule renders `![…](url)` with `react-native-fit-image`, which fetches the URL as soon as the note is shown. By default it allows `https://` and `http://`, and it adds `https://` to a source with no scheme. | Whatever host the image names | **Nothing; it happens on its own** | Blocked by #118 (owner, OQ-4) | Blocked by #118 |
 | 9 | iOS StoreKit listeners at launch | Two sources in `expo-iap` 6.4.1, both before any JavaScript: (a) `ExpoIapAppDelegateSubscriber` creates `OpenIapModule.shared` in `didFinishLaunching`, and OpenIAP's StoreKit module then starts a `PurchaseIntent.intents` listener (iOS 16.4 and later) or adds an `SKPaymentQueue` observer (earlier iOS); (b) `ExpoIapModule`'s `OnCreate` calls `ExpoIapHelper.setupStore` when the native module is created, which adds the purchase-updated, purchase-error, promoted-product and billing-issue listeners. On Android, billing loads only on the first `initConnection`. | Apple's StoreKit on the device. This survey found no request that it sends, but cannot rule out StoreKit doing something on its own. | The app, at every launch | Runs today | Must go (owner, OQ-5): #119, MAJOR. JS cannot gate it. |
 
@@ -273,9 +272,10 @@ and a new key in `src/lib/constants.ts`. It is never sent anywhere.
   StoreKit listeners (path 9) before the mode is read, whatever the
   mode is. This survey found no request they send, but JS cannot stop
   them. Step 2 makes strict from launch true for everything the app's
-  own JavaScript starts. #119 does the native rest. On iOS, OQ-7 also
-  bears on this: today a download started in Standard can outlive the
-  app (R10b).
+  own JavaScript starts. #119 does the native rest. Step 2 also moves
+  iOS downloads to a foreground session (R10b, owner OQ-7), so no
+  download from an earlier Standard session keeps running after the
+  app is killed.
 
 *(Rule 11: "nothing that can reach outside may act before the mode is
 honored." Owner, OQ-5.)*
@@ -345,17 +345,26 @@ rule 11 already requires.)*
   today. A user-started download also carries on as it does today: it
   resumes when the app returns to the foreground after a background
   pause, and it restarts when the hub opens after the app was killed
-  mid-download. (OQ-7 may change how an iOS download behaves while the
-  app is suspended; see R10b.)
-- A tap on an `http` or `https` link in a note opens it in the
-  browser, as today (owner, OQ-3). The on-screen copy names this. What
-  a tap on any other scheme does in Standard (`mailto:`, `tel:`, other
-  apps' schemes, the app's own `cur://` links, or a link with no
-  scheme) is OQ-8.
-- Every note link goes through one decision point: the shared
-  `onLinkPress` that `src/components/NoteMarkdown.tsx` passes to the
-  renderer (PR #120 adds the wrapper; all note Markdown goes through
-  it). It asks `canOpenNoteLinks()`, checks the scheme, and opens the
+  mid-download. On iOS, a download stops while the app is suspended
+  with the hub closed, and never outlives the app process (R10b, owner
+  OQ-7).
+- **Web links only** (owner, OQ-3 and OQ-8). A tap on an `http` or
+  `https` link in a note opens it in the browser, as today. The
+  on-screen copy names this. Every other scheme (`mailto:`, `tel:`,
+  other apps' schemes, the app's own `cur://` links) and a link with no
+  scheme are blocked, with this alert:
+
+  > **Only web links open**
+  > Curated Journal opens only web links from your notes. This link is
+  > a `<scheme>` link. Nothing was sent.
+
+  A link with no scheme reads "This link has no web address." in place
+  of the second sentence.
+- Every note link goes through one decision point: a shared
+  `onLinkPress` that `src/components/NoteMarkdown.tsx` sets itself.
+  Its props leave `onLinkPress` out, as they already leave out
+  `rules`, so no caller can replace it. It asks `canOpenNoteLinks()`
+  (strict blocks every scheme, R5), checks the scheme, and opens the
   link itself or shows the alert. It never returns `true`, which would
   make the library call `Linking.openURL` on its own.
 - Remote images in notes (path 8) never load, in Standard or in
@@ -514,14 +523,20 @@ Strict privacy can only pause a transfer the app can still reach.
   reopening the hub while a download from a closed hub is still
   running restores the `downloading` row and starts a second transfer
   to the same file, and the first runs on with no handle.
-- Whether a transfer may outlive the app process is OQ-7. Today it can
-  on iOS: the service sets no `sessionType`, the installed
-  expo-file-system defaults to `'background'`, and a background
-  `URLSession` keeps transferring after the app is killed. Nothing in
-  the relaunched app can reach it. The recommended answer is that it
-  may not: `sessionType: 'foreground'` on both `startDownload` and
-  `resumeDownload`. Android needs nothing: its transfer runs in the app
-  process and ends with it.
+- **No transfer outlives the app process** (owner, OQ-7). Both
+  `startDownload` and `resumeDownload` pass `sessionType:
+  'foreground'`. Today the service sets no `sessionType`, the installed
+  expo-file-system defaults to `'background'`, and on iOS a background
+  `URLSession` keeps transferring after the app is killed, where
+  nothing in the relaunched app can reach it. Android needs nothing:
+  its transfer runs in the app process and ends with it (the option is
+  ignored there).
+- The owner accepted the costs and risks listed with OQ-7 (Resolved
+  questions): with the hub closed, an iOS download stops while the app
+  is suspended and starts over when the hub next opens; a hub pause
+  that loses the race with suspension may restart the download; and a
+  download paused under the old background session may not resume.
+  Their on-device checks stay in Verification, unchecked.
 
 **c. Pauses at once, and keeps what it can.** When strict privacy
 turns on, the live download pauses (R8, step 1) and its row is saved
@@ -561,25 +576,30 @@ running. Then the app warns before the switch:
 > Curated Journal can't keep this download so that it continues later.
 > If you turn on strict privacy now, Curated Journal removes what it
 > downloaded so far, and the download starts over the next time you
-> get a model.
+> get a model. If you cancel, strict privacy stays off and the download
+> carries on, though it may have to start over.
 > [Cancel] [Turn on and remove]
 
 - No live handle: the app knows before the confirmation, so the
-  warning is part of the confirmation (R8).
+  warning is part of the confirmation (R8), without the sentence about
+  cancelling.
 - No resume data, or a failed pause: only the pause shows this, so the
   warning shows after R8 step 1 and before step 2. The pause has
   already stopped the transfer. If it is still running after a failed
   pause, the owner cancels it.
-- **Cancel:** the app stays in Standard. If the pause ran, the
-  download is left paused with no resume data, and Resume starts it
-  over (as in f). If there was no live handle, nothing changes.
+- **Cancel** (owner, 2026-11-16): the app stays in Standard and
+  resumes the download, through the same owner (R10a), with the hub
+  open or closed. It resumes from its resume data if there is any;
+  otherwise it starts over. If the warning was part of the
+  confirmation (no live handle), no pause ran, and nothing changes.
 - **Turn on and remove:** the app cleans up, then carries on from R8
   step 2. Cleanup cancels the transfer if the app still holds it (iOS
   then deletes its temporary file), drops the resume data, deletes the
   partial model file on Android (never the installed model's file),
   and clears the download row, so the hub has nothing to restore. A
-  later download in Standard starts fresh. A transfer the app cannot
-  reach at all is OQ-7's subject (R10b).
+  later download in Standard starts fresh. With R10b, a transfer the
+  app cannot reach can only be one left by a version from before Step
+  2.
 
 **h. On-device steps carry on.** Checking the file and the smoke test
 happen on the device, so a download that has already finished
@@ -677,8 +697,10 @@ that change. The coverage test scans `src/` only and cannot see inside
 ## Version cost
 
 **Step 2: expected MINOR** (the next MINOR on the 9.x island when it
-lands), shipped over the air to installed 9.x binaries. Step 2 is JS/TS
-only:
+lands), shipped over the air to installed 9.x binaries. Because Step 2
+lands in this same pull request, the pull request's version bump
+becomes that MINOR when the implementation lands; until then it
+carries a PATCH for the spec alone. Step 2 is JS/TS only:
 
 - the mode module and its storage (`expo-secure-store` is already
   installed and already in `app.json` plugins);
@@ -689,8 +711,8 @@ only:
 - the shared `onLinkPress` in `src/components/NoteMarkdown.tsx` (the
   wrapper and the image rule are #118's, in PR #120);
 - the privacy policy page;
-- OQ-7's recommended answer, if the owner accepts it: `sessionType` is
-  an option of an API that is already in the binaries (the 9.x
+- `sessionType: 'foreground'` on the two download calls (R10b, owner
+  OQ-7): an option of an API that is already in the binaries (the 9.x
   lockfile pins expo-file-system 58.0.13, checked at `009fa61`,
   `94296e7` and `748e11e`).
 
@@ -714,9 +736,8 @@ Two changes ship on their own:
 **What would make Step 2 itself MAJOR:** anything that changes the
 `npx expo prebuild` output beyond the version stamps (the VERSIONING.md
 test). For example: adding a native module (to block traffic at the OS
-level, or to store the mode somewhere else), changing `app.json`
-plugins or permissions, or a native fix for leftover background
-transfers if the owner keeps `'background'` (OQ-7).
+level, or to store the mode somewhere else), or changing `app.json`
+plugins or permissions.
 
 ## Out of scope
 
@@ -792,8 +813,10 @@ must pass):
     - **Gated:** each file must import its gate from
       `@/lib/privacyMode`. Markdown renderers must use the shared
       wrapper: only `src/components/NoteMarkdown.tsx` may import
-      `react-native-markdown-display`, and it must pass #118's image
-      rule and the shared `onLinkPress`.
+      `react-native-markdown-display` (#120's lint rule enforces this
+      too), it must pass #118's image rule and the shared
+      `onLinkPress`, and its props must leave out `rules` and
+      `onLinkPress`.
     - **No gate needed:** files that use such an API but send
       nothing, each with the reason written next to it:
       `src/lib/networkGate.ts` (asks only the OS) and
@@ -823,8 +846,7 @@ must pass):
     the strict pause, never in `failed` and never on the network copy;
   - starting or resuming while a transfer is live stops the old one
     first, so there is never a second transfer;
-  - if the owner accepts OQ-7's recommendation, start and resume pass
-    `sessionType: 'foreground'`;
+  - start and resume pass `sessionType: 'foreground'` (R10b);
   - no automatic resume on foreground, on restart, or on leaving
     strict;
   - a `downloading` row restored under strict creates no
@@ -833,8 +855,10 @@ must pass):
     (R10f);
   - `SELECT_MODEL` in strict is refused before `retiringCurrent`;
   - a download that can't be kept (no resume data, a failed pause, no
-    live handle) shows the warning before the mode changes; Cancel
-    leaves Standard on; Turn on and remove cancels the transfer, drops
+    live handle) shows the warning before the mode changes; after a
+    pause, Cancel leaves Standard on and resumes the download, from its
+    resume data or from the start; with no live handle, Cancel changes
+    nothing; Turn on and remove cancels the transfer, drops
     the resume data, deletes the Android partial file but never the
     installed model's file, and clears the row (R10g);
   - in strict, a finished download on disk goes through `verifying`
@@ -855,9 +879,11 @@ must pass):
   every scheme (`https`, `http`, `mailto:`, `tel:`, another app's
   scheme, `cur://`, no scheme), shows the alert and never calls
   `Linking.openURL`. In Standard, an `http(s)` tap calls
-  `Linking.openURL` with the link, and the other schemes follow the
-  answer to OQ-8. The library never calls `Linking.openURL` itself
-  (the shared `onLinkPress` never returns `true`).
+  `Linking.openURL` with the link; every other scheme, and a link with
+  no scheme, shows the "Only web links open" alert and never calls it.
+  The library never calls `Linking.openURL` itself (the shared
+  `onLinkPress` never returns `true`), and a caller cannot pass its own
+  `onLinkPress` to `NoteMarkdown`.
 - `__tests__/appConfig.test.ts` keeps asserting
   `checkAutomatically: 'NEVER'`.
 
@@ -884,10 +910,22 @@ status line, un-drafting or cleanup (AGENTS.md):
 - [ ] Where a download that can't be kept can be produced: the warning
       shows before the switch; after Turn on and remove, the hub has
       nothing to restore, and on Android the partial file is gone.
-- [ ] If OQ-7's recommendation is taken, iOS: with the hub open,
-      background the app mid-download and come back; it pauses and
-      resumes as before. With the hub closed, the download stops while
-      the app is away, and nothing transfers after the app is killed.
+- [ ] iOS, foreground session (R10b): with the hub open, background
+      the app mid-download and come back; it pauses and resumes as
+      before. With the hub closed, the download stops while the app is
+      away, and nothing transfers after the app is killed.
+- [ ] iOS, accepted risk (OQ-7): background the app mid-download with
+      the hub open, several times. Watch whether a pause ever loses
+      the race with suspension and the download starts over.
+- [ ] iOS, accepted risk (OQ-7): with a download paused by a version
+      from before Step 2, update, then Resume. Note whether it resumes
+      or starts over.
+- [ ] In Standard: a `mailto:` or other non-web link in a note shows
+      the "Only web links open" alert; an `https` link opens in the
+      browser.
+- [ ] Turn on strict when the download can't be kept, then tap Cancel
+      on the warning: the app stays in Standard and the download
+      carries on.
 - [ ] In strict privacy, with a proxy or router log running from
       process start, launch the app and use every journal feature. The
       app makes no request. This is the proof R13 points to.
@@ -934,7 +972,8 @@ asked, with the answer and where the spec encodes it.
   **Answer:** In Standard, a tap opens the link in the browser; the
   user started it. Strict blocks it, with the explanation. *Encoded
   in:* path 7, the Standard copy, R6, R9, R5, INTENT check item 5.
-  Which link schemes "opens in the browser" covers is OQ-8.
+  Which link schemes "opens in the browser" covers was settled by
+  OQ-8: web links only.
 - **OQ-4 — Remote images in notes: confirm the block in both modes.**
   *Asked:* Today a note that contains `![…](https://…)` loads that
   image on its own as soon as the note is shown. A note can come from
@@ -969,14 +1008,13 @@ asked, with the answer and where the spec encodes it.
   the OS's temporary file, the partial file), so nothing half-finished
   is left. A later download in Standard starts fresh. *Encoded in:*
   R8, R10g.
-
-## Open questions for the owner
-
-INTENT.md and the ROADMAP do not decide these. Step 2 waits on the
-answers. Neither is decided in this spec.
-
+  **Follow-up answer (Cancel):** when the pause before the switch shows
+  the download can't be resumed and the user taps Cancel on the
+  warning, the app stays in Standard and resumes the download; it
+  starts over if there is no resume data. *Encoded in:* R10g, the
+  warning copy, Verification.
 - **OQ-7 — Should an iOS model download stop when the app is
-  suspended or killed?** On iOS, the download service creates its
+  suspended or killed?** *Asked:* On iOS, the download service creates its
   downloads with no `sessionType`, so expo-file-system 58.0.13 runs
   them in a background `URLSession`. A background transfer keeps going
   after the app is suspended, and after it is killed. After a kill,
@@ -1010,8 +1048,13 @@ answers. Neither is decided in this spec.
   privacy's reach, until a native fix (MAJOR) cancels leftover
   background transfers at launch?
 
-- **OQ-8 — Links in notes that are not web links, in Standard.** No
-  note renderer passes `onLinkPress` today, so
+  **Answer:** Foreground. Both `startDownload` and `resumeDownload` set
+  `sessionType: 'foreground'`. Step 2 stays MINOR. The costs and risks
+  listed above are accepted, and their on-device checks stay in
+  Verification, unchecked. *Encoded in:* R10b, R3, R6, Version cost,
+  Verification, INTENT check item 5.
+- **OQ-8 — Links in notes that are not web links, in Standard.**
+  *Asked:* No note renderer passes `onLinkPress` today, so
   `react-native-markdown-display` calls `Linking.openURL(href)` at
   once for any scheme: `http` and `https`, `mailto:`, `tel:`, other
   apps' schemes (which open that app), and the app's own `cur://` links
@@ -1030,3 +1073,26 @@ answers. Neither is decided in this spec.
   another app. Which should Standard do? (The decision point is the
   shared `onLinkPress` in `src/components/NoteMarkdown.tsx`, either
   way.)
+  **Answer:** Web links only. In Standard, `http` and `https` links open
+  in the browser. Every other scheme, and a link with no scheme, is
+  blocked with the proposed alert. Strict blocks all links. *Encoded
+  in:* path 7, R6, R5, Verification, INTENT check item 5.
+- **Lifecycle — one pull request, or two** (raised in INTENT check
+  item 4). *Asked:* INTENT's "How changes are made", item 1, puts spec,
+  plan and implementation in one pull request, while the ROADMAP
+  splits Step 1 (the spec) from Step 2 (the build). Should #117 merge
+  with the spec alone once Reviewed, with Step 2 in its own pull
+  request, or stay open for Step 2?
+  **Answer:** Follow INTENT literally. #117 stays open as a draft. On
+  approval the status goes to `Reviewed`; then `plan.md`, `LEDGER.md`
+  and the Step 2 implementation land in this same pull request; the
+  status goes to `Implemented`; and the cleanup commit deletes
+  `plan.md` and `LEDGER.md` before the pull request leaves draft.
+  *Encoded in:* the lifecycle at the top, INTENT check item 4, Version
+  cost.
+
+## Open questions for the owner
+
+None. INTENT.md, the ROADMAP and the owner's answers above decide
+everything this spec needs. Step 2 waits only on the owner's approval
+of this spec.
