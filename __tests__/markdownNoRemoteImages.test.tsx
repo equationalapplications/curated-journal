@@ -4,7 +4,7 @@ import { JournalPane } from '@/components/journal/JournalPane';
 import { GraphNodeSheet } from '@/components/graph/GraphNodeSheet';
 import EntryScreen from '@/app/entry/[factId]';
 
-const NOTE = 'Hello\n\n![alt text](https://example.com/x.png)\n\n![p](//example.com/y.png)';
+const NOTE = 'Hello\n\n![alt text](https://example.com/x.png)\n\n![p](//example.com/y.png)\n\n[![x](https://example.com/a.png)](https://example.com)\n\n![y][r]\n\n[r]: https://example.com/b.png';
 
 jest.mock('@/contexts/JournalContext', () => ({
   useJournal: () => ({ selectedFactId: 'f1', entityId: 'e1' }),
@@ -34,11 +34,15 @@ function collectImages(node: unknown, out: Json[] = []): Json[] {
   return out;
 }
 
-function expectNoRemoteImage(screen: ReturnType<typeof render>) {
+function expectNoRemoteImage(screen: ReturnType<typeof render>, getSize: jest.SpyInstance, prefetch: jest.SpyInstance) {
   const tree = screen.toJSON();
   const imgs = ([] as Json[]).concat(...[tree].flat().map((t) => collectImages(t)));
   expect(imgs).toHaveLength(0);
-  expect(screen.getAllByTestId('markdown-image-placeholder').length).toBeGreaterThan(0);
+  expect(screen.getAllByTestId('markdown-image-placeholder').length).toBeGreaterThanOrEqual(4);
+  expect(screen.queryByText(/https:\/\/example\.com\/b\.png/)).not.toBeNull();
+  expect(screen.queryByText(/https:\/\/example\.com\/a\.png/)).not.toBeNull();
+  expect(getSize).not.toHaveBeenCalled();
+  expect(prefetch).not.toHaveBeenCalled();
 }
 
 describe('notes never load remote images (#118)', () => {
@@ -49,20 +53,20 @@ describe('notes never load remote images (#118)', () => {
     prefetch = jest.spyOn(Image, 'prefetch').mockResolvedValue(true);
   });
   afterEach(() => {
-    expect(getSize).not.toHaveBeenCalled();
-    expect(prefetch).not.toHaveBeenCalled();
     jest.restoreAllMocks();
   });
 
   it('JournalPane', async () => {
-    expectNoRemoteImage(await render(<JournalPane facts={[{ id: 'f1', title: 'T', body: NOTE } as never]} />));
+    expectNoRemoteImage(await render(<JournalPane facts={[{ id: 'f1', title: 'T', body: NOTE } as never]} />), getSize, prefetch);
   });
   it('entry screen', async () => {
-    expectNoRemoteImage(await render(<EntryScreen />));
+    expectNoRemoteImage(await render(<EntryScreen />), getSize, prefetch);
   });
   it('GraphNodeSheet', async () => {
     expectNoRemoteImage(
       await render(<GraphNodeSheet node={{ id: 'f1', title: 'T', body: NOTE }} onClose={jest.fn()} onOpenNote={jest.fn()} />),
+      getSize,
+      prefetch,
     );
   });
 });

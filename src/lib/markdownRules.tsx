@@ -11,11 +11,11 @@ import type { RenderRules } from 'react-native-markdown-display';
  * not) become plain text: the alt text, then the source as non-link text.
  */
 export const markdownRules: RenderRules = {
-  image: (node) => {
+  image: (node, _children, _parents, styles) => {
     const src = String(node.attributes?.src ?? '');
     const alt = String(node.attributes?.alt ?? '');
     return (
-      <Text key={node.key} testID="markdown-image-placeholder">
+      <Text key={node.key} style={styles.text} testID="markdown-image-placeholder">
         {alt ? `[image: ${alt}]` : '[image]'}
         {src ? ` ${src}` : ''}
       </Text>

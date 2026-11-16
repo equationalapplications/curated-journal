@@ -1,7 +1,8 @@
 # Spec: never load remote images inside notes
 
-Status: Implemented
+**Status: Implemented** — 2026-11-16 (PR #120, 9.1.2)
 Approved by the owner: ruling of 2026-11-16 on #118 (behavior approved; no further review gate).
+The owner's ruling on #118 (2026-11-16) served as spec approval (Reviewed).
 Date: 2026-11-16
 Version cost: PATCH (9.1.1 → 9.1.2) per `docs/VERSIONING.md`
 Closes: #118
