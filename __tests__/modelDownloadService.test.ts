@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { DownloadTask, File } from 'expo-file-system';
 import {
   startDownload,
@@ -83,6 +84,65 @@ describe('modelDownloadService', () => {
     const file = await resumeDownload({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: 'rd' }, {});
     expect(fromSavable).toHaveBeenCalled();
     expect(file?.size).toBe(2393231072);
+  });
+
+  describe('resumeDownload partial guard', () => {
+    const pause = { url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: '1000' };
+    let fromSavable: jest.Mock;
+    const original = Platform.OS;
+    beforeEach(() => {
+      fromSavable = jest.fn().mockReturnValue({
+        resumeAsync: jest.fn(async () => ({ uri: 'x', exists: true, size: 1, delete: jest.fn() })),
+      });
+      (DownloadTask as unknown as { fromSavable: jest.Mock }).fromSavable = fromSavable;
+      jest.mocked(DownloadTask).mockClear();
+      Platform.OS = 'android';
+    });
+    afterEach(() => {
+      Platform.OS = original;
+      jest.mocked(File).mockImplementation((...args: unknown[]) => ({
+        uri: 'file:///doc/test.gguf', exists: true, size: 2393231072, delete: jest.fn(), __args: args,
+      }) as never);
+    });
+    function partial(exists: boolean, size: number, del = jest.fn()) {
+      jest.mocked(File).mockImplementation((() => ({ uri: pause.fileUri, exists, size, delete: del })) as never);
+      return del;
+    }
+
+    it('starts fresh when the partial is missing', async () => {
+      partial(false, 0);
+      await resumeDownload(pause, {});
+      expect(fromSavable).not.toHaveBeenCalled();
+      expect(DownloadTask).toHaveBeenCalledTimes(1);
+    });
+
+    it('deletes a short partial and starts fresh', async () => {
+      const del = partial(true, 999);
+      await resumeDownload(pause, {});
+      expect(del).toHaveBeenCalled();
+      expect(fromSavable).not.toHaveBeenCalled();
+      expect(DownloadTask).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts fresh when the offset cannot be parsed', async () => {
+      partial(true, 5000);
+      await resumeDownload({ ...pause, resumeData: '{"x":1}' }, {});
+      expect(fromSavable).not.toHaveBeenCalled();
+    });
+
+    it('resumes when the partial is at least the offset', async () => {
+      partial(true, 1000);
+      await resumeDownload(pause, {});
+      expect(fromSavable).toHaveBeenCalledTimes(1);
+      expect(DownloadTask).not.toHaveBeenCalled();
+    });
+
+    it('leaves iOS unchanged even with no partial', async () => {
+      Platform.OS = 'ios';
+      partial(false, 0);
+      await resumeDownload(pause, {});
+      expect(fromSavable).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('verifyDownload passes when file.size matches manifest.sizeBytes', () => {

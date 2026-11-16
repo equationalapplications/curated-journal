@@ -112,7 +112,7 @@ export default function ModelHubImportScreen() {
     }
     // The import won and the row is gone: the kept download is abandoned, so
     // its partial is now a true orphan.
-    if (rowCleared && keptModelId) {
+    if (rowCleared && (keptModelId || !rowKnown)) {
       deleteOrphanedCuratedModelFiles({ keepModelId: null, currentModelPath: currentPath });
     }
     send({ type: 'IMPORT_SMOKE_OK', retirePath: currentPath });

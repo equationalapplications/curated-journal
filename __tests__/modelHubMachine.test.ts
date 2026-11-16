@@ -35,6 +35,7 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     deleteModelFile: jest.fn(async () => undefined),
     isLowMemoryFor: jest.fn(() => false),
     deleteOrphanedModelFiles: jest.fn(async () => undefined),
+    readDownloadModelId: jest.fn(async () => null),
     ...overrides,
   };
 }

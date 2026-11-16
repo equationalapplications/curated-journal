@@ -310,11 +310,22 @@ describe('model-hub custom import', () => {
       });
     });
 
+    it('keeps the file in the only sweep when the row clear fails', async () => {
+      mockClearRow.mockRejectedValue(new Error('db down'));
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));
+      expect(mockDeleteOrphans).toHaveBeenCalledTimes(1);
+      expect(mockDeleteOrphans.mock.calls[0][0].keepModelId).toBe('fast-light');
+    });
+
     it('skips the sweep when the row cannot be read', async () => {
       mockReadRow.mockRejectedValue(new Error('db down'));
       await pressImport();
-      await waitFor(() => expect(mockSend).toHaveBeenCalled());
-      expect(mockDeleteOrphans).not.toHaveBeenCalled();
+      await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));
+      // No pre-copy sweep; the row then cleared, so only the post-clear keep-null sweep runs.
+      expect(mockDeleteOrphans).toHaveBeenCalledTimes(1);
+      expect(mockDeleteOrphans.mock.calls[0][0].keepModelId).toBeNull();
+      expect(mockClearRow).toHaveBeenCalled();
     });
   });
 });

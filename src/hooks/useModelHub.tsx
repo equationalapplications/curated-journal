@@ -112,7 +112,16 @@ export function createModelHubApi(store: Store): ModelHubApi {
         console.warn('[model-hub] skipped orphan cleanup: current model path unknown', cause);
         return;
       }
-      deleteOrphanedCuratedModelFiles({ keepModelId, currentModelPath });
+      // A surviving paused row owns a partial that a later Resume needs; the
+      // caller's keep id can be stale when its row clear failed. Unknown row: skip.
+      let rowModelId: CuratedModelId | null;
+      try {
+        rowModelId = ((await store.get())?.modelId as CuratedModelId | null | undefined) ?? null;
+      } catch (cause) {
+        console.warn('[model-hub] skipped orphan cleanup: download row unreadable', cause);
+        return;
+      }
+      deleteOrphanedCuratedModelFiles({ keepModelId, alsoKeepModelId: rowModelId, currentModelPath });
     },
     persistDownloadState: (record) => store.set(record),
     clearDownloadState: () => store.clear(),

@@ -42,6 +42,10 @@ RED on `main` (9.2.0 plus the new tests, fix not applied), `__tests__/modelHubMa
 - `download.tsx` shows "Checking your connection…" in `confirmingNetwork` and `AwaitingWifi` in `awaitingWifi`, and any transition INTO `selecting` (not the initial `selecting` of a restore mount) dismisses to `/model-hub`, where the error banner and list show.
 - Unchanged: `SELECT_MODEL`, restored-paused entry, smoke states.
 - `src/app/model-hub/import.tsx` (#124): the pre-copy orphan sweep keeps the saved download row's model file (`keepModelId` = the row's model, read through a new `readDownloadModelId` on `ModelHubApi`/`useModelHub`; an unreadable row skips the sweep). After a SUCCESSFUL import (row cleared, identity committed) a second sweep with `keepModelId: null` removes that now-abandoned partial. A failed copy or smoke test leaves the file and the row consistent. Why: `LEAVE_WAITING` lets a paused row with resume data reach custom import; if the sweep deleted its Android partial first and the import then failed, a later Resume would `RandomAccessFile.setLength(offset)` on the missing file, zero-filling the head, and the size-only `verifyDownload` would pass a corrupt file into the smoke test.
+- Sink guard (#124, the backstop for every path that can delete a kept partial while its `paused` row survives): `resumeDownload` in `src/services/modelDownloadService.ts`, on Android, requires the partial at `pauseState.fileUri` to exist with size >= the resume offset before `DownloadTask.fromSavable(...).resumeAsync()`. Android's `resumeData` is the partial's byte length as a decimal string (`destinationFile.length().toString()`), so it is parsed as an integer; an unparseable offset fails safe. Otherwise it deletes any short partial and falls back to a fresh download of the same url and destination, so the caller still gets a File. iOS is unchanged: its resume data references an OS-owned temp file, with no app-owned partial to check.
+- Sweep guard (#124): `createModelHubApi`'s `deleteOrphanedModelFiles` reads the store row (`store.get()`, which waits for queued writes) and also keeps the row's model (`alsoKeepModelId`); an unreadable row skips the sweep. This covers SELECT_MODEL's fire-and-forget `clearDownloadState` failing and `checkingExisting` then sweeping the kept partial.
+- `import.tsx`: when the row read throws but the row clear then succeeds, the second sweep still runs (a keep-null sweep is safe once the row is gone).
+- If `setModelPath`/`setModelId` throws after the row clear, the import ends `IMPORT_FAILED` with the row cleared; the kept file is a harmless orphan, and the context's pauseState still lets a same-session re-pick resume.
 
 ## Rejected alternatives
 
@@ -61,11 +65,15 @@ Added for the review round: foreground decline stays paused with resume data and
 
 `__tests__/modelHubImport.test.tsx` (#124), with a saved row for model A: the sweep runs keeping A; a failed smoke test and a failed copy each leave A's file (no second sweep) and the row (no clear); a successful import clears the row and sweeps A's file with `keepModelId: null`; an unreadable row skips the sweep. The failure tests are RED on the previous head.
 
+`__tests__/modelDownloadService.test.ts` (sink guard): Android with a missing partial, a partial shorter than the offset, or an unparseable offset starts fresh with no `fromSavable`; a partial >= the offset resumes as before; iOS resumes unchanged with no partial. The missing-partial test is RED without the guard. `__tests__/useModelHub.test.ts`: the sweep also keeps the row's model; an unreadable row skips the sweep; `readDownloadModelId` returns the row's model, null for a cleared row, and rejects on a read failure. `__tests__/modelHubImport.test.tsx`: a failing row clear still runs only the first sweep (keeping A) and sends IMPORT_SMOKE_OK; RED if `if (rowCleared && keptModelId)` loses `rowCleared`.
+
 The old "restore downloads without a network check" test now asserts the check runs. RED on main, GREEN after.
 
 ## Accepted limitations
 
 - `paused` has no import or choose-another exit on cellular: a declined continuation is resumed with consent, waits for Wi-Fi, or the user leaves the hub.
+
+- An orphaned partial with no row is freed only by the next `checkingExisting` sweep.
 
 ## INTENT check
 
