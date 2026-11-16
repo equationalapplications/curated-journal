@@ -1,7 +1,8 @@
 # Spec: privacy modes — strict privacy and Standard, the default mode
 
-**Status: Draft** — 2026-11-16 (owner answers and review round 1 the
-same day). ROADMAP Step 1 (BINDING).
+**Status: Draft** — first written 2026-11-16; amended the same day
+(owner answers OQ-1 through OQ-8, then review findings applied).
+ROADMAP Step 1 (BINDING).
 
 How this spec moves (INTENT "How changes are made", item 1, followed
 literally — owner ruling 2026-11-16; AGENTS.md lifecycle):
@@ -16,8 +17,9 @@ literally — owner ruling 2026-11-16; AGENTS.md lifecycle):
   `Implemented`. A cleanup commit in this pull request then deletes
   `plan.md` and `LEDGER.md`, and only after that does the pull request
   leave draft. On-device checks never hold any of these steps.
-- No questions are open. Step 2 waits only on the owner's approval of
-  this spec.
+- Two questions are open for the owner (Open questions for the owner,
+  at the end). Step 2 waits on those answers and on the owner's
+  approval of this spec.
 
 ## Why this cycle exists
 
@@ -111,9 +113,8 @@ communication in strict privacy" and "Silent model installs".
 
 ## Survey: every path that can go off-device
 
-Read from `main` at `94296e7` (9.1.1) on 2026-11-16, and re-checked for
-review round 1 the same day against `main` at `748e11e` (9.2.0, after
-PR #116). #116 changed only the engine pins and the version stamps, so
+Read from `main` at `94296e7` (9.1.1) on 2026-11-16, and re-checked
+the same day against `main` at `748e11e` (9.2.0, after PR #116). #116 changed only the engine pins and the version stamps, so
 the app's own code is the same at both commits. The list is meant to
 be complete for the app's own code. A path added later must be added
 here, and the coverage test in Verification fails until it is. The
@@ -272,10 +273,23 @@ and a new key in `src/lib/constants.ts`. It is never sent anywhere.
   StoreKit listeners (path 9) before the mode is read, whatever the
   mode is. This survey found no request they send, but JS cannot stop
   them. Step 2 makes strict from launch true for everything the app's
-  own JavaScript starts. #119 does the native rest. Step 2 also moves
-  iOS downloads to a foreground session (R10b, owner OQ-7), so no
-  download from an earlier Standard session keeps running after the
-  app is killed.
+  own JavaScript starts. #119 does the native rest.
+- **iOS, transitional: a download started before Step 2 can outlive
+  the app.** Step 2 moves iOS downloads to a foreground session
+  (R10b, owner OQ-7), so a download started *after* Step 2 no longer
+  keeps running after the app is killed. But a download that a version
+  from before Step 2 started may still be running in a background
+  `URLSession`, which survives the OTA update and the relaunch, and
+  which nothing in the relaunched app — strict privacy's pause
+  included — can reach or cancel from JavaScript. Like the StoreKit
+  gap above, this is not something Step 2 can fix from JS; it drains
+  as pre-Step-2 transfers finish on their own. Until it has drained,
+  the downloads-off alert's closing line (R5) may not claim more than
+  the app controls: the strict-privacy download alert adds a sentence
+  — "A download an older version of this app started may still be
+  finishing on its own. The app itself sends nothing." — so "Nothing
+  was sent" stays true about what the app sends, without promising
+  that no bytes are moving.
 
 *(Rule 11: "nothing that can reach outside may act before the mode is
 honored." Owner, OQ-5.)*
@@ -285,7 +299,12 @@ is the only place that knows the mode. It provides:
 
 - `getPrivacyMode()`: synchronous. Returns `'strict'` until the saved
   mode has been read (R3).
-- A load function, called once by the bootstrap.
+- A load function, called once by the bootstrap and memoized for the
+  life of the process: a second call returns the already-loaded mode
+  instead of re-reading the store. The root layout's bootstrap can
+  re-run (through `ModelHubCompletionProvider`'s `onComplete`), and a
+  re-run that re-read the store after a failed R8 step 3 save would
+  silently flip strict back to Standard. Memoization prevents that.
 - A set function that saves the mode and applies the ordering in R8
   and R9.
 - A subscription, so open sessions can react when the mode changes
@@ -410,7 +429,15 @@ strict privacy on purpose".)*
 If the app can already tell, before this confirmation, that a download
 can't be kept (its row says a download is running, but the download
 service holds no live transfer for it), the confirmation adds R10g's
-warning, and its button reads "Turn on and remove".
+warning, and its button reads "Turn on and remove". "No live transfer"
+alone is not enough: a download that **completed** while the hub was
+closed also leaves a `downloading` row with no live transfer and no
+service record. So before the app treats a row as unkeepable, it runs
+the hub's normal restore path (`checkingExisting` → `verifyDownload` →
+smoke test) on the file the row points at. If the file is complete,
+the download is not unkeepable: no warning, and verification and the
+smoke test continue as R10h says. Only a row that fails the restore
+path counts as "no live handle".
 
 On Turn on, in this order:
 
@@ -447,6 +474,8 @@ allows and with whom:
 > - to check for an update with Expo, which also gets a random ID for
 >   this copy of the app;
 > - to leave a tip through the App Store or Google Play;
+>   (on the web build, this bullet reads "to open the Support page,
+>   which PayPal runs", matching the Standard copy);
 > - to open a web link you tap in a note. Your browser opens it, and
 >   that website gets the link.
 >
@@ -493,18 +522,23 @@ stops when the hub closes. So the pause owner is the download service
   over when it starts or resumes a download, so the service can pause
   and save with the hub closed. The service clears the record when the
   transfer completes, fails, is cancelled or is paused. (Today
-  `activeTask` is never cleared, and the service knows neither the
-  model id nor the store.)
+  `cancelActiveDownload()` is the only thing that clears `activeTask`,
+  and nothing calls it; the service also knows neither the model id
+  nor the store.)
 - The strict pause checks the task's state first. `pauseAsync()`
   throws unless the task is `active`, so any other state counts as "no
   live transfer", not as an error.
 - It pauses, saves the row as `paused` with its pause state (or none),
   and reports whether the download can be resumed later.
-- When the hub is open, it hears a machine event (named by the plan,
-  for example `STRICT_PRIVACY_ON`) and moves to `paused` with a new
-  pause reason, `strict`, taking the pause state the owner produced.
-  The machine never pauses for strict on its own, so no second pause
-  races the first.
+- The hub machine has a path for this too: it hears a machine event
+  (named by the plan, for example `STRICT_PRIVACY_ON`) and moves to
+  `paused` with a new pause reason, `strict`, taking the pause state
+  the owner produced. On iOS and Android this machine path is not
+  reachable through the UI — Settings is not interactive while the hub
+  is mounted, and popping the hub unmounts its actor — so it exists
+  for the web build and as a safety net; the service's pause is what
+  actually runs. The machine never pauses for strict on its own, so no
+  second pause races the first.
 - A start or resume the gate refuses raises the gate error (R4). So
   does a transfer that ends in an error while the strict pause is
   stopping it. The machine checks for that error
@@ -514,7 +548,7 @@ stops when the hub closes. So the pause owner is the download service
   "internet connection" would show "Download failed. Check your
   connection and try again."
 
-**b. One transfer at a time, always with a handle** (review, M2).
+**b. One transfer at a time, always with a handle.**
 Strict privacy can only pause a transfer the app can still reach.
 
 - The service never holds two transfers. Before it starts or resumes a
@@ -549,22 +583,45 @@ it still shows as paused.
 - Android: the partial model file is kept, and its length is saved as
   the resume data.
 
-**d. Never resumes by itself.** Not when the app comes back to the
-foreground, not after a restart, and not when strict privacy turns off.
-It resumes only when the user, outside strict privacy, taps Resume.
+**d. Never resumes by itself.** This covers a download paused by
+strict privacy: not when the app comes back to the foreground, not
+after a restart, and not when strict privacy turns off. It resumes
+only when the user, outside strict privacy, taps Resume. (It is scoped
+to strict pauses on purpose: a Standard download the app was killed
+during does restart on its own when the hub next opens, as R6 says.)
 
 **e. Blocked in strict.** In strict privacy, Resume and Retry show the
 downloads-off alert (R5). While the mode is strict, the download screen
-shows "Paused — strict privacy is on". After stepping out it shows
-"Paused".
+shows "Paused — strict privacy is on"; the label comes from the current
+mode plus the row's pause reason, so a screen reached while a strict
+pause is restored shows it without any hub-machine event. After
+stepping out it shows "Paused".
 
-**f. Never restarted under strict** (review, m3). A row left as
-`downloading` (the app was killed mid-download, or the paused row was
-never saved) is restored under strict as paused, not restarted, and the
-row is **rewritten** as `paused`, so that stepping out and relaunching
+On that paused-for-strict download screen two things are required,
+because the screen (`src/app/model-hub/download.tsx`) otherwise shows
+only Paused/Resume and has no route back to the model list:
+
+- a **Step out of strict privacy** button, which opens R9's
+  confirmation (the same button the hub notice offers, R7);
+- a way **back to the model list** (`index.tsx`), so "Import custom
+  .gguf" stays reachable from the download screen (owner ruling on
+  OQ-2: it stays available in strict privacy).
+
+**f. Never restarted under strict.** A row left as `downloading` (the
+app was killed mid-download, or the paused row was never saved) is
+restored under strict as paused, not restarted, and the row is
+**rewritten** as `paused`, so that stepping out and relaunching
 doesn't restart it through the hub's restore. Such a row has no resume
 data, so the screen says "Paused. This download will start over when
 you resume."
+
+Before the rewrite, the hub's normal restore path runs
+(`checkingExisting` → `verifyDownload` → smoke test), exactly as R8
+requires before the can't-keep warning. If the file on disk is already
+complete — a download that finished while the hub was closed leaves a
+`downloading` row, a complete file, and no service record — the row is
+not rewritten and no warning shows: the download continues through
+verification and the smoke test to `complete`, per R10h.
 
 **g. A download that can't be kept: warn, then clean up** (owner,
 OQ-6). Switching to strict leaves a download that can't be resumed
@@ -582,7 +639,9 @@ running. Then the app warns before the switch:
 
 - No live handle: the app knows before the confirmation, so the
   warning is part of the confirmation (R8), without the sentence about
-  cancelling.
+  cancelling. As R8 says, "no live handle" is decided only after the
+  restore path has run: a row whose file is already complete is kept,
+  not warned about.
 - No resume data, or a failed pause: only the pause shows this, so the
   warning shows after R8 step 1 and before step 2. The pause has
   already stopped the transfer. If it is still running after a failed
@@ -593,8 +652,12 @@ running. Then the app warns before the switch:
   otherwise it starts over. If the warning was part of the
   confirmation (no live handle), no pause ran, and nothing changes.
 - **Turn on and remove:** the app cleans up, then carries on from R8
-  step 2. Cleanup cancels the transfer if the app still holds it (iOS
-  then deletes its temporary file), drops the resume data, deletes the
+  step 2. Cleanup cancels the transfer if the app still holds it,
+  drops the resume data and its references to the OS's temporary file
+  (on iOS, after a successful pause the task is already cancelled via
+  `cancelByProducingResumeData`, and the temporary file stays orphaned
+  in the OS's tmp folder until the OS purges it — the app does not and
+  cannot delete it itself), deletes the
   partial model file on Android (never the installed model's file),
   and clears the download row, so the hub has nothing to restore. A
   later download in Standard starts fresh. With R10b, a transfer the
@@ -652,9 +715,15 @@ from the internet, which strict privacy keeps Curated Journal away
 from. Your current model stays in place. To change it, import a model
 file that's already on this device, or step out of strict privacy
 first." Picking a catalog model is refused (R5) **before** the current
-model is retired. Today, `SELECT_MODEL` deletes the current model
-(`retiringCurrent`) before any download starts. In strict privacy that
-would leave the user with no model and no way to download one.
+model is retired — and before the "Replace model…" confirmation that
+`commitSelection` shows ("… will be deleted now"), not only before the
+`retiringCurrent` state that follows it. Today, `SELECT_MODEL` deletes
+the current model (`retiringCurrent`) before any download starts. In
+strict privacy that would leave the user with no model and no way to
+download one. The machine cannot import `privacyMode.ts` (which has
+native imports), so the strict refusal arrives as a guard the plan
+injects into `ModelHubApi`: the hub asks the gate before sending
+`SELECT_MODEL`, and the machine sees only the refusal, not the mode.
 *(Rules 1, 11.)*
 
 **R13 — The journal keeps working in strict privacy.** Everything rule
@@ -711,6 +780,8 @@ carries a PATCH for the spec alone. Step 2 is JS/TS only:
 - the shared `onLinkPress` in `src/components/NoteMarkdown.tsx` (the
   wrapper and the image rule are #118's, in PR #120);
 - the privacy policy page;
+- the `docs/VERSIONING.md` edit that adds the IPA `Info.plist` artifact
+  check (Verification, below) to the release-train steps;
 - `sessionType: 'foreground'` on the two download calls (R10b, owner
   OQ-7): an option of an API that is already in the binaries (the 9.x
   lockfile pins expo-file-system 58.0.13, checked at `009fa61`,
@@ -760,6 +831,15 @@ plugins or permissions.
 
 Automated (Step 2; `npm test`, `npm run lint` and `npx tsc --noEmit`
 must pass):
+
+- **Seeding.** The mode reads as strict until it has been loaded (R3),
+  and the load is memoized per process (R4). So suites that predate
+  this spec — `privacyMode.test.ts`, the tip-jar tests, the
+  update-check tests and the download-service tests — must seed
+  Standard before asserting any allowed behavior: by loading through a
+  mocked store that holds `'default'`, or through a shared jest setup
+  file. Without seeding, every gate says no and the suites fail.
+
 
 - **`__tests__/strictPrivacyJournal.test.tsx` — rule 1 in strict
   privacy.**
@@ -853,6 +933,18 @@ must pass):
     `DownloadTask`, and the row is rewritten as `paused`; after
     stepping out, reopening the hub shows it paused, not downloading
     (R10f);
+  - **completed-while-closed (R10f, R10g):** a `downloading` row whose
+    file on disk is already complete, with no live service record,
+    runs the normal restore path (`checkingExisting` →
+    `verifyDownload` → smoke test) under strict: the row is not
+    rewritten as `paused`, the can't-keep warning does not show, and
+    the download reaches `complete` through verification and the smoke
+    test (R10h);
+  - **paused-for-strict screen (R10e):** the download screen for a
+    strict-paused row shows the "Paused — strict privacy is on" label,
+    a Step out of strict privacy button that opens R9's confirmation,
+    and a way back to the model list, so Import custom .gguf is
+    reachable from it; after stepping out, the label reads "Paused";
   - `SELECT_MODEL` in strict is refused before `retiringCurrent`;
   - a download that can't be kept (no resume data, a failed pause, no
     live handle) shows the warning before the mode changes; after a
@@ -868,6 +960,29 @@ must pass):
 - Hub notices: the strict notices in R7, R11 and R12 show in strict and
   not in Standard; the read-failure sentence shows after a read
   failure; the Step out button opens R9's confirmation.
+- Settings → Privacy section (R7): it renders as the first section; it
+  offers exactly two choices, Standard and Strict privacy, each with
+  the copy from "The two modes, as the user reads them"; the current
+  mode is selected; a first install shows no first-run prompt (R1).
+- Confirmation copy and paths (R8, R9): both confirmations render the
+  required text; on R8, Cancel keeps Standard on and changes nothing,
+  and Turn on runs the R8 order; on R9, Cancel keeps strict, and
+  Step out saves first and applies second.
+- Save-failure messages (R8 step 3, R9): when the save rejects, the
+  exact failure message shows, and the mode the gates report matches
+  the message (strict in both cases; the app stays strict on a failed
+  step-out).
+- R8 step 5 row text: after a check is stopped mid-flight, the update
+  row reads "Strict privacy is on. The update check stopped."
+- R3 read-failure copy: with the store read failing, Settings →
+  Privacy shows "Curated Journal couldn't read your privacy setting…",
+  and with no model installed the hub notice starts with it.
+- R14: with a downloaded-but-not-installed update present, turning
+  strict on does not stop the install step; at the next restart the
+  update still installs.
+- R15: `docs/privacy/index.html` names Standard and strict privacy,
+  matches the modes' copy, and its iOS strict wording matches R3's
+  caveats (#119 and the pre-Step-2 download drain).
 - `updateCheck.test.ts`, `updateCheckRow.test.tsx`: a check is refused
   in strict; the gate is asked again between check and fetch.
 - `tipJarStore.test.ts`, `tipJarSection.test.tsx`: the session closes
@@ -920,6 +1035,18 @@ status line, un-drafting or cleanup (AGENTS.md):
 - [ ] iOS, accepted risk (OQ-7): with a download paused by a version
       from before Step 2, update, then Resume. Note whether it resumes
       or starts over.
+- [ ] iOS, pre-Step-2 transfer running (R3): with a download left
+      RUNNING (not paused) by a version from before Step 2, apply the
+      Step 2 OTA update, relaunch, and turn strict privacy on. Watch
+      the proxy log from process start: the app itself makes no
+      request, and the strict pause reports no live transfer. Note
+      whether the leftover background transfer keeps running anyway
+      (it is unreachable from JS), and record when it finishes or is
+      otherwise drained. Check that the downloads-off alert shows the
+      transitional sentence.
+- [ ] R14: with an update downloaded but not yet installed, turn
+      strict privacy on and restart the app. The update installs at
+      that restart.
 - [ ] In Standard: a `mailto:` or other non-web link in a note shows
       the "Only web links open" alert; an `https` link opens in the
       browser.
@@ -998,7 +1125,8 @@ asked, with the answer and where the spec encodes it.
   once #119 ships. Step 2 stays MINOR. *Encoded in:* path 9, R3,
   Version cost, INTENT check item 3.
 - **OQ-6 — A strict pause with no resume data.** *Asked:* If the
-  platform returns no resume data, or the pause fails, R10f stopped the
+  platform returns no resume data, or the pause fails, the spec as
+  first written stopped the
   download anyway and kept the partial file. A later Resume then starts
   the download over from zero. Is that acceptable?
   **Answer:** No. If switching to strict would leave a download that
@@ -1093,6 +1221,26 @@ asked, with the answer and where the spec encodes it.
 
 ## Open questions for the owner
 
-None. INTENT.md, the ROADMAP and the owner's answers above decide
-everything this spec needs. Step 2 waits only on the owner's approval
-of this spec.
+Two, both raised in review (2026-11-16). Everything else this spec
+needs is decided by INTENT.md, the ROADMAP and the answers above.
+
+- **The strict-mode copy on iOS before #119 (and before pre-Step-2
+  downloads drain).** The on-screen strict copy (rule 11, "The two
+  modes") promises: "Curated Journal doesn't go online or connect to
+  anything outside this device, for any reason." On iOS that promise
+  is not fully kept until #119 ships and any download a pre-Step-2
+  version left running in a background session has drained (R3): a
+  launch-time StoreKit listener starts, and an orphaned transfer may
+  still be moving bytes, neither reachable from JavaScript. How should
+  the copy read until then — qualify it (for example, "The app itself
+  doesn't go online; on iPhone, a few system- and update-related
+  connections may still occur until update 9.x"), or keep the plain
+  promise and carry the caveat elsewhere (the policy page, R15)?
+- **INTENT rule 9, paragraph 2 (amendment).** Rule 9 ¶2 lists the
+  default mode's traffic — model downloads, update checks, tips — as
+  things "the user starts", and says "nothing else runs on its own".
+  OQ-3 and OQ-8 add a fourth user-started kind, tapped web links in
+  notes. That fits the intent, but the paragraph's literal list does
+  not name it. INTENT.md is static and wins on intent; amending it
+  goes through PR review. Should rule 9 ¶2 be amended to name tapped
+  web links, or is "the user starts" already read as covering them?
