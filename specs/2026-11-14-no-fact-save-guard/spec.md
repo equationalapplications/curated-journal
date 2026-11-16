@@ -1,6 +1,7 @@
 # Spec: fail a journal save that stores no facts
 
-Status: Draft
+Status: Implemented
+Spec approved by the owner 2026-11-16.
 Date: 2026-11-14
 Version cost: PATCH (9.1.1 → 9.1.2) per `docs/VERSIONING.md`
 Closes: #112
