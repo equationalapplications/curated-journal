@@ -1,14 +1,14 @@
 {
   "name": "cur",
   "main": "expo-router/entry",
-  "version": "9.2.0",
+  "version": "9.3.0",
   "dependencies": {
-    "@equationalapplications/core-llm-wiki": "9.2.0",
-    "@equationalapplications/expo-llm-wiki": "9.2.0",
+    "@equationalapplications/core-llm-wiki": "9.5.3",
+    "@equationalapplications/expo-llm-wiki": "9.5.3",
     "@expo/ui": "~58.0.25",
     "@shopify/react-native-skia": "2.14.0",
     "@xstate/react": "^5.0.5",
-    "d3-force": "^3.0.0",
+    "d3-force": "^3.0.1",
     "expo": "~58.0.21",
     "expo-application": "~58.1.2",
     "expo-asset": "~58.0.19",
