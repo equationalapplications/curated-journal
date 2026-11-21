@@ -104,10 +104,10 @@ function makeStore(initial: Row | null = null) {
   return { store, ctl };
 }
 
-function makeDriver(platform: 'ios' | 'android' = 'android') {
+function makeDriver(platform: 'ios' | 'android' = 'android', initialApp = 'active') {
   const created: DownloadTask[] = [];
   const kit = {
-    appState: 'active',
+    appState: initialApp,
     appListener: null as null | ((s: string) => void),
     setApp(s: string) {
       kit.appState = s;
@@ -139,10 +139,10 @@ function makeDriver(platform: 'ios' | 'android' = 'android') {
   return { driver, kit };
 }
 
-function setup(opts: { row?: Row | null; platform?: 'ios' | 'android'; gate?: never } = {}) {
+function setup(opts: { row?: Row | null; platform?: 'ios' | 'android'; gate?: never; app?: string } = {}) {
   const timers = makeTimers();
   const { store, ctl } = makeStore(opts.row ?? null);
-  const { driver, kit } = makeDriver(opts.platform);
+  const { driver, kit } = makeDriver(opts.platform, opts.app);
   const events: ControllerEvent[] = [];
   const controller = createModelDownloadController({ driver, store, timers, gate: opts.gate });
   controller.subscribe((e) => events.push(e));
@@ -880,6 +880,95 @@ describe('controller: lost cancel guard (T-C23)', () => {
     expect(transferPlatform('ios')).toBe('ios');
     expect(transferPlatform('android')).toBe('android');
     expect(transferPlatform('web')).toBe('android');
+  });
+});
+
+describe('controller: remaining spec cases', () => {
+  it('T-C13b case 5: a controller built while backgrounded starts its timers suspended; inactive counts as foreground', async () => {
+    const t = setup({ app: 'background' });
+    await t.controller.start(A);
+    world.config.dropPauseBeforeProgress = true;
+    const paused = t.controller.pause(A);
+    await flush();
+    await t.timers.advance(120_000);
+    expect(native().cancelCalls).toBe(0);
+    t.kit.setApp('inactive');
+    await t.timers.advance(29_999);
+    expect(native().cancelCalls).toBe(0);
+    await t.timers.advance(2);
+    expect(await paused).toMatchObject({ kind: 'pause-failed' });
+    expect(native().cancelCalls).toBe(1);
+  });
+
+  it('T-C12 real store: a failed schema step (first execAsync rejects) is not cached, the second load succeeds', async () => {
+    const { createModelDownloadStateStore } = jest.requireActual('@/services/modelDownloadState');
+    const exec = jest.fn().mockRejectedValueOnce(new Error('schema failed')).mockResolvedValue(undefined);
+    const db = { execAsync: exec, getFirstAsync: jest.fn(async () => null), runAsync: jest.fn(async () => undefined) };
+    const openStore = jest.fn(async () => createModelDownloadStateStore(db) as StoreLike);
+    const { driver } = makeDriver();
+    const controller = createModelDownloadController({ driver, openStore, timers: makeTimers() });
+    await expect(controller.load()).rejects.toThrow('schema failed');
+    await expect(controller.load()).resolves.toMatchObject({ phase: 'none' });
+    expect(openStore).toHaveBeenCalledTimes(2);
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+
+  it('T-C12 real store: the same store with a cached ensureSchema failure would never recover (why openStore is reopened)', async () => {
+    const { createModelDownloadStateStore } = jest.requireActual('@/services/modelDownloadState');
+    const exec = jest.fn().mockRejectedValueOnce(new Error('schema failed')).mockResolvedValue(undefined);
+    const db = { execAsync: exec, getFirstAsync: jest.fn(async () => null), runAsync: jest.fn(async () => undefined) };
+    const store = createModelDownloadStateStore(db) as StoreLike;
+    await expect(store.get()).rejects.toThrow('schema failed');
+    await expect(store.get()).rejects.toThrow('schema failed'); // cached rejection
+  });
+
+  it('T-C12 late resolve at 15 s of a dropped open is discarded; a later write goes through the new store', async () => {
+    const timers = makeTimers();
+    const { driver } = makeDriver();
+    const a = makeStore();
+    const b = makeStore();
+    let resolveA!: (s: StoreLike) => void;
+    const openStore = jest
+      .fn()
+      .mockImplementationOnce(() => new Promise<StoreLike>((r) => (resolveA = r)))
+      .mockImplementationOnce(async () => b.store);
+    const controller = createModelDownloadController({ driver, openStore, timers });
+    const first = controller.load();
+    await flush();
+    const rejected = expect(first).rejects.toThrow('timed out');
+    await timers.advance(10_001);
+    await rejected;
+    await expect(controller.load()).resolves.toBeDefined();
+    await timers.advance(5_000);
+    resolveA(a.store);
+    await flush();
+    await controller.record(A, 'smoke-failed');
+    expect(b.store.set).toHaveBeenCalled();
+    expect(a.store.set).not.toHaveBeenCalled();
+  });
+
+  it('T-C12 late reject of a dropped open raises no unhandled rejection', async () => {
+    const timers = makeTimers();
+    const { driver } = makeDriver();
+    const b = makeStore();
+    let rejectA!: (e: unknown) => void;
+    const openStore = jest
+      .fn()
+      .mockImplementationOnce(() => new Promise<StoreLike>((_r, rej) => (rejectA = rej)))
+      .mockImplementationOnce(async () => b.store);
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+    const controller = createModelDownloadController({ driver, openStore, timers });
+    const first = controller.load();
+    await flush();
+    const rejected = expect(first).rejects.toThrow('timed out');
+    await timers.advance(10_001);
+    await rejected;
+    await expect(controller.load()).resolves.toBeDefined();
+    rejectA(new Error('late open failure'));
+    await new Promise((r) => setImmediate(r));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
   });
 });
 

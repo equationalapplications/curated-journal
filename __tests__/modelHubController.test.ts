@@ -342,4 +342,19 @@ describe('download controller (hub)', () => {
     expect(native().resumeArgs[2]).toBe('rd');
     actor.stop();
   });
+
+  it('D8 web: a start whose stub resolves null ends paused with reason user, and Resume cycles', async () => {
+    const h = build();
+    world.config.startResolvesNull = true;
+    const actor = h.spawn();
+    send(actor, { type: 'SELECT_MODEL', modelId: A });
+    await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.pausedReason).toBe('user');
+    expect(world.instances).toHaveLength(1);
+    send(actor, { type: 'RESUME' });
+    await until(() => world.instances.length === 2);
+    await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.pausedReason).toBe('user');
+    actor.stop();
+  });
 });

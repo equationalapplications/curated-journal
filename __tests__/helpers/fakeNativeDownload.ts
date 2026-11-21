@@ -22,6 +22,8 @@ export const world = {
     neverSettleOnCancel: false,
     /** A cancel issued before the start took effect is erased; only `release()` stops it (F11). */
     dropCancelUntilRelease: false,
+    /** `start()` resolves null at once, like the web stub (D8). */
+    startResolvesNull: false,
     /** `pause()` rejects (the pause failed while the task stays active). */
     rejectPause: false,
     resumeData: 'rd' as string | undefined,
@@ -33,6 +35,7 @@ export const world = {
     this.config.dropNextCancel = false;
     this.config.neverSettleOnCancel = false;
     this.config.dropCancelUntilRelease = false;
+    this.config.startResolvesNull = false;
     this.config.rejectPause = false;
     this.config.resumeData = 'rd';
   },
@@ -68,7 +71,9 @@ export class FakeNativeTask {
 
   start(...args: unknown[]): Promise<string | null> {
     this.startArgs = args;
-    return this.run();
+    const p = this.run();
+    if (world.config.startResolvesNull) queueMicrotask(() => this.endTransfer(null));
+    return p;
   }
 
   resume(...args: unknown[]): Promise<string | null> {
