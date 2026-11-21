@@ -11,11 +11,12 @@ import { runModelSmokeTest } from '@/lib/modelSmokeTest';
 import { clearModelPath, setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
 import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 import { useModelHub } from '@/hooks/useModelHub';
+import type { CuratedModelId } from '@/catalog/modelManifest';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
 export default function ModelHubImportScreen() {
   const router = useRouter();
-  const { send, stateValue } = useModelHub();
+  const { send, stateValue, abandonDownload, readDownloadRow } = useModelHub();
   const completeOnboarding = useModelHubCompletion();
   const [status, setStatus] = useState('');
 
@@ -47,12 +48,24 @@ export default function ModelHubImportScreen() {
     }
     const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
-    deleteOrphanedCuratedModelFiles({ keepModelId: null, currentModelPath: currentPath });
+    // The saved download's partial must survive until this import succeeds: the
+    // row stays `paused` with resume data, and a later Resume would
+    // setLength(offset) over a deleted file, zero-filling the head into a
+    // file that passes the size-only verify. An unreadable row means skip the sweep.
+    let keptModelId: CuratedModelId | null = null;
+    let rowKnown = true;
+    try {
+      keptModelId = ((await readDownloadRow())?.modelId as CuratedModelId | null | undefined) ?? null;
+    } catch {
+      rowKnown = false;
+    }
+    if (rowKnown) deleteOrphanedCuratedModelFiles({ keepModelId: keptModelId, currentModelPath: currentPath });
     const dest = new File(Paths.document, uniqueFileName(picked.assets[0].name));
     const source = new File(picked.assets[0].uri);
     // Shown before the copy, not after: a multi-gigabyte .gguf takes a while.
     setStatus('Copying the model and checking it runs on this device…');
     let committedPath = false;
+    let rowCleared = false;
     try {
       // File.copy() returns a Promise (Expo SDK 57). Left un-awaited, the smoke
       // test below races a half-written file and reports a perfectly good model
@@ -69,6 +82,15 @@ export default function ModelHubImportScreen() {
         send({ type: 'IMPORT_FAILED', message: 'This model could not run on your device.' });
         router.back();
         return;
+      }
+      // Clear any abandoned download row BEFORE the identity commit: a kill
+      // between the commit and the machine's IMPORT_SMOKE_OK clear would leave
+      // the row, and the next Wi-Fi open would download over this import.
+      try {
+        // `rowSaved: false` means the clear did not land: keep the same guard as a rejected clear.
+        rowCleared = (await abandonDownload()).rowSaved;
+      } catch (cause) {
+        console.warn('[model-hub] could not clear the download row before import', cause);
       }
       await setModelPath(dest.uri);
       committedPath = true;
@@ -88,6 +110,11 @@ export default function ModelHubImportScreen() {
       send({ type: 'IMPORT_FAILED', message: 'Import failed. Pick the model again to retry.' });
       router.back();
       return;
+    }
+    // The import won and the row is gone: the kept download is abandoned, so
+    // its partial is now a true orphan.
+    if (rowCleared && (keptModelId || !rowKnown)) {
+      deleteOrphanedCuratedModelFiles({ keepModelId: null, currentModelPath: currentPath });
     }
     send({ type: 'IMPORT_SMOKE_OK', retirePath: currentPath });
   };
