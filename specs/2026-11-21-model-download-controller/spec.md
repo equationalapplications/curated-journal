@@ -1,8 +1,9 @@
 # Spec: one model download controller owns every transfer
 
 **Status: Draft** — 2026-11-21. Spec only. The owner answered all eight
-open questions on 2026-11-21 (see Resolved: owner rulings); review is
-next. The plan and the implementation wait for the owner's approval
+open questions on 2026-11-21 (see Resolved: owner rulings). The
+Sonnet-high review loop finished on round 2 with no MAJOR findings, and
+the Opus-high loop converged on 2026-11-21 at round 7. The plan and the implementation wait for the owner's approval
 (AGENTS.md lifecycle).
 Date: 2026-11-21
 Version cost: MINOR (9.2.0 → 9.3.0), JS-only, OTA-safe (Version cost)
@@ -355,8 +356,8 @@ TypeScript, not an XState actor, so nothing that stops the hub stops it
 - the record of the current download: model id, phase and pause state;
 - the saved download row. The controller creates the only
   `createModelDownloadStateStore` instance that is live; a dropped one is never used. The database is opened
-  lazily, as part of the first store call (see Every store call is
-  bounded), and every row write in the app goes through it (I4).
+  lazily, as part of the first store call (see The open and the
+  schema step belong to the first store call), and every row write in the app goes through it (I4).
 
 Nothing else may import `DownloadTask`, the service's transfer
 functions or the store factory (T-own). The download service keeps its
@@ -730,13 +731,22 @@ call (How #117 shrinks).
   promise on the first load. The open, the schema creation inside the
   store's `ensureSchema()` and the first read all run inside the one
   10 s bound below. **If any load before the first successful one fails or times out, the
-  controller drops its store promise and leaves the handle open. Native
-  connections are shared with the wiki and reference-counted, so a stray
-  close could release the wiki's reference. Today's layout never closes
-  its handle either. The next load calls `openStore()` again and gets a
+  controller drops its store promise and leaves the handle open. A close
+  would be ref-counted and drop only this handle's reference, but
+  leaving it open matches today's layout, costs O(1) per failed load
+  (below), and removes a close path that a double close could turn into
+  releasing the wiki's reference. The next load calls `openStore()` again and gets a
   fresh handle (on native, a new reference to the shared connection) and
-  a fresh store.** A hang inside the shared connection or the web worker
-  is bounded, not cleared. A late resolve of the dropped open is
+  a fresh store.** Each failed pre-success load leaks one handle
+  reference; on web it also leaks one worker map entry, and a hung call
+  keeps its pending entry. `openStore()` is called only by loads before
+  the first success. Those loads are user-paced (a layout mount or a
+  Retry tap, never an automatic retry loop), and it stops for good
+  after the first success. Today's layout leaks one handle on every hub
+  open, so this is no worse (T-S3 asserts the layout never retries on
+  its own). Reopening recovers a rejected open or schema step and a
+  single call whose reply never comes; a wedged connection or worker is
+  bounded by the 10 s timer, not cleared. A late resolve of the dropped open is
   discarded. A late reject is caught with a no-op handler, so React
   Native logs no unhandled rejection. Why this mechanism and
   not "`ensureSchema` resets `ready` on rejection": `ensureSchema()`
@@ -1013,7 +1023,12 @@ states, target or effects.
   Pre-existing, not introduced here and tracked in #135: the store's row
   writes share the wiki's SQLite connection, so a write that lands inside
   the engine's `withTransactionAsync` joins that transaction and can be
-  rolled back after it reported `rowSaved: true`.
+  rolled back after it reported `rowSaved: true`. On a first install, a
+  `CREATE TABLE IF NOT EXISTS` can likewise join a wiki transaction that
+  later rolls back, and the store's cached `ready` then stays resolved
+  with no table. Today the next hub open re-runs the schema. Under the
+  singleton, writes report `rowSaved: false` until the app restarts,
+  which is honest and safe against stale rows.
 
 - **D8 — Web ends a start as Paused.** At baseline, `runDownload`
   sends nothing on a null result (`src/machines/modelHubMachine.ts:204`
@@ -1550,7 +1565,8 @@ row says otherwise.
 - **T-S3** (`_layout.tsx`). A `load()` that rejects shows the error and
   a Retry button (no endless spinner). Retry runs again, and after a
   successful read the hub restores (the controller reopens the database,
-  see T-C12). *Catches:* a layout with no `catch`
+  see T-C12). The layout never retries on its own: with a rejecting
+  `load()`, no second call happens until Retry is tapped. *Catches:* a layout with no `catch`
   (a spinner forever, M7).
 
 ## Verification
