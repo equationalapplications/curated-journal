@@ -11,11 +11,12 @@ import { runModelSmokeTest } from '@/lib/modelSmokeTest';
 import { clearModelPath, setModelPath, setModelId, getModelPath } from '@/lib/entityStorage';
 import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 import { useModelHub } from '@/hooks/useModelHub';
+import type { CuratedModelId } from '@/catalog/modelManifest';
 import { useModelHubCompletion } from '@/contexts/ModelHubCompletionContext';
 
 export default function ModelHubImportScreen() {
   const router = useRouter();
-  const { send, stateValue, clearDownloadState, readDownloadModelId } = useModelHub();
+  const { send, stateValue, abandonDownload, readDownloadRow } = useModelHub();
   const completeOnboarding = useModelHubCompletion();
   const [status, setStatus] = useState('');
 
@@ -51,10 +52,10 @@ export default function ModelHubImportScreen() {
     // row stays `paused` with resume data, and a later Resume would
     // setLength(offset) over a deleted file, zero-filling the head into a
     // file that passes the size-only verify. An unreadable row means skip the sweep.
-    let keptModelId: Awaited<ReturnType<typeof readDownloadModelId>> = null;
+    let keptModelId: CuratedModelId | null = null;
     let rowKnown = true;
     try {
-      keptModelId = await readDownloadModelId();
+      keptModelId = ((await readDownloadRow())?.modelId as CuratedModelId | null | undefined) ?? null;
     } catch {
       rowKnown = false;
     }
@@ -86,8 +87,8 @@ export default function ModelHubImportScreen() {
       // between the commit and the machine's IMPORT_SMOKE_OK clear would leave
       // the row, and the next Wi-Fi open would download over this import.
       try {
-        await clearDownloadState();
-        rowCleared = true;
+        // `rowSaved: false` means the clear did not land: keep the same guard as a rejected clear.
+        rowCleared = (await abandonDownload()).rowSaved;
       } catch (cause) {
         console.warn('[model-hub] could not clear the download row before import', cause);
       }

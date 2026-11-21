@@ -21,6 +21,7 @@ import { modelRamWarning } from '@/lib/modelRamWarning';
 
 const INSTALL_STATES: ReadonlySet<string> = new Set([
   'downloading',
+  'pausing',
   'paused',
   'failed',
   'verifying',

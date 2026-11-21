@@ -15,21 +15,11 @@ import {
   type ModelHubMachineEvents,
 } from '@/machines/modelHubMachine';
 import { checkNetworkGate } from '@/lib/networkGate';
-import {
-  startDownload,
-  resumeDownload,
-  pauseDownload,
-  verifyDownload,
-  deletePartialFile,
-} from '@/services/modelDownloadService';
+import { verifyDownload, deletePartialFile } from '@/services/modelDownloadService';
+import type { ModelDownloadController } from '@/services/modelDownloadController';
 import { runModelSmokeTest } from '@/lib/modelSmokeTest';
 import { isBelowComfortableRam, currentDeviceMemory } from '@/lib/modelLoadParams';
-import type {
-  createModelDownloadStateStore,
-  DownloadPauseStateRecord,
-  ModelDownloadStatus,
-  ModelDownloadStateRecord,
-} from '@/services/modelDownloadState';
+import type { DownloadPauseStateRecord, ModelDownloadStatus } from '@/services/modelDownloadState';
 import {
   setModelPath,
   setModelId,
@@ -39,11 +29,20 @@ import {
 import { MODEL_CATALOG, type CuratedModelId } from '@/catalog/modelManifest';
 import { deleteOrphanedCuratedModelFiles } from '@/services/modelFiles';
 
-type Store = ReturnType<typeof createModelDownloadStateStore>;
-
 export type ModelHubRestoreState = {
   modelId: CuratedModelId;
   status: Extract<ModelDownloadStatus, 'downloading' | 'paused' | 'smoke-testing' | 'smoke-failed'>;
+  pauseState: DownloadPauseStateRecord | null;
+  /** A transfer is running in this process: the hub attaches to it (H9). */
+  live?: boolean;
+  /** The file finished while no hub was open: the hub verifies it (H9b). */
+  finished?: boolean;
+};
+
+/** The saved row as the layout composes it from the controller's snapshot (the row omits the pause state). */
+export type RestoreSource = {
+  modelId: string | null;
+  status: ModelDownloadStatus;
   pauseState: DownloadPauseStateRecord | null;
 };
 
@@ -51,7 +50,7 @@ const RESTORABLE: ReadonlySet<string> = new Set(['downloading', 'paused', 'smoke
 
 /** Null unless the saved status is restorable AND its model is still in the catalog. */
 export function toRestoreState(
-  record: ModelDownloadStateRecord | null,
+  record: RestoreSource | null,
   currentModelId: string | null = null,
 ): ModelHubRestoreState | null {
   if (!record || !record.modelId || !RESTORABLE.has(record.status)) return null;
@@ -68,18 +67,10 @@ export function toRestoreState(
   };
 }
 
-export function createModelHubApi(store: Store): ModelHubApi {
+export function createModelHubApi(downloads: ModelDownloadController): ModelHubApi {
   return {
+    downloads,
     checkNetwork: () => checkNetworkGate(),
-    startDownload: async (model, onProgress) => {
-      const file = await startDownload(model, { onProgress });
-      return file !== null;
-    },
-    resumeDownload: async (pauseState, onProgress) => {
-      const file = await resumeDownload(pauseState, { onProgress });
-      return file !== null;
-    },
-    pauseDownload: () => pauseDownload(),
     verifyDownload: (model) => {
       const file = new File(Paths.document, model.filename);
       return verifyDownload(file, model);
@@ -118,7 +109,7 @@ export function createModelHubApi(store: Store): ModelHubApi {
       // spare their file. Unknown row: skip.
       let rowModelId: CuratedModelId | null;
       try {
-        const row = await store.get();
+        const row = await downloads.readRow();
         rowModelId = row?.status === 'paused' ? ((row.modelId as CuratedModelId | null | undefined) ?? null) : null;
       } catch (cause) {
         console.warn('[model-hub] skipped orphan cleanup: download row unreadable', cause);
@@ -126,9 +117,6 @@ export function createModelHubApi(store: Store): ModelHubApi {
       }
       deleteOrphanedCuratedModelFiles({ keepModelId, alsoKeepModelId: rowModelId, currentModelPath });
     },
-    persistDownloadState: (record) => store.set(record),
-    clearDownloadState: () => store.clear(),
-    readDownloadModelId: async () => ((await store.get())?.modelId as CuratedModelId | null | undefined) ?? null,
     setModelPath: async (model) => {
       const file = new File(Paths.document, model.filename);
       const previousPath = await getModelPath();
@@ -195,12 +183,12 @@ type ModelHubContextValue = {
   currentModelId: CuratedModelId | 'custom' | null;
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: string; message: string } | null;
-  pausedReason: 'user' | 'background' | 'restored' | null;
+  pausedReason: 'user' | 'background' | 'restored' | 'strict' | null;
   displayName: string | null;
-  /** Drops the saved download row (may reject). */
-  clearDownloadState: () => Promise<void>;
-  /** The saved download row's model id, or null (may reject). */
-  readDownloadModelId: () => Promise<CuratedModelId | null>;
+  /** Drops the saved download row and any live transfer. `rowSaved` says whether the clear landed. */
+  abandonDownload: () => Promise<{ rowSaved: boolean }>;
+  /** The saved download row, or null (may reject when it was never loaded). */
+  readDownloadRow: () => Promise<{ modelId: string | null; status: ModelDownloadStatus } | null>;
 };
 
 const ModelHubContext = createContext<ModelHubContextValue | null>(null);
@@ -234,6 +222,8 @@ export function ModelHubProvider({
       modelId: restore.modelId,
       status: restore.status,
       pauseState: restore.pauseState,
+      live: restore.live,
+      finished: restore.finished,
     });
   }, [actor, restore]);
 
@@ -266,8 +256,8 @@ export function ModelHubProvider({
     error,
     pausedReason,
     displayName,
-    clearDownloadState: () => api.clearDownloadState(),
-    readDownloadModelId: () => api.readDownloadModelId(),
+    abandonDownload: () => api.downloads.abandon(),
+    readDownloadRow: () => api.downloads.readRow(),
   };
 
   return <ModelHubContext.Provider value={value}>{children}</ModelHubContext.Provider>;

@@ -121,6 +121,7 @@ export default function ModelHubDownloadScreen() {
   // being re-checked, not set up from scratch.
   const downloadPhase =
     stateValue === 'downloading' ||
+    stateValue === 'pausing' ||
     stateValue === 'paused' ||
     stateValue === 'failed' ||
     stateValue === 'confirmingNetwork' ||
@@ -177,6 +178,11 @@ export default function ModelHubDownloadScreen() {
             style={styles.compact}
             onPress={() => send({ type: 'PAUSE' })}
           />
+        ) : null}
+        {stateValue === 'pausing' ? (
+          <ThemedText type="small" themeColor="onSurfaceVar" testID="download-pausing">
+            Pausing…
+          </ThemedText>
         ) : null}
         {stateValue === 'paused' ? (
           <View style={styles.row}>

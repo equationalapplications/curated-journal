@@ -2,7 +2,6 @@ import { Platform } from 'react-native';
 import { DownloadTask, File } from 'expo-file-system';
 import {
   startDownload,
-  pauseDownload,
   resumeDownload,
   verifyDownload,
   classifyDownloadError,
@@ -53,25 +52,12 @@ const model: CuratedModel = {
 describe('modelDownloadService', () => {
   it('starts a download with the User-Agent header and reports progress', async () => {
     const onProgress = jest.fn();
-    const file = await startDownload(model, { onProgress });
+    const file = await startDownload(model, { onProgress }).promise;
     expect(file?.size).toBe(2393231072);
     expect(onProgress).toHaveBeenCalledWith({ bytesWritten: 2393231072, totalBytes: 2393231072 });
     const ctorCall = jest.mocked(DownloadTask).mock.calls.at(-1)!;
     const options = ctorCall[2] as { headers?: Record<string, string> };
     expect(options.headers?.['User-Agent']).toMatch(/^CuratedJournal\//);
-  });
-
-  it('pauseDownload returns a savable pause state', async () => {
-    await startDownload(model, {});
-    const pauseState = await pauseDownload();
-    expect(pauseState).toEqual({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: 'rd' });
-  });
-
-  it('pauseDownload resolves null when savable has no resumeData', async () => {
-    await startDownload(model, {});
-    const task = jest.mocked(DownloadTask).mock.instances.at(-1) as unknown as { savable: jest.Mock };
-    task.savable.mockReturnValueOnce({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false });
-    await expect(pauseDownload()).resolves.toBeNull();
   });
 
   it('resumeDownload restores from saved state via DownloadTask.fromSavable', async () => {
@@ -81,7 +67,7 @@ describe('modelDownloadService', () => {
       savable: jest.fn(() => ({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false })),
     });
     (DownloadTask as unknown as { fromSavable: typeof fromSavable }).fromSavable = fromSavable;
-    const file = await resumeDownload({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: 'rd' }, {});
+    const file = await resumeDownload({ url: model.hfUrl, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: 'rd' }, {}).promise;
     expect(fromSavable).toHaveBeenCalled();
     expect(file?.size).toBe(2393231072);
   });
@@ -111,7 +97,7 @@ describe('modelDownloadService', () => {
 
     it('starts fresh when the partial is missing', async () => {
       partial(false, 0);
-      await resumeDownload(pause, { onProgress: jest.fn() });
+      await resumeDownload(pause, { onProgress: jest.fn() }).promise;
       expect(fromSavable).not.toHaveBeenCalled();
       expect(DownloadTask).toHaveBeenCalledTimes(1);
       const ctor = jest.mocked(DownloadTask).mock.calls[0];
@@ -124,7 +110,7 @@ describe('modelDownloadService', () => {
 
     it('deletes a short partial and starts fresh', async () => {
       const del = partial(true, 999);
-      await resumeDownload(pause, { onProgress: jest.fn() });
+      await resumeDownload(pause, { onProgress: jest.fn() }).promise;
       expect(del).toHaveBeenCalled();
       expect(fromSavable).not.toHaveBeenCalled();
       expect(DownloadTask).toHaveBeenCalledTimes(1);
@@ -138,13 +124,13 @@ describe('modelDownloadService', () => {
 
     it('starts fresh when the offset cannot be parsed', async () => {
       partial(true, 5000);
-      await resumeDownload({ ...pause, resumeData: '{"x":1}' }, {});
+      await resumeDownload({ ...pause, resumeData: '{"x":1}' }, {}).promise;
       expect(fromSavable).not.toHaveBeenCalled();
     });
 
     it('resumes when the partial is at least the offset', async () => {
       partial(true, 1000);
-      await resumeDownload(pause, {});
+      await resumeDownload(pause, {}).promise;
       expect(fromSavable).toHaveBeenCalledTimes(1);
       expect(DownloadTask).not.toHaveBeenCalled();
     });
@@ -152,7 +138,7 @@ describe('modelDownloadService', () => {
     it('leaves iOS unchanged even with no partial', async () => {
       Platform.OS = 'ios';
       partial(false, 0);
-      await resumeDownload(pause, {});
+      await resumeDownload(pause, {}).promise;
       expect(fromSavable).toHaveBeenCalledTimes(1);
     });
   });
@@ -205,7 +191,7 @@ describe('modelDownloadService', () => {
       this.savable = jest.fn(() => ({ url, fileUri: 'file:///doc/test.gguf', isDirectory: false, resumeData: 'rd' }));
       void url;
     });
-    const file = await startDownload(model, { onProgress });
+    const file = await startDownload(model, { onProgress }).promise;
     expect(file).not.toBeNull();
     expect(onProgress).toHaveBeenCalledWith({ bytesWritten: 100, totalBytes: 200 });
     expect(typeof onProgress.mock.calls[0][0].bytesWritten).toBe('number');

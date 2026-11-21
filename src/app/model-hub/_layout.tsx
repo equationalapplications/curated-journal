@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
-import * as SQLite from 'expo-sqlite';
-import { createModelDownloadStateStore } from '@/services/modelDownloadState';
+import { getModelDownloadController } from '@/services/modelDownloadController';
 import { createModelHubApi, ModelHubProvider, toRestoreState, type ModelHubRestoreState } from '@/hooks/useModelHub';
 import { CellularConfirm } from '@/components/model-hub/cellular-confirm';
+import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/use-theme';
 import { getModelId } from '@/lib/entityStorage';
 import { smokeTestSettled, type ModelHubApi } from '@/machines/modelHubMachine';
@@ -16,40 +17,81 @@ export default function ModelHubStackLayout() {
   const [api, setApi] = useState<ModelHubApi | null>(null);
   const [restore, setRestore] = useState<ModelHubRestoreState | undefined>(undefined);
   const [currentModelId, setCurrentModelId] = useState<CuratedModelId | 'custom' | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Bumped by the Retry button only. The layout never retries on its own.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // A smoke test started before the hub was last closed may still be
-      // loading; its `smoke-testing` marker only means a kill once it settles.
-      await smokeTestSettled();
-      if (cancelled) return;
-      const db = await SQLite.openDatabaseAsync('curated_journal.db');
-      const store = createModelDownloadStateStore(db);
-      const downloadState = await store.get();
-      if (cancelled) return;
-      const storedModelId = await getModelId();
-      if (cancelled) return;
-      setCurrentModelId((storedModelId as CuratedModelId | 'custom' | null) ?? null);
-      setApi(createModelHubApi(store));
-      const restoreState = toRestoreState(downloadState, storedModelId);
-      if (restoreState) {
-        setRestore(restoreState);
-        router.replace('/model-hub/download' as Href);
-      } else if (downloadState && downloadState.status !== 'idle' && downloadState.status !== 'failed') {
-        // A saved install this bundle cannot restore (removed model, unknown
-        // status), or a smoke-testing marker for a model already committed.
-        try {
-          await store.clear();
-        } catch (cause) {
-          console.warn('[model-hub] could not clear an unrestorable download state', cause);
+      try {
+        // A smoke test started before the hub was last closed may still be
+        // loading; its `smoke-testing` marker only means a kill once it settles.
+        await smokeTestSettled();
+        if (cancelled) return;
+        const downloads = getModelDownloadController();
+        const snapshot = await downloads.load();
+        if (cancelled) return;
+        const storedModelId = await getModelId();
+        if (cancelled) return;
+        setCurrentModelId((storedModelId as CuratedModelId | 'custom' | null) ?? null);
+        setApi(createModelHubApi(downloads));
+        const row = snapshot.row;
+        const source = row ? { modelId: row.modelId, status: row.status, pauseState: snapshot.pauseState } : null;
+        let restoreState: ModelHubRestoreState | null;
+        if (snapshot.phase === 'active' && snapshot.modelId) {
+          // A transfer is running in this process: attach to it, no network check (H9).
+          restoreState = { modelId: snapshot.modelId, status: 'downloading', pauseState: snapshot.pauseState, live: true };
+        } else if (snapshot.phase === 'completed' && snapshot.modelId) {
+          // The file finished while no hub was open: verify it (H9b).
+          restoreState = {
+            modelId: snapshot.modelId,
+            status: 'downloading',
+            pauseState: snapshot.pauseState,
+            finished: true,
+          };
+        } else {
+          restoreState = toRestoreState(source, storedModelId);
         }
+        setLoadFailed(false);
+        if (restoreState) {
+          setRestore(restoreState);
+          router.replace('/model-hub/download' as Href);
+        } else if (row && row.status !== 'idle' && row.status !== 'failed') {
+          // A saved install this bundle cannot restore (removed model, unknown
+          // status), or a smoke-testing marker for a model already committed.
+          try {
+            await downloads.abandon();
+          } catch (cause) {
+            console.warn('[model-hub] could not clear an unrestorable download state', cause);
+          }
+        }
+      } catch (cause) {
+        if (cancelled) return;
+        console.warn('[model-hub] could not load the download state', cause);
+        setLoadFailed(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, attempt]);
+
+  const retry = useCallback(() => {
+    setLoadFailed(false);
+    setAttempt((n) => n + 1);
+  }, []);
+
+  if (!api && loadFailed) {
+    return (
+      <View style={[styles.loading, { backgroundColor: theme.bg }]}>
+        <ThemedText type="small" testID="model-hub-load-error">
+          Could not load your model downloads. Try again.
+        </ThemedText>
+        <Button label="Retry" variant="primary" onPress={retry} testID="model-hub-load-retry" />
+      </View>
+    );
+  }
 
   if (!api) {
     return (
@@ -87,5 +129,5 @@ export default function ModelHubStackLayout() {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
 });
