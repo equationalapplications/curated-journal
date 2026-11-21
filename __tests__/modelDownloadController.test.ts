@@ -262,8 +262,9 @@ describe('controller: pause outcomes', () => {
     world.config.dropPauseBeforeProgress = true;
     const paused = t.controller.pause(A);
     await flush();
+    await t.timers.advance(600); // the 500 ms grace has passed: earlier events were stale
     native().emitProgress(10);
-    await t.timers.advance(1_000);
+    await t.timers.advance(400);
     expect(await paused).toMatchObject({ kind: 'paused', pauseState: expect.objectContaining({ resumeData: 'rd' }) });
     expect(native().cancelCalls).toBe(0);
   });
@@ -969,6 +970,167 @@ describe('controller: remaining spec cases', () => {
     await new Promise((r) => setImmediate(r));
     process.off('unhandledRejection', unhandled);
     expect(unhandled).not.toHaveBeenCalled();
+  });
+});
+
+describe('controller: review round 1', () => {
+  function stubKit() {
+    const timers = makeTimers();
+    const { store } = makeStore();
+    let app: (s: string) => void = () => undefined;
+    let progress: (p: { bytesWritten: number; totalBytes: number }) => void = () => undefined;
+    let settleTransfer: (v: unknown) => void = () => undefined;
+    const stub = {
+      state: 'active' as string,
+      cancel: jest.fn(),
+      release: jest.fn(),
+      pause: jest.fn(),
+      savable: jest.fn(() => P),
+      addListener: jest.fn(() => ({ remove: jest.fn() })),
+      pauseAsync: jest.fn(() => new Promise<void>(() => undefined)),
+    };
+    const driver: TransferDriver = {
+      platform: 'android',
+      start: (_id, { onProgress }) => {
+        progress = onProgress;
+        return { task: stub as never, promise: new Promise((r) => (settleTransfer = r)), kind: 'started' };
+      },
+      resume: () => ({ task: stub as never, promise: new Promise(() => undefined), kind: 'resumed' }),
+      onAppState: (l) => {
+        app = l;
+        l('active');
+        return () => undefined;
+      },
+    };
+    const controller = createModelDownloadController({ driver, store, timers });
+    const events: ControllerEvent[] = [];
+    controller.subscribe((e) => events.push(e));
+    return {
+      controller, timers, stub, events,
+      setApp: (x: string) => app(x),
+      progress: (n: number) => progress({ bytesWritten: n, totalBytes: 1000 }),
+      settle: (v: unknown) => settleTransfer(v),
+    };
+  }
+
+  it('M1 the re-issue is one-shot: background then foreground does not issue a third pause', async () => {
+    const k = stubKit();
+    await k.controller.start(A);
+    const paused = k.controller.pause(A);
+    await flush();
+    await k.timers.advance(600);
+    k.progress(5);
+    await k.timers.advance(400);
+    expect(k.stub.pause).toHaveBeenCalledTimes(1);
+    k.setApp('background');
+    await k.timers.advance(100_000);
+    k.setApp('active');
+    await k.timers.advance(600);
+    k.progress(6);
+    await k.timers.advance(2_000);
+    expect(k.stub.pause).toHaveBeenCalledTimes(1);
+    await k.timers.advance(30_000);
+    expect(await paused).toMatchObject({ kind: 'pause-failed' });
+  });
+
+  it('M2 a stale progress event just after the ask does not re-issue on a slow but effective pause', async () => {
+    const t = setup();
+    await t.controller.start(A);
+    world.config.slowFirstPause = true;
+    const paused = t.controller.pause(A);
+    await flush();
+    native().emitProgress(5); // emitted before the ask, delivered just after it
+    await t.timers.advance(1_000);
+    expect(native().pauseCalls).toBe(1);
+    native().deliverPause();
+    expect(await paused).toMatchObject({ kind: 'paused', pauseState: expect.objectContaining({ resumeData: 'rd' }) });
+  });
+
+  it('M5 strict events per outcome: no-resume-data and pause-failed emit stopped; error and completed emit once', async () => {
+    const a = setup();
+    await a.controller.start(A);
+    world.config.resumeData = undefined;
+    await a.controller.stopForStrict();
+    expect(a.events.filter((e) => e.type === 'stopped')).toHaveLength(1);
+    world.config.resumeData = 'rd';
+    const b = setup();
+    await b.controller.start(A);
+    world.config.rejectPause = true;
+    await b.controller.stopForStrict();
+    expect(b.events.filter((e) => e.type === 'stopped')).toEqual([expect.objectContaining({ reason: 'strict' })]);
+    world.config.rejectPause = false;
+    const c = setup();
+    await c.controller.start(A);
+    world.config.slowFirstPause = true;
+    const cs = c.controller.stopForStrict();
+    await flush();
+    native().failDuringPause(new Error('boom'));
+    await cs;
+    expect(c.events.filter((e) => e.type === 'failed')).toHaveLength(1);
+    const d = setup();
+    await d.controller.start(A);
+    const ds = d.controller.stopForStrict();
+    await flush();
+    native().completeDuringPause();
+    expect(await ds).toMatchObject({ kind: 'completed' });
+    expect(d.events.filter((e) => e.type === 'completed')).toHaveLength(1);
+    expect(d.events.filter((e) => e.type === 'stopped')).toHaveLength(0);
+  });
+
+  it('M5 a strict stop that finds the task completed during its pause with a failing kill-window write: completed, rowSaved false', async () => {
+    const t = setup();
+    await t.controller.start(A);
+    world.config.slowFirstPause = true;
+    t.ctl.failSets = 1;
+    const strict = t.controller.stopForStrict();
+    await flush();
+    native().completeDuringPause();
+    expect(await strict).toEqual({ kind: 'completed', rowSaved: false });
+  });
+
+  it('N4 nothing-running and a held kept report rowSaved true when the call asked for no write', async () => {
+    const t = setup({ row: { modelId: A, status: 'paused', pauseState: P } });
+    await t.controller.load();
+    t.ctl.failSets = 5;
+    expect(await t.controller.stopForStrict()).toEqual({ kind: 'kept', pauseState: P, rowSaved: true });
+    const n = setup();
+    await n.controller.load();
+    expect(await n.controller.stopForStrict()).toEqual({ kind: 'nothing-running', rowSaved: true });
+  });
+
+  it('M6 pause() after a strict pause-failed reports pause-failed with the held pause state, and a held report emits nothing', async () => {
+    const t = setup({ row: { modelId: A, status: 'paused', pauseState: P } });
+    await t.controller.resume(A);
+    world.config.rejectPause = true;
+    expect(await t.controller.stopForStrict()).toMatchObject({ kind: 'not-keepable', why: 'pause-failed' });
+    t.events.length = 0;
+    expect(await t.controller.pause(A)).toMatchObject({ kind: 'pause-failed', pauseState: P });
+    expect(await t.controller.stopForStrict()).toMatchObject({ kind: 'not-keepable', why: 'pause-failed' });
+    expect(t.events).toEqual([]);
+  });
+
+  it('N5 an unrequested null whose task is completed, errored, cancelled or unsavable always emits an event', async () => {
+    const cases: Array<[string, (stub: { state: string; savable: jest.Mock }) => void, string]> = [
+      ['completed', (st) => (st.state = 'completed'), 'completed'],
+      ['error', (st) => (st.state = 'error'), 'failed'],
+      ['cancelled', (st) => (st.state = 'cancelled'), 'failed'],
+      ['unsavable', (st) => {
+        st.state = 'paused';
+        st.savable.mockImplementation(() => {
+          throw new Error('savable threw');
+        });
+      }, 'failed'],
+    ];
+    for (const [name, prep, expected] of cases) {
+      const k = stubKit();
+      await k.controller.start(A);
+      prep(k.stub);
+      k.settle(null);
+      await flush(40);
+      expect(k.events.map((e) => e.type)).toContain(expected);
+      expect(k.controller.snapshot().phase).not.toBe('active');
+      void name;
+    }
   });
 });
 

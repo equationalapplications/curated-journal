@@ -157,6 +157,7 @@ export function transferPlatform(os: typeof Platform.OS): 'ios' | 'android' {
 }
 
 const STORE_BOUND_MS = 10_000;
+const REISSUE_GRACE_MS = 500;
 const REISSUE_MS = 1_000;
 const WATCHDOG_MS = 30_000;
 const PAUSE_FAILED_MESSAGE = 'Could not pause the download. Try again.';
@@ -193,7 +194,13 @@ export function createModelDownloadController(options: ControllerOptions): Model
     row: null as RowRecord | null,
     rowSaved: true,
     error: null as { code: string; message: string } | null,
+    /** The held `failed` phase came from a failed pause (the pause state is kept, M6). */
+    pauseFailed: false,
   };
+  function setPhase(p: Phase): void {
+    rec.phase = p;
+    rec.pauseFailed = false;
+  }
   let latch = false;
   let live: Live | null = null;
   let genCounter = 0;
@@ -225,12 +232,14 @@ export function createModelDownloadController(options: ControllerOptions): Model
     for (const l of [...fgListeners]) l();
   });
 
-  function foregroundTimer(ms: number, fire: () => void): { cancel(): void } {
+  function foregroundTimer(ms: number, fire: () => void, oneShot = false): { cancel(): void } {
     let handle: unknown = null;
+    let fired = false;
     const arm = () => {
-      if (handle !== null) return;
+      if (handle !== null || fired) return;
       handle = timers.setTimeout(() => {
         handle = null;
+        if (oneShot) fired = true;
         fire();
       }, ms);
     };
@@ -349,7 +358,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
     if (row) {
       rec.modelId = (row.modelId as CuratedModelId | null) ?? null;
       rec.pauseState = row.pauseState;
-      rec.phase = row.status === 'paused' ? 'paused' : 'none';
+      setPhase(row.status === 'paused' ? 'paused' : 'none');
       rec.row = { modelId: row.modelId, status: row.status };
     }
   }
@@ -432,7 +441,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
       rejection: { has: false, error: undefined },
     };
     live = L;
-    rec.phase = 'active';
+    setPhase('active');
     rec.error = null;
     rec.progress = { ...EMPTY_PROGRESS };
     const onSettle = (kind: 'file' | 'error', value: unknown) => {
@@ -460,7 +469,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
     if (kind === 'error') {
       const f = failureOf(value);
       retire();
-      rec.phase = 'failed';
+      setPhase('failed');
       rec.pauseState = null;
       rec.error = f;
       emit({ type: 'failed', modelId, code: f.code, message: f.message });
@@ -468,14 +477,27 @@ export function createModelDownloadController(options: ControllerOptions): Model
     }
     if (value) {
       retire();
-      rec.phase = 'completed';
+      setPhase('completed');
       rec.pauseState = null;
       rec.error = null;
       emit({ type: 'completed', modelId });
       return;
     }
-    // A null the controller did not ask for: the paused branch of the procedure.
-    await runProcedureBranch(L, false);
+    // A null the controller did not ask for: the paused branch of the procedure. Every
+    // branch ends with an event, so a hub in `downloading` is never left waiting (I2).
+    let o: Outcome;
+    try {
+      o = await runProcedureBranch(L, false);
+    } catch (cause) {
+      console.warn('[download-controller] unrequested stop hit an error; cancelling', cause);
+      o = failPause(L);
+    }
+    if (o.res.kind === 'completed') emit({ type: 'completed', modelId });
+    else if (o.res.kind === 'failed') {
+      emit({ type: 'failed', modelId, code: o.res.code as DownloadErrorCode, message: o.res.message });
+    } else if (o.res.kind === 'pause-failed') {
+      emit({ type: 'failed', modelId, code: 'unknown', message: PAUSE_FAILED_MESSAGE });
+    }
   }
 
   /** Step 2 of the pause procedure: branch on `task.state`, never on a throw (F2). */
@@ -487,7 +509,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
       const ps = normalizePauseState(task.savable());
       retire();
       rec.pauseState = ps;
-      rec.phase = 'paused';
+      setPhase('paused');
       const saved = await save('paused', modelId, ps);
       if (!asked) emit({ type: 'stopped', modelId, pauseState: ps, reason: 'unrequested' });
       return {
@@ -498,7 +520,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
     }
     if (state === 'completed') {
       retire();
-      rec.phase = 'completed';
+      setPhase('completed');
       rec.pauseState = null;
       return { res: { kind: 'completed' }, ran: true, noResume: false };
     }
@@ -507,7 +529,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
         ? failureOf(L.rejection.error)
         : { code: 'unknown' as DownloadErrorCode, message: 'The download failed.' };
       retire();
-      rec.phase = 'failed';
+      setPhase('failed');
       rec.pauseState = null;
       rec.error = f;
       return { res: { kind: 'failed', code: f.code, message: f.message }, ran: true, noResume: false };
@@ -519,7 +541,8 @@ export function createModelDownloadController(options: ControllerOptions): Model
   function failPause(L: Live): Outcome {
     cancelTransfer(L.task, L.gen);
     retire();
-    rec.phase = 'failed';
+    setPhase('failed');
+    rec.pauseFailed = true;
     rec.error = { code: 'unknown', message: PAUSE_FAILED_MESSAGE };
     return {
       res: { kind: 'pause-failed', pauseState: rec.pauseState, strict: latch, rowSaved: rec.rowSaved },
@@ -548,14 +571,28 @@ export function createModelDownloadController(options: ControllerOptions): Model
         void asked.then(() => {
           settled = true;
         });
-        const reissue = foregroundTimer(REISSUE_MS, () => {
-          if (settled || !L.progressSinceAsk || L.task.state !== 'active') return;
-          try {
-            L.task.pause();
-          } catch {
-            // no longer active (F1)
-          }
-        });
+        // Progress delivered inside the grace is stale (emitted before the ask): only
+        // progress between the grace's end and the re-issue counts. Both timers count
+        // foreground time and re-arm together.
+        const grace = foregroundTimer(
+          REISSUE_GRACE_MS,
+          () => {
+            L.progressSinceAsk = false;
+          },
+          true,
+        );
+        const reissue = foregroundTimer(
+          REISSUE_MS,
+          () => {
+            if (settled || !L.progressSinceAsk || L.task.state !== 'active') return;
+            try {
+              L.task.pause();
+            } catch {
+              // no longer active (F1)
+            }
+          },
+          true,
+        );
         let watchdog!: { cancel(): void };
         const timeout = new Promise<'timeout'>((resolve) => {
           watchdog = foregroundTimer(WATCHDOG_MS, () => resolve('timeout'));
@@ -563,6 +600,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
         try {
           await Promise.race([asked, timeout]);
         } finally {
+          grace.cancel();
           reissue.cancel();
           watchdog.cancel();
         }
@@ -588,7 +626,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
 
   function emitStrict(o: Outcome, modelId: CuratedModelId): void {
     const r = o.res;
-    if (r.kind === 'paused' || r.kind === 'pause-failed') {
+    if (r.kind === 'paused' || (r.kind === 'pause-failed' && o.ran)) {
       emit({ type: 'stopped', modelId, pauseState: r.pauseState, reason: 'strict' });
     } else if (r.kind === 'completed' && o.ran) {
       emit({ type: 'completed', modelId });
@@ -606,6 +644,13 @@ export function createModelDownloadController(options: ControllerOptions): Model
       };
     }
     if (rec.phase === 'completed') return { res: { kind: 'completed' }, ran: false, noResume: false };
+    if (rec.phase === 'failed' && rec.pauseFailed) {
+      return {
+        res: { kind: 'pause-failed', pauseState: rec.pauseState, strict: latch, rowSaved: rec.rowSaved },
+        ran: false,
+        noResume: false,
+      };
+    }
     if (rec.phase === 'failed') {
       return {
         res: { kind: 'failed', code: rec.error?.code ?? 'unknown', message: rec.error?.message ?? '' },
@@ -638,7 +683,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
         outcome = held;
       } else {
         rec.modelId = modelId;
-        rec.phase = 'paused';
+        setPhase('paused');
         const saved = await save('paused', modelId, rec.pauseState);
         outcome = {
           res: { kind: 'paused', pauseState: rec.pauseState, strict: latch, rowSaved: saved },
@@ -686,14 +731,15 @@ export function createModelDownloadController(options: ControllerOptions): Model
       }
       outcome = heldOutcome();
       if (outcome && rec.modelId) {
-        const result = mapStrict(outcome);
+        // No write was asked for: rowSaved is true (spec).
+        const result: StrictResult = { ...mapStrict(outcome), rowSaved: true };
         emitStrict(outcome, rec.modelId);
         return result;
       }
       if (rec.modelId) {
         emit({ type: 'stopped', modelId: rec.modelId, pauseState: rec.pauseState, reason: 'strict' });
       }
-      return { kind: 'nothing-running', rowSaved: rec.rowSaved };
+      return { kind: 'nothing-running', rowSaved: true };
     } catch (cause) {
       console.warn('[download-controller] strict stop hit an error', cause);
       return { kind: 'not-keepable', why: 'pause-failed', rowSaved: false };
@@ -755,7 +801,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
           : driver.start(modelId, { onProgress });
     } catch (error) {
       const f = failureOf(error);
-      rec.phase = 'failed';
+      setPhase('failed');
       rec.pauseState = null;
       rec.error = f;
       return { kind: 'failed', code: f.code, message: f.message, rowSaved: saved };
@@ -804,7 +850,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
         if (live) throw new TransferInFlightError();
         if (rec.modelId !== modelId) rec.modelId = modelId;
         rec.pauseState = null;
-        rec.phase = 'none';
+        setPhase('none');
         rec.error = null;
         return { rowSaved: await save('downloading', modelId, null) };
       }),
@@ -816,7 +862,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
           retire();
         }
         rec.modelId = null;
-        rec.phase = 'none';
+        setPhase('none');
         rec.pauseState = null;
         rec.error = null;
         rec.progress = { ...EMPTY_PROGRESS };
@@ -829,7 +875,7 @@ export function createModelDownloadController(options: ControllerOptions): Model
         const keep = status === 'failed' && rec.modelId === modelId ? rec.pauseState : null;
         rec.modelId = modelId;
         rec.pauseState = keep;
-        rec.phase = 'none';
+        setPhase('none');
         if (status !== 'failed') rec.error = null;
         return { rowSaved: await save(status, modelId, keep) };
       }),
