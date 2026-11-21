@@ -3,7 +3,7 @@ import { DownloadTask, File, Paths } from 'expo-file-system';
 import type { CuratedModel } from '@/catalog/modelManifest';
 import { buildUserAgent } from '@/lib/buildUserAgent';
 import { classifyDownloadError, coerceInt64, type DownloadErrorCode } from '@/lib/downloadErrorTaxonomy';
-import { normalizePauseState, type DownloadPauseStateRecord } from '@/services/modelDownloadState';
+import type { DownloadPauseStateRecord } from '@/services/modelDownloadState';
 
 export type { DownloadErrorCode };
 export { classifyDownloadError };
@@ -12,7 +12,12 @@ export type DownloadCallbacks = {
   onProgress?: (data: { bytesWritten: number; totalBytes: number }) => void;
 };
 
-let activeTask: DownloadTask | null = null;
+/** A started or resumed transfer, handed to the controller (the only caller). */
+export type TransferHandle = {
+  task: DownloadTask;
+  promise: Promise<File | null>;
+  kind: 'started' | 'resumed';
+};
 
 // The SDK's progress payload crosses the Int64→BigInt boundary; normalize here
 // so nothing downstream ever handles a BigInt. See downloadErrorTaxonomy.
@@ -23,22 +28,16 @@ function normalizeProgress(
     onProgress({ bytesWritten: coerceInt64(data.bytesWritten), totalBytes: coerceInt64(data.totalBytes) });
 }
 
-function freshDownload(url: string, dest: File, callbacks: DownloadCallbacks): Promise<File | null> {
-  activeTask = new DownloadTask(url, dest, {
+function freshDownload(url: string, dest: File, callbacks: DownloadCallbacks): TransferHandle {
+  const task = new DownloadTask(url, dest, {
     headers: { 'User-Agent': buildUserAgent() },
     onProgress: callbacks.onProgress ? normalizeProgress(callbacks.onProgress) : undefined,
   });
-  return activeTask.downloadAsync();
+  return { task, promise: task.downloadAsync(), kind: 'started' };
 }
 
-export async function startDownload(model: CuratedModel, callbacks: DownloadCallbacks): Promise<File | null> {
+export function startDownload(model: CuratedModel, callbacks: DownloadCallbacks): TransferHandle {
   return freshDownload(model.hfUrl, new File(Paths.document, model.filename), callbacks);
-}
-
-export async function pauseDownload(): Promise<DownloadPauseStateRecord | null> {
-  if (!activeTask) throw new Error('No active download to pause');
-  await activeTask.pauseAsync();
-  return normalizePauseState(activeTask.savable());
 }
 
 function partialCoversOffset(pauseState: DownloadPauseStateRecord): boolean {
@@ -53,10 +52,10 @@ function partialCoversOffset(pauseState: DownloadPauseStateRecord): boolean {
   }
 }
 
-export async function resumeDownload(
+export function resumeDownload(
   pauseState: DownloadPauseStateRecord,
   callbacks: DownloadCallbacks,
-): Promise<File | null> {
+): TransferHandle {
   // Android's resume does RandomAccessFile(dest).setLength(offset): a missing or
   // shorter partial is zero-filled up to the offset, and the size-only verify then
   // passes a corrupt file. Android resumeData is the partial's byte length as a
@@ -71,16 +70,11 @@ export async function resumeDownload(
     }
     return freshDownload(pauseState.url, dest, callbacks);
   }
-  activeTask = DownloadTask.fromSavable(pauseState, {
+  const task = DownloadTask.fromSavable(pauseState, {
     headers: { 'User-Agent': buildUserAgent() },
     onProgress: callbacks.onProgress ? normalizeProgress(callbacks.onProgress) : undefined,
   });
-  return activeTask.resumeAsync();
-}
-
-export function cancelActiveDownload(): void {
-  activeTask?.cancel();
-  activeTask = null;
+  return { task, promise: task.resumeAsync(), kind: 'resumed' };
 }
 
 export function verifyDownload(file: File, model: CuratedModel): boolean {
