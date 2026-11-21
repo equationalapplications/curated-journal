@@ -168,8 +168,9 @@ tensions. INTENT wins each one, or the owner has ruled on it, or (item
    owner can confirm or overrule it when ruling on #129.
 7. **The share sheet carries text, not a file.** Rule 11's share-sheet
    exception names files. This spec reads it as covering a text
-   hand-off (a link address), follows from the owner ruling of 2026-11-21 (the dialog, with
-   Share…, shows in every mode, strict included). No
+   hand-off (a link address). That reading follows from the owner
+   ruling of 2026-11-21 (the dialog, with Share…, shows in every mode,
+   strict included). No
    amendment unless the owner wants the wording widened.
 
 Rules each requirement rests on: rule 1 (the journal works with no
@@ -702,8 +703,8 @@ tip-jar alert pattern rule 11 already requires.)*
   is not used. **OK** is the `cancel`-style button, so a scrim tap or a
   back press counts as OK. The address is shown in full and is
   selectable (the hook's message text is not selectable on main, so
-  Step 2 adds an optional `selectable` flag to `ConfirmButton`'s
-  options; JS only). On iOS, selectable text copies the whole
+  Step 2 adds an optional `selectable` flag to the `confirm()`
+  options (`Options`, beside `message`); JS only). On iOS, selectable text copies the whole
   message, and Share… covers Copy. Button order: **Share…** first,
   **OK** last, so OK is the primary button (the hook gives the last
   button the primary variant). Inside `GraphNodeSheet`, the dialog
@@ -713,11 +714,11 @@ tip-jar alert pattern rule 11 already requires.)*
   has no address. Nothing was sent."; and on web without
   `navigator.share`, "Curated Journal doesn't open links from your
   notes, in any mode. You can copy this address and open it yourself:
-  `<href>`. Nothing was sent." 
+  `<full href>`. Nothing was sent."
 - **Share… keeps the dialog open; the share sheet presents above it;
   OK closes the dialog.** On main, `run` calls `onClose()` before
   `onPress`, so Share… would close the dialog first. Step 2 adds a
-  JS-only `keepOpen` flag to `ConfirmButton`, alongside `selectable`:
+  JS-only `keepOpen` flag to `ConfirmButton` (per button):
   a button with `keepOpen` skips `onClose()`. Presenting a share sheet
   while a Modal is closing is a known react-native failure (likely,
   not device-verified), which is why the dialog stays open.
@@ -1695,9 +1696,11 @@ must pass):
   dialog is still shown after Share… and gone after OK. An empty href
   shows exactly "Curated Journal doesn't open links from your notes,
   in any mode. This link has no address. Nothing was sent." and no
-  Share…. With `Platform.OS = 'web'`, there is no Share… and the copy
-  variant shows when `navigator.share` is undefined, and Share…
-  shows when it is defined.
+  Share…. With `Platform.OS = 'web'`: when `navigator.share` is
+  undefined, the copy variant shows with OK only; when it is defined,
+  the main copy shows with Share…. An empty href shows the no-address
+  variant on every platform. The dialog's message renders with
+  `selectable` set.
   - **Positive control for the `Linking.openURL` assertions (this test
     only):** render the bare library with its lint rule disabled and no
     `onLinkPress`, tap a link, and assert the `Linking.openURL` spy
@@ -1709,7 +1712,8 @@ must pass):
     `exclude: ["__tests__", …]` (issue #134 tracks that CI gap). So the
     check lives in a never-imported file that `tsc` does check,
     `src/components/NoteMarkdown.typecheck.tsx`, holding the
-    `@ts-expect-error` line. It must pass lint (`expo lint`). The
+    `@ts-expect-error` line in an exported component, so lint stays
+    clean. It must pass lint (`expo lint`). The
     coverage test and its allowlists look only for the network APIs
     listed above, and this file uses none, so it needs no entry. A
     runtime test: a cast-in `onLinkPress` is
@@ -1790,8 +1794,8 @@ status line, un-drafting or cleanup (AGENTS.md):
       and a `tel:` link in a note. Each shows the "Links don't open
       from notes" dialog with its full address, and opens nothing.
       Share… opens the OS share sheet with the address (Copy is there);
-      OK closes the dialog. iOS: open the link from the journal and
-      from `GraphNodeSheet`, and confirm the share sheet presents
+      OK closes the dialog. iOS: tap a link in the journal and in
+      `GraphNodeSheet`, then Share…, and confirm the share sheet presents
       above the dialog (a share sheet presented while a Modal closes
       is a known react-native failure; likely, not device-verified).
 - [ ] Tap a link inside a graph node's sheet. The dialog shows above
