@@ -456,7 +456,7 @@ row in the snapshot omits the pause state.
   model is **queued or running** (the transfer may not exist yet) joins
   it, and returns its own result shape from the same outcome (a pause on
   phase `none` writes `paused`, so the joined result is `kept`; a joined
-  pause that rejects runs the strict stop in its own queue turn) (the rules are under "A strict stop and a
+  pause that rejects runs the strict stop in the pause's queue turn, before any later operation) (the rules are under "A strict stop and a
   hub pause that cross"). A `start()` or `resume()` for the model whose
   transfer is live attaches to it and never creates a second task.
 - **Lazy load.** Every operation, including `start()`, `resume()`,
@@ -682,7 +682,13 @@ only when it has **already returned**. Two orders:
   `stopForStrict()` result is derived from the same outcome, and
   `stopped` (reason `strict`) is emitted **once**, inside the operation,
   before the `pause()` promise resolves, so a hub in `pausing` sees it
-  first (H3) and then the `onDone`.
+  first (H3) and then the `onDone`. Two joins have no procedure to
+  share. A joined pause on phase `none` runs none: it writes `paused`
+  and leaves the phase `paused`, and the stop reports `kept` with that
+  write's `rowSaved`. A joined pause that rejects (for example a
+  `WrongModelError`) hands its error to the `pause()` caller as usual,
+  while the strict stop runs in that same queue turn and emits exactly
+  one `stopped`.
 - **The hub's `pause()` ran first.** `stopForStrict()` then finds a
   paused (or ended) transfer, reports from the held record (`kept` or
   `not-keepable`, `completed` or `failed` as held, `nothing-running` only
@@ -918,7 +924,9 @@ pause procedure and `abandon()` cancel internally.
   successful load is decided entirely on arrival (latch set,
   `nothing-running`, `rowSaved: true`, no event), because no task can
   exist before the first load and a `start()` queued behind it is refused
-  by the latch.
+  by the latch. A joined strict stop takes the pause's earlier queue
+  slot, so operations queued between the pause and the stop run after
+  it.
 - **I4 — One writer.** Only the controller writes the download row.
 - **I5 — `savable()` only on `paused`.**
 - **I6 — Writes are idempotent and awaited,** and a failed one is
@@ -1312,7 +1320,12 @@ row says otherwise.
   `start()` returns `refused` and creates no task. (8) **Start held on its write.** A `start()` held on its
   `downloading` write, then `stopForStrict()`: one task is created, the
   strict stop pauses it (`kept`), and the latch is set.
-  The outcome of case 8 is pinned to `kept`.
+  The outcome of case 8 is pinned to `kept`. Two more joins are pinned
+  by the round-4 tests in `__tests__/modelDownloadControllerHeld.test.ts`:
+  a join to a pause on phase `none` (`kept` with that write's
+  `rowSaved`, E2), and a join to a pause that rejects (the strict stop
+  runs in the pause's turn, before a `releaseStrictStop()` and a
+  `start()` queued after it, E3b).
   *Catches:* a latch re-check after the gate or write that refuses
   after writing `downloading`, or after creating a task; a join
   that returns `kept` (a stuck `pausing`); a kill-window write after
