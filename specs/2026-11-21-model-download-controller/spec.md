@@ -1,10 +1,12 @@
 # Spec: one model download controller owns every transfer
 
-**Status: Draft** — 2026-11-21. Spec only. The owner answered all eight
+**Status: Implemented** — 2026-11-21. The owner answered all eight
 open questions on 2026-11-21 (see Resolved: owner rulings). The
 Sonnet-high review loop finished on round 2 with no MAJOR findings, and
-the Opus-high loop converged on 2026-11-21 at round 7. The plan and the implementation wait for the owner's approval
-(AGENTS.md lifecycle).
+the Opus-high loop converged on 2026-11-21 at round 7. The owner approved
+implementation on 2026-11-21. Automated verification passes (type check,
+lint, tests). The on-device checks under Verification are the user's to
+run and never block anything.
 Date: 2026-11-21
 Version cost: MINOR (9.2.0 → 9.3.0), JS-only, OTA-safe (Version cost)
 Closes: #127, #132
@@ -1573,11 +1575,11 @@ row says otherwise.
 
 Automated, required for `Implemented`:
 
-- [ ] `npx tsc --noEmit` clean.
-- [ ] `npm run lint` shows no new errors (warnings as on `main`).
-- [ ] `npx jest --maxWorkers=2`: every suite passes, including T-C1 to
+- [x] `npx tsc --noEmit` clean.
+- [x] `npm run lint` shows no new errors (warnings as on `main`).
+- [x] `npx jest --maxWorkers=2`: every suite passes, including T-C1 to
   T-C23, T-H1 to T-H11, T-own, T-S1, T-S2 and T-S3.
-- [ ] RED first, as a requirement of the implementation plan: the
+- [x] RED first, as a requirement of the implementation plan: the
   plan writes the reproductions **against #125's service and machine**
   (`fix/download-cellular-continuation`, head `8f5f484`; the controller
   does not exist yet), driving the old API through `pauseDownload` and
