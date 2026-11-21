@@ -301,7 +301,14 @@ Read from `node_modules/expo-file-system` 58.0.13 (the version
     `downloadAsync()` calls it, so the block that `release()` enqueues on
     the same serial main queue afterwards cannot run before it, and
     `NetworkTasks.js` `release()` (`:308-310`) does nothing in JS first.
-    So on iOS `release()` may be called at once after `cancel()`. On Android `release()` issued at once has the same race as
+    So on iOS `release()` may be called at once after `cancel()`. One
+    residual window remains: the synchronous `Function("cancel")` runs on
+    the JS thread, reads `downloadTask` (nil) and its cleanup writes nil
+    (`FileSystemDownloadTask.swift:319-323`, `:341-347`), while the
+    main-queue start writes `downloadTask = task` (`:278`). If that write
+    lands between them, the release block finds nil, the native object
+    deallocates (the delegate reference is weak), and no progress event
+    reveals it. On Android `release()` issued at once has the same race as
     `cancel()` (`call` is still null), so it is useful only once the
     transfer has begun, which is when a progress event exists.
   - **A listener added with `task.addListener('progress', …)` survives
@@ -316,6 +323,20 @@ Read from `node_modules/expo-file-system` 58.0.13 (the version
     cancel can be delivered after it (a false positive, which is
     harmless, because `release()` on a transfer that was cancelled does
     nothing more).
+  - **After `release()`** (verified in the installed package): the JS
+    `_state` is untouched; `pause()` and `pauseAsync()` throw on their
+    state check (`NetworkTasks.js:249`); `cancel()` returns early
+    (`:318-322`); `subscription.remove()` is a safe no-op
+    (`EventEmitter.cpp:149-160`, `:189-209`); release drops all
+    listeners; Android events emitted after release are dropped
+    (`SharedObjectRegistry.kt:42-48`).
+  - **Promise settlement after a cancel.** On iOS the promise rejects
+    with `DownloadCancelledException` through the delegate
+    (`FileSystemDownloadTask.swift:429-452`), or resolves if the transfer
+    had finished. On Android a lost cancel followed by `release()`
+    rejects with `UnableToDownloadException`, not
+    `DownloadCancelledException` (`FileSystemDownloadTask.kt:157-178`),
+    and an effective cancel may never settle (F4).
 
 ## Design: the controller
 
@@ -374,12 +395,17 @@ latch is released.
 - **Both latch changes act on arrival.** `stopForStrict()` sets the latch
   and `releaseStrictStop()` clears it at the moment of the call,
   synchronously, before any queued operation runs. The rest of each
-  operation, and its result, goes through the queue (the two exceptions to
-  I3). So the latch follows call order: a `stopForStrict()` that arrives
+  operation, and its result, goes through the queue, except as I3 says
+  (a `stopForStrict()` before any successful load is decided entirely on
+  arrival). So the latch follows call order: a `stopForStrict()` that arrives
   while an earlier `releaseStrictStop()` is still queued leaves the latch
   set, because the release already took effect when it arrived, and a
   `start()` or `resume()` that is queued ahead of a `stopForStrict()`
-  and has not begun is refused when it runs.
+  and has not begun is refused when it runs. "Has not begun" means has
+  not passed its latch check: a `start()` still awaiting its internal
+  `load()` is refused, while one past the check that is awaiting an
+  async `gate` goes on, creates its task, and the queued strict stop
+  then pauses it (I9).
 - **It lives in process memory, on the record.** It is independent of
   `load()` (a strict stop before the first load sets it, and a later
   `load()` does not clear it). It survives a hub that closes. It is not
@@ -408,8 +434,10 @@ row in the snapshot omits the pause state.
 - **One operation at a time.** Every public operation except
   `snapshot()` and `subscribe()` is put on one FIFO queue. An
   operation's effects (transfer changes, row writes, emitted events)
-  are complete before the next operation starts (I3). The one exception
-  is the two latch changes, which act on arrival (see the latch).
+  are complete before the next operation starts (I3). The exceptions
+  are the two latch changes, which act on arrival (see the latch), and a
+  `stopForStrict()` that arrives before any successful load, which is
+  decided entirely on arrival (see Lazy load and I3).
 - **Joins.** A `pause()` for a transfer while a pause of that same
   transfer is queued or running returns the same promise. Promise
   identity (T-C2) holds only pause-to-pause. A `pause()` that joins a
@@ -426,8 +454,8 @@ row in the snapshot omits the pause state.
   `attach()` and `readRow()`, first awaits an internal `load()`, with two
   exceptions. `releaseStrictStop()` never loads: it touches only the
   latch. `stopForStrict()` before any successful load does not wait for
-  one and does not read the row. It returns `nothing-running` at
-  once (no transfer can exist before the first successful load, because
+  one and does not read the row. It is decided entirely on arrival: the
+  latch is set and it returns `nothing-running` at once, with no event (no transfer can exist before the first successful load, because
   only `start()` and `resume()` create one, and both load first), with
   `rowSaved: true` because it made no write. `snapshot()` before the
   first load returns phase `none`, no model and `row: null`. **A failed
@@ -470,7 +498,8 @@ row in the snapshot omits the pause state.
     (wrapped, because a released object throws on later native calls)
     straight after `task.cancel()`. The native release block runs on the
     main queue after the queued `start` (F11, verified), so it finds the
-    task whatever the timing. No listener is added. `task.cancel()` is
+    task after the queued `start`, except for a few-instruction data race
+    between the JS-thread `cancel()` and the main-queue `start`. No listener is added. `task.cancel()` is
     not called again, because it is a no-op once the state is `cancelled`.
   - **Android: release on the first progress event.** `release()` at
     once has the same race as `cancel()`, so `cancelTransfer` adds one
@@ -480,24 +509,28 @@ row in the snapshot omits the pause state.
     event emitted before the cancel can also arrive after it, a harmless
     false positive). The listener then calls `task.release()` (wrapped),
     removes itself (also wrapped), and logs the lost cancel. The
-    listener is also removed when the retired promise settles. On Android
+    listener is also removed in the retired promise's `.then` handler
+    itself (the settle step of a retired generation is dropped, so it
+    cannot do it). On Android
     that promise may never settle (F4), so one unused listener on a dead
     task can remain, which is accepted.
 
   A generation that was never `active` gets no guard. The guard adds no
   request and starts nothing: it only stops. **Its bound.** On iOS the
-  extra writing is at most the few milliseconds of F10. On Android it
+  extra work is one main-queue turn, into URLSession's temporary file. On Android it
   lasts from the cancel until the lost transfer's first progress event has
   made its round trip (native emit, JS listener, `release()`, native
   cancel). That is normally tens of milliseconds, but it has **no hard
-  bound**: a blocked JS thread delays it, and so does an app suspended
-  while a background transfer keeps writing (F7). It is harmless: the same
+  bound**: a blocked JS thread delays it, and so does a frozen or cached Android process that
+  keeps its native call alive. It is harmless: the same
   URL, the same bytes at the same offsets, and the sweeps remove the file.
   What the guard does not catch is a hidden transfer that ends before its
   first progress event (a transfer that fails before its first byte, or
   with a zero-byte body: the first progress event is not throttled, and
   Android forces a final one on completion). It leaves its file for the
-  sweeps. The guard is the controller's, not the driver's: the driver
+  sweeps. It also does not catch the few-instruction iOS data race
+  above (F11); there the bytes go to URLSession's temporary file and
+  reach the destination only on completion. The guard is the controller's, not the driver's: the driver
   returns the `DownloadTask` precisely so the controller can do this
   (T-C23).
 - **Progress is not queued.** It is passed to subscribers straight away,
@@ -739,7 +772,7 @@ guarantees.
 | `park(modelId)` | No live transfer (else it rejects with `TransferInFlightError`) | Saves the row `downloading` with **no pause state** and starts no transfer: the record becomes phase `none` for this model with a null pause state. It does **not** clear `stoppedForStrict`. It is not the pause-on-`none` case above (that writes `paused`). It is the row #117's R10g needs while a continuation waits on the network. | The write was awaited. `rowSaved` says whether it landed. |
 | `abandon()` | none | Cancels a live transfer (F4: no await, with the lost-cancel guard of F11), clears the row and forgets the record. It does **not** touch `stoppedForStrict`: only `releaseStrictStop()` clears it. It deletes no file: the sweeps do that, as today (P5, P6, P8). | No transfer is in flight, the record is empty, and `rowSaved` says whether the clear landed |
 | `record(modelId, status)`, where `status` is `'failed'`, `'smoke-testing'` or `'smoke-failed'` | No live transfer (else it rejects with `TransferInFlightError`: a programming error, which T-C11 tests) | Writes that status. `failed` keeps the held pause state, and the others write none, as today. A `completed` or `failed` phase becomes `none`. It does **not** clear `stoppedForStrict`: the hub's `failed` entry (H6) calls it, and it must not release the latch. | The write was awaited. `rowSaved` says whether it landed. |
-| `stopForStrict()` (OQ-5) | none | **Always sets `stoppedForStrict`**, on arrival (the rest is queued). `active`: write `paused` with no pause state first (#117's kill window), then the pause procedure, then emit per the events table. A `pause()` of the live transfer that is queued or running is joined, and the kill-window write is skipped when its step 1 has begun ("A strict stop and a hub pause that cross"). Held record (`paused`, `completed`, `failed`): report from the record and emit as "A strict stop that finds a held record" says. Phase `none`: `nothing-running`. | **No transfer is in flight.** `nothing-running`, `kept` (pause state, possibly null), `not-keepable` (why: `no-resume-data`, `pause-failed` or `failed`), or `completed`. Every result carries `rowSaved`, which means the last row write this call asked for landed (true when it asked for none), so #117 R8 can see a failed kill-window save. After `completed`, the row is `paused` with none when the kill-window write ran, and unchanged (`downloading`) when a held `completed` record was only reported. **It never rejects**: a store failure is `rowSaved: false` and an invariant error ends as `not-keepable` (`pause-failed`) (step 4); #117's release path relies on this. **From here until `releaseStrictStop()`, `start()` and `resume()` refuse.** |
+| `stopForStrict()` (OQ-5) | none | **Always sets `stoppedForStrict`**, on arrival (the rest is queued). `active`: write `paused` with no pause state first (#117's kill window), then the pause procedure, then emit per the events table. A `pause()` of the live transfer that is queued or running is joined, and the kill-window write is skipped when its step 1 has begun ("A strict stop and a hub pause that cross"). Held record (`paused`, `completed`, `failed`): report from the record and emit as "A strict stop that finds a held record" says. Phase `none`: `nothing-running`, and `stopped` (reason `strict`) is emitted when a model id is held. Before any successful load it is decided entirely on arrival (I3): latch set, `nothing-running`, `rowSaved: true`, no event. | **No transfer is in flight.** `nothing-running`, `kept` (pause state, possibly null), `not-keepable` (why: `no-resume-data`, `pause-failed` or `failed`), or `completed`. Every result carries `rowSaved`, which means the last row write this call asked for landed (true when it asked for none), so #117 R8 can see a failed kill-window save. After `completed`, the row is `paused` with none when the kill-window write ran, and unchanged (`downloading`) when a held `completed` record was only reported. **It never rejects**: a store failure is `rowSaved: false` and an invariant error ends as `not-keepable` (`pause-failed`) (step 4); #117's release path relies on this. **From here until `releaseStrictStop()`, `start()` and `resume()` refuse.** |
 | `releaseStrictStop()` | none | **Acts on arrival, synchronously**, like the latch set of `stopForStrict()` (both are I3 exceptions); only its result resolves through the queue. Clears `stoppedForStrict`. **Writes nothing**, loads nothing, and never rejects. Idempotent. #117 calls it (How #117 shrinks). | `{ kind: 'released', wasSet }`, where `wasSet` is the latch as it was at arrival. The latch is clear (unless a `stopForStrict()` arrived since) |
 
 **Types.** Results are discriminated unions on a `kind` field, each
@@ -781,7 +814,10 @@ resume really ran). Progress reaches the controller through that
 `driver` also supplies `onAppState(listener)`, which delivers the
 current state on subscribe (The pause procedure), and `platform`
 (`'ios'` or `'android'`, `Platform.OS` in the real driver), which picks
-the lost-cancel guard (F11).
+the lost-cancel guard (F11). The controller is never built on web: the
+model hub is native-only (`src/app/model-hub` has no `.web.tsx` variant
+and no `Platform.OS === 'web'` branch), so `Platform.OS` is never `'web'`
+here. If that changes, every non-iOS platform uses the Android guard.
 
 **The `gate` input (#117's hook).** An optional
 `gate(modelId, op: 'start' | 'resume')` returning
@@ -816,7 +852,8 @@ pause procedure and `abandon()` cancel internally.
   leaves `downloading` only on a controller event that reports the
   transfer ended (`completed`, `failed` or `stopped`, the last through
   the machine-lifetime subscription of H1), on a `start` or `resume`
-  result that says no transfer exists (`completed`, `failed`), into
+  result that says no transfer exists (`completed`, `failed`), on an
+  `attach()` result of `not-live`, `completed` or `failed` (H9), into
   `pausing` (a user or background pause, or a `refused` result, H1), and
   it leaves `pausing` only on the result of `pause()`, which guarantees
   no transfer. The converse, that no transfer appears behind a hub at
@@ -825,7 +862,12 @@ pause procedure and `abandon()` cancel internally.
 - **I3 — Operations run one at a time,** in FIFO order. Exactly two
   effects happen on arrival instead: `stopForStrict()` sets the latch and
   `releaseStrictStop()` clears it, at the moment of the call (Ownership,
-  the latch). Everything else about those operations is queued.
+  the latch). Everything else about those operations is queued, with one
+  more arrival-time case: a `stopForStrict()` that arrives before any
+  successful load is decided entirely on arrival (latch set,
+  `nothing-running`, `rowSaved: true`, no event), because no task can
+  exist before the first load and a `start()` queued behind it is refused
+  by the latch.
 - **I4 — One writer.** Only the controller writes the download row.
 - **I5 — `savable()` only on `paused`.**
 - **I6 — Writes are idempotent and awaited,** and a failed one is
@@ -852,7 +894,7 @@ states, target or effects.
 |---|---|---|---|---|
 | H1 | `downloading` | — | — | Entry no longer writes the row (`start` and `resume` do, before the task exists, which is today's queue order). `runDownload` subscribes for its model, then calls `resume(modelId)` when the context holds a pause state with resume data, and `start(modelId)` otherwise. Its results and events map to the same machine events as before: `completed` → `DOWNLOAD_COMPLETE`, `failed` → `FAIL`, and `attached` seeds progress from the snapshot. `runDownload` subscribes to **`progress`, `completed` and `failed` only**: it never forwards `stopped` (no double delivery, see below). When a `start` or `resume` result of `completed` or `failed` and the matching event could both arrive, the **result is authoritative** (the controller emits the event only for a settlement, never for a result it returns). A `start` or `resume` that rejects (`TransferInFlightError`, `WrongModelError`) maps to `FAIL`. **A `refused` result (reason `stopped-for-strict`, or the gate's) maps to `REFUSED`, which goes `downloading` → `pausing` with `pausedReason: 'strict'`** and runs the same `pause(modelId)` as any pause: a no-op on a held `paused` record, and a `paused` row write on phase `none` (never a `downloading` row). A refusal therefore never leaves a `downloading` row and is never a failure of its own (#117 R10a). The one exception is a held `failed` phase: `pause()` then reports `failed` and H3 maps it to `failed`, as `FAIL` does today. Under strict, #117's M8 makes that unreachable. The only refusal sources are the latch and #117's gate, which exists for Rule 11, so the reason is always `strict`. `SELECT_MODEL` of a different model abandons first (H8), so the record is for this model or for none when this is called. Cleanup only unsubscribes. It never pauses or cancels. **`stopped` events are delivered by a root-level `invoke`** of a `controllerEvents` `fromCallback`, which subscribes once when the machine starts and unsubscribes when it stops. It forwards each `stopped` event as `TRANSFER_STOPPED { reason, modelId, pauseState }`, and every handler guards `event.modelId === context.modelId`. `runDownload` exists only in `downloading`, so without the root subscription a `stopped` that lands in `pausing`, `paused` or a network state would reach nobody (H3, H5, H13, H15). |
 | H2 | `PAUSE`, `APP_BACKGROUND` | `downloading` | `pausing` | `pausedReason` becomes `user` or `background`. `resumeOnSettle: false`. Every entry to `pausing` resets `resumeOnSettle` (see H4). |
-| H3 | `pausing` (new) | — | — | Invokes `pause(modelId)`. `onDone` by result: `paused` → the context's pause state takes the result's, then `confirmingNetwork` (with `continuation`) if the reason is `background` and `resumeOnSettle` is set, otherwise `paused`. A result with `strict: true` sets `pausedReason: 'strict'` and goes to `paused` (never to the network check, H13). `completed` → `verifying`, pause state null. `failed` → `failed`, as `FAIL` does today (P12). `pause-failed` → `failed` with "Could not pause the download. Try again.", pause state kept. `onError` (an invariant error) → `failed`, with the same message. The controller has already cancelled the transfer in every one of these cases (the pause procedure, step 4), so `failed` never holds a live transfer. With reason `background`, `APP_FOREGROUND` sets `resumeOnSettle` and `APP_BACKGROUND` clears it. `TRANSFER_STOPPED` with reason `strict` (delivered by the root subscription of H1, model-matched) sets `pausedReason: 'strict'` and clears `resumeOnSettle`, and the state keeps waiting for `onDone`. The event can arrive before or after the `onDone`, depending on microtask order (a strict stop that **joined** this pause emits it before the `pause()` promise resolves, and a strict stop after the pause returned usually arrives after the `onDone`, but nothing here relies on that: see "A strict stop and a hub pause that cross"). The latch, set on arrival, can also send the hub to `pausing` through `REFUSED` before the stop emits. In every order the state ends `paused` with reason `strict`. The `onDone` also reads the result's `strict: true`, so either signal alone ends `paused`, never in the network check. A `paused` result goes to `paused` when `pausedReason` is `strict`, whatever `resumeOnSettle` says. Every other event is ignored, so `RESUME` cannot arrive (S1, S2). |
+| H3 | `pausing` (new) | — | — | Invokes `pause(modelId)`. `onDone` by result: `paused` → the context's pause state takes the result's, then `confirmingNetwork` (with `continuation`) if the reason is `background` and `resumeOnSettle` is set, otherwise `paused`. A result with `strict: true` sets `pausedReason: 'strict'` and goes to `paused` (never to the network check, H13). `completed` → `verifying`, pause state null. `failed` → `failed`, as `FAIL` does today (P12). `pause-failed` → `failed` with "Could not pause the download. Try again.", pause state kept. `onError` (an invariant error) → `failed`, with the same message. The controller has already cancelled the transfer in every one of these cases (the pause procedure, step 4), so `failed` never holds a live transfer. With reason `background`, `APP_FOREGROUND` sets `resumeOnSettle` and `APP_BACKGROUND` clears it. `TRANSFER_STOPPED` with reason `strict` (delivered by the root subscription of H1, model-matched) sets `pausedReason: 'strict'` and clears `resumeOnSettle`, and the state keeps waiting for `onDone`. The event can arrive before or after the `onDone`, depending on microtask order (a strict stop that **joined** this pause emits it before the `pause()` promise resolves, and a strict stop after the pause returned usually arrives after the `onDone`, but nothing here relies on that: see "A strict stop and a hub pause that cross"). The latch, set on arrival, can also send the hub to `pausing` through `REFUSED` before the stop emits. In every order a `paused` result ends the state `paused` with reason `strict` (a `completed` result goes to `verifying`, and `failed` or `pause-failed` to `failed`, as above). The `onDone` also reads the result's `strict: true`, so either signal alone ends `paused`, never in the network check. A `paused` result goes to `paused` when `pausedReason` is `strict`, whatever `resumeOnSettle` says. Every other event is ignored, so `RESUME` cannot arrive (S1, S2). |
 | H4 | Idle pauses | `confirmingNetwork` + `APP_BACKGROUND`; `cellularConfirm` + `APP_BACKGROUND`; `cellularConfirm` + `CELLULAR_CANCEL` (continuations only, as today) | `pausing` | Reason `background`, `background` or `restored`. `resumeOnSettle` is reset on **every** entry to `pausing`, these included. With no transfer, `pause()` writes the row `paused` and sets the phase `paused` (the pause-on-`none` case). This replaces `idlePause` (P2, P3). |
 | H5 | `paused` | — | — | No invoke: `paused` is entered only once the pause has settled. `RESUME` and `APP_FOREGROUND` (reason `background`) → `confirmingNetwork`, as today. `idlePause` is removed. `TRANSFER_STOPPED` with reason `strict` relabels it: `pausedReason: 'strict'`, with the pause state from the event (H13). |
 | H6 | `failed` entry | — | — | `record(modelId, 'failed')` replaces the unawaited write, with a `.catch` so a rejection (a programming error such as `TransferInFlightError`) is logged and never unhandled. It is queued, so a quick `RETRY` that starts a download is ordered after it (S6). |
@@ -959,9 +1001,9 @@ stops re-specifying transfer ownership:
   starts**, because nothing else clears the latch. R8 enters strict and
   R9 steps out of it. (1) **A `finally` around R8 steps 1 to 3, on every
   exit**: success, a not-keepable result, a rejected step 1, a dismissed
-  warning, a failed mode save. On success its in-memory mode has been
-  strict since step 2, so its gate refuses and the latch has done its job.
-  On every other exit the mode is not strict, and a latch left set would
+  warning, a failed mode save. On success and on a failed mode save the in-memory mode is strict
+  (#117 R8 step 3 keeps it on for the session), so its gate takes over and
+  the latch has done its job. On every other exit the mode is Standard, and a latch left set would
   refuse every download in Standard (the hub shows Paused with a Resume
   that does nothing). The one exception to the `finally` is R10g's
   Cancel (the user chose Standard): it releases **before** its `start()`,
@@ -1137,7 +1179,7 @@ row says otherwise.
 - **T-C14 — `stopForStrict()`** (OQ-5). The `paused` write with no
   pause state lands before `pauseAsync`. The outcomes `kept`,
   `not-keepable` (no resume data, failed pause, failed), `completed` (the
-  row stays `paused` with none when the procedure ran, and `downloading`
+  row stays `paused` with none when the kill-window write ran, and `downloading`
   when a held `completed` record is only reported) and `nothing-running`
   are each reached,
   each result carries `rowSaved` (a failing kill-window write gives
@@ -1216,7 +1258,7 @@ row says otherwise.
   the record, with no transfer live. *Catches:* a re-entrant abandon.
 - **T-C18 — Never loaded.** `start()`, `resume()` and `readRow()` before
   any `load()` await the lazy load first; `snapshot()` before it
-  returns phase `none`. `stopForStrict()` before any successful load returns `nothing-running` without reading the row. A load that fails and then succeeds is covered in T-C12. *Catches:* a start that overwrites a saved
+  returns phase `none`. `stopForStrict()` before any successful load is decided on arrival, even with a hung load: it sets the latch, returns `nothing-running` with `rowSaved: true`, reads no row and emits no event, and a `start()` queued behind it is refused. A load that fails and then succeeds is covered in T-C12. *Catches:* a start that overwrites a saved
   `paused` row before it was read; a strict stop that waits on, or fails with, a hung load.
 - **T-C19 — Store bounds.** A store call that never settles resolves as
   `rowSaved: false` after 10 s and the queue proceeds; a first `load()`
@@ -1228,7 +1270,10 @@ row says otherwise.
   strict stop, `park()` then a `pause()` on phase `none` returns
   `strict: true`, and a `start()` is still refused. After
   `releaseStrictStop()` the same `pause()` returns `strict: false`.
-  `pause()` on phase `none` writes `paused`, not `downloading`. *Catches:*
+  `pause()` on phase `none` writes `paused`, not `downloading`. (After a
+  release, the "same `pause()`" is a no-op on the held `paused` record
+  that the first `pause()` on `none` created, so the test calls `park()`
+  again first to get phase `none`.) *Catches:*
   a park that starts a transfer; a park that releases the latch (M4).
 - **T-C21 — The `gate`.** With a gate that refuses, `start()` and
   `resume()` return `refused` and change nothing: no write, no task, the
@@ -1262,8 +1307,8 @@ row says otherwise.
   `task.addListener('progress')`, calls `task.release()` exactly once on
   the first event, and the fake stops; the listener is removed; native
   `cancel` was called once. A cancel that takes effect (the fake's normal
-  mode) leaves no progress, and the listener is removed when the retired
-  promise settles, so nothing stays behind. The normal mode allows **one**
+  mode) leaves no progress, and the listener is removed in the retired
+  promise's `.then` handler, so nothing stays behind. The normal mode allows **one**
   progress event that was emitted before the cancel and delivered after it
   (a false positive): the test asserts only that `release()` is called at
   most once and that nothing else changes. **Both platforms.** A
