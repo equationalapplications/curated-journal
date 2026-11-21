@@ -1,7 +1,9 @@
 # Spec: one model download controller owns every transfer
 
-**Status: Draft** — 2026-11-21. Spec only; the plan and the
-implementation wait for the owner's approval (AGENTS.md lifecycle).
+**Status: Draft** — 2026-11-21. Spec only. The owner answered all eight
+open questions on 2026-11-21 (see Resolved: owner rulings); review is
+next. The plan and the implementation wait for the owner's approval
+(AGENTS.md lifecycle).
 Date: 2026-11-21
 Version cost: MINOR (9.2.0 → 9.3.0), JS-only, OTA-safe (Version cost)
 Closes: #127, #132
@@ -21,10 +23,10 @@ made", item 1):
   `LEDGER.md`, and only then does the pull request leave draft.
 - On-device checks never hold any of these steps. They are listed,
   unchecked, under Verification.
-- Eight questions are open for the owner (Open questions, at the end).
-  Each has a recommended answer. The body of this spec is written as if
-  the recommended answers are accepted, and says so where it relies on
-  one.
+- The eight questions this spec raised were answered by the owner on
+  2026-11-21, accepting every recommendation (Resolved: owner rulings,
+  at the end). The body of this spec states those rulings as binding
+  requirements.
 
 ## Why this cycle exists
 
@@ -490,8 +492,8 @@ stops re-specifying transfer ownership:
   handle, `stoppedForStrict`, the stopped `PrivacyGateError`, "a cancel
   on request" and the owner's save order are all inside that call.
 - **R10b (one transfer at a time; a restore stops a live transfer
-  first)** is covered by I1, and by H9's attach (OQ-1). If the owner
-  prefers #117's pause-then-continue, H9 changes and I1 still holds.
+  first)** is covered by I1, and by H9's attach (OQ-1, owner-ruled). #117's
+  pause-then-continue is replaced by that attach.
 - **R8 step 1** reads `stopForStrict()`'s result: `kept`,
   `not-keepable` with its reason, `completed` or `nothing-running`.
   The kill-window save is inside it.
@@ -714,45 +716,30 @@ classification, and VERSIONING.md would also allow PATCH for the
 bug-fix part. This lands after #125 and the other 9.2.1 PRs (#114,
 #120). If another MINOR merges first, the number is bumped again.
 
-## Open questions for the owner
+## Open questions
 
-- **OQ-1 — Reopening the hub while a transfer is still running.**
-  Attach to it (H9: it shows as running, with no network check), or
-  pause it and continue behind the check (#117 R10b)? *Recommended:
-  attach.* The transfer never stopped, so nothing is being continued.
-  The check ran when it started. Pausing and resuming costs a second
-  request and, on iOS, risks the resume data. A Wi-Fi drop since then
-  is #126, and it applies equally while the hub stays open.
-- **OQ-2 — A download that completes during a background pause.** Go
-  on to verify and the smoke test at once, or wait for the app to come
-  back? *Recommended: at once.* That is what happens today when the
-  completion beats the background event: `verifying` and `smokeTest`
-  have no `APP_BACKGROUND` handler. Verify is a file-size check. The
-  alternative adds a held "downloaded" state for one race.
-- **OQ-3 — A watchdog on the pause.** Should a pause that has not
-  settled after 30 seconds count as a failed pause (cancel, then
-  "Could not pause the download")? *Recommended: yes, 30 s.* All the
-  native pause paths read here settle, but one that never did would
-  block the queue, and with it every later download operation.
-- **OQ-4 — A failed row write.** Should it stop showing "Could not
-  pause the download" (D1), with the hub staying where it is and the
-  write retried? *Recommended: yes.* The download really is paused.
-  The failed-save table shows every stale row left by a kill is safe.
-- **OQ-5 — Build `stopForStrict()` and `TRANSFER_STOPPED` here, or in
-  #117?** *Recommended: here.* It is the pause procedure plus one
-  earlier save, and its correctness depends on this queue. H13 uses
-  only #117's owner-ruled behavior: a strict pause never resumes on
-  its own (R10d). The existing "Paused" label shows until #117 adds its
-  copy. Nothing calls it until #117.
-- **OQ-6 — The Pausing state's copy.** Should it read "Pausing…" with
-  no buttons? *Recommended: yes.* It usually lasts well under a second.
-  Showing Resume there is S2.
-- **OQ-7 — The import's commit-failure corner** (D6). Is it acceptable
-  that a same-session re-pick starts over? *Recommended: accept.* It
-  needs an identity write to fail after a successful row clear, and the
-  alternative keeps two copies of the pause state.
-- **OQ-8 — iOS foreground sessions.** Should #117's OQ-7 ruling
-  (`sessionType: 'foreground'`) move into this spec? *Recommended: no,
-  keep it in #117.* It changes how a Standard download behaves while
-  the app is suspended, the owner ruled on it there, and this spec's
-  guarantees hold within one process with or without it.
+None. All eight were answered by the owner on 2026-11-21.
+
+## Resolved: owner rulings
+
+Each ruling below is binding on the design and the tests above.
+
+- **OQ-1 — Reopening the hub while a transfer is running.** Ruled
+  (owner, 2026-11-21): reopening attaches to the running transfer (H9),
+  with no network check. It does not pause and continue (#117 R10b).
+- **OQ-2 — A download that completes during a background pause.** Ruled
+  (owner, 2026-11-21): verify and the smoke test run at once.
+- **OQ-3 — A watchdog on the pause.** Ruled (owner, 2026-11-21): the
+  watchdog is 30 s, after which the pause counts as failed (cancel, then
+  "Could not pause the download").
+- **OQ-4 — A failed row write.** Ruled (owner, 2026-11-21): accepted.
+  The hub stays `paused` and the write is retried (D1).
+- **OQ-5 — `stopForStrict()` and `TRANSFER_STOPPED`.** Ruled (owner,
+  2026-11-21): built in #133. Nothing calls it until #117.
+- **OQ-6 — The Pausing state's copy.** Ruled (owner, 2026-11-21): the
+  `pausing` screen shows "Pausing…" with no buttons.
+- **OQ-7 — The import's commit-failure corner** (D6). Ruled (owner,
+  2026-11-21): accepted. If an import commit fails, the same-session
+  re-pick starts over.
+- **OQ-8 — iOS foreground sessions.** Ruled (owner, 2026-11-21): the
+  iOS foreground session (`sessionType: 'foreground'`) stays in #117.
