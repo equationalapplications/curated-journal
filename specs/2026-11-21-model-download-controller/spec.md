@@ -485,7 +485,12 @@ row in the snapshot omits the pause state.
   `null` result the controller did not ask for (no pause in progress)
   is handled as the `paused` branch of the pause procedure, and it emits
   `stopped` with reason `unrequested` so a hub in `downloading` is never
-  left waiting (I2). A `stopped` event carries the model id, the held
+  left waiting (I2). If the task is not `paused` when that null arrives,
+  or its `savable()` throws, the transfer is cancelled and the outcome is
+  still a paused record with the kept pause state: the row is saved
+  `paused`, the phase is `paused`, and `stopped` (`unrequested`) carries
+  the kept pause state, so row, phase and event agree. A `completed` or
+  `error` task emits `completed` or `failed`. A `stopped` event carries the model id, the held
   pause state (normalized, possibly null) and a `reason`: `strict` (from
   `stopForStrict()`) or `unrequested` (the controller did not ask).
 - **Settlement bookkeeping.** The controller attaches
