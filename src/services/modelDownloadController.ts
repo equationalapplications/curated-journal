@@ -676,8 +676,13 @@ export function createModelDownloadController(options: ControllerOptions): Model
   async function pauseOp(modelId: CuratedModelId, j: Join): Promise<PauseResult> {
     try {
       return await pauseOpInner(modelId, j);
+    } catch (error) {
+      // Cleared first, so no later stopForStrict() can join. A strict stop that already joined still
+      // runs, here, in this queue turn (before anything queued after it); strictOp never rejects.
+      if (join === j) join = null;
+      if (j.strictJoined && !j.strictResult) j.strictResult = await strictOp();
+      throw error;
     } finally {
-      // Cleared on every exit, including a throw, so a stopForStrict() never joins a dead pause.
       if (join === j) join = null;
     }
   }
@@ -688,7 +693,6 @@ export function createModelDownloadController(options: ControllerOptions): Model
     let outcome: Outcome;
     let kwSaved = true;
     let heldReport = false;
-    let wroteNone = false;
     if (rec.phase === 'active' && live) {
       // Whether the kill window applies is decided here, at the moment step 1 would begin.
       if (j.strictJoined) kwSaved = await save('paused', modelId, null); // kill window, before step 1
@@ -699,7 +703,6 @@ export function createModelDownloadController(options: ControllerOptions): Model
         heldReport = true;
         outcome = held;
       } else {
-        wroteNone = true;
         rec.modelId = modelId;
         setPhase('paused');
         const saved = await save('paused', modelId, rec.pauseState);
@@ -716,14 +719,12 @@ export function createModelDownloadController(options: ControllerOptions): Model
     if (j.strictJoined) {
       const mapped = mapStrict(outcome);
       // A held record means this call asked for no write: rowSaved is true, as for an unjoined stop.
-      // Phase `none` is what an unjoined stop calls nothing-running; its write's outcome is the one asked for.
+      // A pause on phase `none` wrote `paused` and left the phase `paused`: the result is kept, with that write's rowSaved.
       j.strictResult = heldReport
         ? ({ ...mapped, rowSaved: true } as StrictResult)
-        : wroteNone
-          ? { kind: 'nothing-running', rowSaved: outcome.res.kind === 'paused' ? outcome.res.rowSaved : true }
-          : outcome.res.kind === 'paused'
-            ? mapped
-            : ({ ...mapped, rowSaved: kwSaved } as StrictResult);
+        : outcome.res.kind === 'paused'
+          ? mapped
+          : ({ ...mapped, rowSaved: kwSaved } as StrictResult);
       emitStrict(outcome, modelId);
     }
     // No stopForStrict() can join from here on: the decision above was the last read of strictJoined.
@@ -780,12 +781,10 @@ export function createModelDownloadController(options: ControllerOptions): Model
     if (join && !join.strictJoined && rec.modelId !== null && join.modelId === rec.modelId) {
       const j = join;
       j.strictJoined = true;
-      // If the joined pause rejects, the strict stop still runs. A fulfilled join always carries a
-      // strictResult (set before the join is cleared): the `?? enqueue(strictOp)` is unreachable and defensive.
-      return j.promise.then(
-        () => j.strictResult ?? enqueue(strictOp),
-        () => enqueue(strictOp),
-      );
+      // Both outcomes carry a strictResult: a fulfilled pause sets it before the join is cleared, and a
+      // rejected one runs strictOp in its own queue turn (pauseOp). The `??` fallback is unreachable.
+      const result = () => j.strictResult ?? ({ kind: 'not-keepable', why: 'pause-failed', rowSaved: false } as StrictResult);
+      return j.promise.then(result, result);
     }
     return enqueue(strictOp);
   }

@@ -4,6 +4,7 @@ import {
   type ControllerEvent,
   type StoreLike,
   type TransferDriver,
+  WrongModelError,
 } from '@/services/modelDownloadController';
 
 jest.mock('@/services/modelDownloadService', () => ({ startDownload: jest.fn(), resumeDownload: jest.fn() }));
@@ -14,7 +15,7 @@ const tick = async (n = 30) => {
   for (let i = 0; i < n; i++) await Promise.resolve();
 };
 
-function mk() {
+function mk(initialRow: { modelId: string | null; status: string; pauseState: typeof P | null } | null = null) {
   let state = 'active';
   let resolvePause!: () => void;
   let settle!: (v: unknown) => void;
@@ -49,7 +50,7 @@ function mk() {
   let failNext = false;
   let failPaused = false;
   const store: StoreLike = {
-    get: async () => null,
+    get: async () => initialRow as never,
     set: async (r) => {
       if (block) await block;
       writes.push(`${r.status}:${r.pauseState ? 'P' : 'null'}`);
@@ -145,7 +146,7 @@ describe('round 3', () => {
     k.failNextWrite();
     const result = await strict;
     await pausePromise;
-    expect(result).toMatchObject({ rowSaved: false });
+    expect(result).toMatchObject({ kind: 'kept', pauseState: null, rowSaved: false });
     expect(k.c.snapshot().rowSaved).toBe(false);
   });
 
@@ -193,5 +194,51 @@ describe('round 3', () => {
       expect(snap.row?.status).toBe('paused');
       expect((await k.c.pause(A)).kind).toBe('paused');
     }
+  });
+});
+
+describe('round 4', () => {
+  const stopped = (k: ReturnType<typeof mk>, reason: string) =>
+    k.events.filter((e) => e.type === 'stopped' && e.reason === reason);
+
+  it('MINOR-1 E2: a strict stop joined to a pause on phase none reports kept, and the record is paused', async () => {
+    const k = mk({ modelId: A, status: 'paused', pauseState: P });
+    await k.c.load();
+    k.blockStore();
+    const parked = k.c.park(A);
+    await tick(5);
+    const abandoned = k.c.abandon();
+    const paused = k.c.pause(A);
+    const strict = k.c.stopForStrict();
+    k.unblockStore();
+    await parked;
+    await abandoned;
+    expect(await paused).toMatchObject({ kind: 'paused', strict: true, pauseState: null });
+    expect(await strict).toEqual({ kind: 'kept', pauseState: null, rowSaved: true });
+    expect(stopped(k, 'strict')).toHaveLength(1);
+    expect(k.c.snapshot()).toMatchObject({ phase: 'paused', stoppedForStrict: true });
+    expect(await k.c.stopForStrict()).toEqual({ kind: 'kept', pauseState: null, rowSaved: true });
+  });
+
+  it('NIT-1 E3b: a joined pause that rejects runs the strict stop in its own turn, before ops queued after the stop', async () => {
+    const k = mk({ modelId: A, status: 'paused', pauseState: P });
+    await k.c.load();
+    k.blockStore();
+    const parked = k.c.park(A);
+    await tick(5);
+    const recorded = k.c.record('smart-small' as never, 'smoke-testing');
+    const paused = k.c.pause(A);
+    const strict = k.c.stopForStrict(); // joins (rec.modelId is still A)
+    const released = k.c.releaseStrictStop(); // arrives after the stop
+    const startedB = k.c.start('smart-small' as never); // arrives after the release
+    k.unblockStore();
+    await parked;
+    await recorded;
+    await expect(paused).rejects.toBeInstanceOf(WrongModelError);
+    expect(await strict).toEqual({ kind: 'nothing-running', rowSaved: true });
+    await released;
+    expect(await startedB).toMatchObject({ kind: 'started' }); // the strict stop did not run after the release
+    expect(k.task.pauseAsync).not.toHaveBeenCalled();
+    expect(stopped(k, 'strict')).toHaveLength(1);
   });
 });
