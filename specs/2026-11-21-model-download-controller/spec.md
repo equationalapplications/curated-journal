@@ -295,7 +295,7 @@ Read from `node_modules/expo-file-system` 58.0.13 (the version
     `sharedObjectWillRelease` on iOS, which cancels `downloadTask` on
     the main queue (`FileSystemDownloadTask.swift:331-338`). On iOS that
     main-queue block runs after the queued `start`, so it finds the
-    task. This ordering was verified in the installed package: `start`
+    task (but see the residual window below). This ordering was verified in the installed package: `start`
     is an `AsyncFunction(...).runOnQueue(.main)`
     (`FileSystemModule.swift:583-586`) and is enqueued when
     `downloadAsync()` calls it, so the block that `release()` enqueues on
@@ -327,9 +327,9 @@ Read from `node_modules/expo-file-system` 58.0.13 (the version
     `_state` is untouched; `pause()` and `pauseAsync()` throw on their
     state check (`NetworkTasks.js:249`); `cancel()` returns early
     (`:318-322`); `subscription.remove()` is a safe no-op
-    (`EventEmitter.cpp:149-160`, `:189-209`); release drops all
+    (`expo-modules-core` 58.0.28 `common/cpp/EventEmitter.cpp:149-160`, `:189-209`); release drops all
     listeners; Android events emitted after release are dropped
-    (`SharedObjectRegistry.kt:42-48`).
+    (`expo-modules-core` 58.0.28 `SharedObjectRegistry.kt:42-48`).
   - **Promise settlement after a cancel.** On iOS the promise rejects
     with `DownloadCancelledException` through the delegate
     (`FileSystemDownloadTask.swift:429-452`), or resolves if the transfer
@@ -403,9 +403,9 @@ latch is released.
   `start()` or `resume()` that is queued ahead of a `stopForStrict()`
   and has not begun is refused when it runs. "Has not begun" means has
   not passed its latch check: a `start()` still awaiting its internal
-  `load()` is refused, while one past the check that is awaiting an
-  async `gate` goes on, creates its task, and the queued strict stop
-  then pauses it (I9).
+  `load()` is refused, while one past the check (awaiting an async `gate`
+  or its own `downloading` write) goes on, creates its task, and the
+  queued strict stop then pauses it (I9).
 - **It lives in process memory, on the record.** It is independent of
   `load()` (a strict stop before the first load sets it, and a later
   `load()` does not clear it). It survives a hub that closes. It is not
@@ -497,9 +497,8 @@ row in the snapshot omits the pause state.
   - **iOS: release at once.** `cancelTransfer` calls `task.release()`
     (wrapped, because a released object throws on later native calls)
     straight after `task.cancel()`. The native release block runs on the
-    main queue after the queued `start` (F11, verified), so it finds the
-    task after the queued `start`, except for a few-instruction data race
-    between the JS-thread `cancel()` and the main-queue `start`. No listener is added. `task.cancel()` is
+    main queue after the queued `start` (F11), so it finds the task,
+    except in the few-instruction data race of F11. No listener is added. `task.cancel()` is
     not called again, because it is a no-op once the state is `cancelled`.
   - **Android: release on the first progress event.** `release()` at
     once has the same race as `cancel()`, so `cancelTransfer` adds one
@@ -510,7 +509,7 @@ row in the snapshot omits the pause state.
     false positive). The listener then calls `task.release()` (wrapped),
     removes itself (also wrapped), and logs the lost cancel. The
     listener is also removed in the retired promise's `.then` handler
-    itself (the settle step of a retired generation is dropped, so it
+    itself, before its generation check drops the step (the settle step of a retired generation is dropped, so it
     cannot do it). On Android
     that promise may never settle (F4), so one unused listener on a dead
     task can remain, which is accepted.
@@ -813,11 +812,8 @@ resume really ran). Progress reaches the controller through that
 `onProgress` option, and the controller fans it out to subscribers.
 `driver` also supplies `onAppState(listener)`, which delivers the
 current state on subscribe (The pause procedure), and `platform`
-(`'ios'` or `'android'`, `Platform.OS` in the real driver), which picks
-the lost-cancel guard (F11). The controller is never built on web: the
-model hub is native-only (`src/app/model-hub` has no `.web.tsx` variant
-and no `Platform.OS === 'web'` branch), so `Platform.OS` is never `'web'`
-here. If that changes, every non-iOS platform uses the Android guard.
+(`'ios'` or `'android'`), which picks
+the lost-cancel guard (F11). On web (a configured target, where the hub is the first screen because no model can load), the real driver maps `platform: Platform.OS === 'ios' ? 'ios' : 'android'`; every non-iOS platform uses the Android guard. The web `FileSystemDownloadTask` is a stub whose `start()` resolves `null` (`expo-file-system/build/ExpoFileSystem.web.js:41-45`), so a web start ends as an unrequested `null` (`stopped`, `unrequested`). No web-specific behaviour is promised.
 
 **The `gate` input (#117's hook).** An optional
 `gate(modelId, op: 'start' | 'resume')` returning
@@ -845,7 +841,7 @@ pause procedure and `abandon()` cancel internally.
   process, and only the controller creates or holds it.
 - **I2 — At rest, nothing is in flight.** A transfer can be in flight
   only while the hub is in `downloading` or `pausing`, or while no hub
-  is mounted (P13). Every other hub state has none: `selecting`,
+  is mounted (P13), or a rejected `start`/`resume` (`FAIL`), unreachable with another model live because `SELECT_MODEL` of a different model abandons first (H8). Every other hub state has none: `selecting`,
   `checkingExisting`, `retiringCurrent`, `confirmingNetwork`,
   `awaitingWifi`, `cellularConfirm`, `paused`, `failed`, `verifying`,
   `smokeTest`, `smokeFailed`, `customImport` and `complete`. The hub
@@ -859,11 +855,9 @@ pause procedure and `abandon()` cancel internally.
   no transfer. The converse, that no transfer appears behind a hub at
   rest, rests on I7 and on the latch: a strict stop is followed by
   refusals, not by tasks (T-H9b).
-- **I3 — Operations run one at a time,** in FIFO order. Exactly two
-  effects happen on arrival instead: `stopForStrict()` sets the latch and
-  `releaseStrictStop()` clears it, at the moment of the call (Ownership,
-  the latch). Everything else about those operations is queued, with one
-  more arrival-time case: a `stopForStrict()` that arrives before any
+- **I3 — Operations run one at a time,** in FIFO order. Three things
+  happen on arrival instead: `stopForStrict()` sets the latch,
+  `releaseStrictStop()` clears it, and a `stopForStrict()` before any
   successful load is decided entirely on arrival (latch set,
   `nothing-running`, `rowSaved: true`, no event), because no task can
   exist before the first load and a `start()` queued behind it is refused
@@ -879,7 +873,7 @@ pause procedure and `abandon()` cancel internally.
   `releaseStrictStop` start none either.
 - **I8 — A cancel is immediate,** a late settlement of an older
   generation is dropped, and a cancel that the native side lost (F11) is
-  repeated through `release()`: at once on iOS, and on the first progress
+  repeated through `release()`, except for the few-instruction iOS race (F11): at once on iOS, and on the first progress
   event of the retired generation on Android.
 - **I9 — A strict stop is final until released.** After `stopForStrict()`
   returns, no task is created in this process until `releaseStrictStop()`.
@@ -906,8 +900,8 @@ states, target or effects.
 | H11 | `runSmokeTestAndCommit` | — | — | Its writes become `record(…)` calls and its clear becomes `abandon()`. A `smoke-testing` marker that did not land (`rowSaved: false`) throws before the load, as a rejected write does today (P10). |
 | H12 | Context | — | — | `idlePause` is removed and `resumeOnSettle` is added. `pausedReason` gains `'strict'` (from `TRANSFER_STOPPED` with reason `strict`, OQ-5). A `TRANSFER_STOPPED` with reason `unrequested` sets `pausedReason: 'user'`. `TRANSFER_STOPPED` carries `modelId` and `pauseState`, and the machine copies the event's pause state into `pauseState`. `pauseState` stays as a read-only copy, taken from controller results. It is used only to choose `resume` over `start` and for P12's guard. The controller never reads it. |
 | H13 | `TRANSFER_STOPPED` (OQ-5) | `downloading` | `paused` | Reason `strict`: `pausedReason: 'strict'`. Reason `unrequested`: `pausedReason: 'user'`. The pause state comes from the event in both. `APP_FOREGROUND` never continues a `strict` pause, because its guard requires `background` (#117 R10d). A hub pause that crossed a strict stop ends the same way: through H3 when `pause()` reports `strict: true` (or the join's `stopped` event in `pausing`), through the `stopped` event accepted in `paused` (H5), or in the network states (H15). The event reaches this row only through the root subscription of H1. |
-| H15 | `TRANSFER_STOPPED` (new) | `confirmingNetwork`, `cellularConfirm`, `awaitingWifi` | `paused` | Reason `strict` only, model-matched: `pausedReason: 'strict'`, `continuation` cleared, the pause state from the event. **No controller call**: the transfer is already stopped and the latch stays set. The network check actor and the cellular prompt are stopped by leaving the state, so a strict stop never shows the prompt. Reason `unrequested` is ignored in these states (there is no transfer to stop). |
 | H14 | `ModelHubApi` | — | — | Drop `startDownload`, `resumeDownload`, `pauseDownload`, `persistDownloadState`, `clearDownloadState` and `readDownloadModelId`. Add `downloads`, the controller's public API (including `subscribe`, used by both `runDownload` and the root `controllerEvents`), injected so tests can pass a controller built with `createModelDownloadController` on a fake transfer driver. `ModelHubRestoreState` and the `RESTORE_DOWNLOAD` event gain `live: true` (H9) and `finished: true` (H9b). `deleteOrphanedModelFiles` reads `downloads.readRow()`. |
+| H15 | `TRANSFER_STOPPED` (new) | `confirmingNetwork`, `cellularConfirm`, `awaitingWifi` | `paused` | Reason `strict` only, model-matched: `pausedReason: 'strict'`, `continuation` cleared, the pause state from the event. **No controller call**: the transfer is already stopped and the latch stays set. The network check actor and the cellular prompt are stopped by leaving the state, so a strict stop never shows the prompt. Reason `unrequested` is ignored in these states (there is no transfer to stop). |
 
 ### Screens, provider, layout
 
@@ -1202,7 +1196,7 @@ row says otherwise.
   `nothing-running` and the hub is not relabelled); a held null pause state
   reported as not keepable (a warning on a paused row, #117 R10g); a
   rejecting strict stop.
-- **T-C14b — Strict stop crossing a pause, and the latch.** Seven cases.
+- **T-C14b — Strict stop crossing a pause, and the latch.** Eight cases.
   (1) **Join while queued.** `stopForStrict()` arrives while a `pause()`
   is queued behind another operation: the kill-window write lands first,
   one `pauseAsync` runs, the `pause()` result is `paused` with
@@ -1229,7 +1223,10 @@ row says otherwise.
   `releaseStrictStop()` alone clears the latch at once, before the queue
   drains. (7) **Start queued ahead.** A `start()` queued behind another
   operation and not yet begun, then a `stopForStrict()` arrives: the
-  `start()` returns `refused` and creates no task. *Catches:* a join
+  `start()` returns `refused` and creates no task. (8) **Start held on its write.** A `start()` held on its
+  `downloading` write, then `stopForStrict()`: one task is created, the
+  strict stop pauses it (`kept` or `not-keepable`), and the latch is set.
+  *Catches:* a join
   that returns `kept` (a stuck `pausing`); a kill-window write after
   `pauseAsync` has begun; a double `stopped`; a lost latch; a `park()`,
   `record()` or `abandon()` that releases it; a `start()` that clears it;
@@ -1322,6 +1319,8 @@ row says otherwise.
   waits for an event that may never come; a listener that leaks after a
   settle; one that survives `cancel()` only because the test stubs the
   task.
+  **Platform mapping.** The real driver's `platform` is `'android'` when
+  `Platform.OS` is `'web'`.
 
 **Hub machine** (`__tests__/modelHubMachine.test.ts`, a new
 `describe('download controller')` block):
