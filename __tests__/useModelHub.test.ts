@@ -50,11 +50,12 @@ const model: CuratedModel = {
   deviceHint: 'all',
 };
 
+/** A stand-in controller: the api only reads the row from it (the real one is tested on its own). */
 function makeStore() {
   return {
     get: jest.fn(async () => null),
-    set: jest.fn(async () => undefined),
-    clear: jest.fn(async () => undefined),
+    readRow: jest.fn(async () => null),
+    subscribe: jest.fn(() => () => undefined),
   };
 }
 
@@ -63,14 +64,6 @@ describe('createModelHubApi', () => {
     jest.mocked(networkGate.checkNetworkGate).mockResolvedValueOnce('wifi');
     const api = createModelHubApi(makeStore() as never);
     await expect(api.checkNetwork()).resolves.toBe('wifi');
-  });
-
-  it('startDownload returns true when the service resolves a File, false when it resolves null', async () => {
-    const api = createModelHubApi(makeStore() as never);
-    jest.mocked(downloadService.startDownload).mockResolvedValueOnce({ size: 1 } as unknown as File);
-    await expect(api.startDownload(model, jest.fn())).resolves.toBe(true);
-    jest.mocked(downloadService.startDownload).mockResolvedValueOnce(null);
-    await expect(api.startDownload(model, jest.fn())).resolves.toBe(false);
   });
 
   it('verifyDownload constructs a File from Paths.document + filename and delegates', () => {
@@ -123,13 +116,9 @@ describe('createModelHubApi', () => {
     warn.mockRestore();
   });
 
-  it('persistDownloadState and clearDownloadState delegate to the injected store', async () => {
+  it('exposes the controller as downloads', () => {
     const store = makeStore();
-    const api = createModelHubApi(store as never);
-    await api.persistDownloadState({ modelId: 'fast-light', status: 'downloading', pauseState: null });
-    expect(store.set).toHaveBeenCalledWith({ modelId: 'fast-light', status: 'downloading', pauseState: null });
-    await api.clearDownloadState();
-    expect(store.clear).toHaveBeenCalled();
+    expect(createModelHubApi(store as never).downloads).toBe(store);
   });
 });
 
@@ -190,7 +179,7 @@ describe('createModelHubApi memory and orphan wiring', () => {
     jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
     jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
     const store = makeStore();
-    store.get.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'paused', pauseState: null } as never);
+    store.readRow.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'paused' } as never);
     const api = createModelHubApi(store as never);
     await api.deleteOrphanedModelFiles('fast-light');
     expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
@@ -204,7 +193,7 @@ describe('createModelHubApi memory and orphan wiring', () => {
     jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
     jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
     const store = makeStore();
-    store.get.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'failed', pauseState: null } as never);
+    store.readRow.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'failed' } as never);
     const api = createModelHubApi(store as never);
     await api.deleteOrphanedModelFiles('fast-light');
     expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
@@ -217,7 +206,7 @@ describe('createModelHubApi memory and orphan wiring', () => {
   it('deleteOrphanedModelFiles skips the sweep when the row cannot be read', async () => {
     jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
     const store = makeStore();
-    store.get.mockRejectedValueOnce(new Error('db'));
+    store.readRow.mockRejectedValueOnce(new Error('db'));
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const api = createModelHubApi(store as never);
     await api.deleteOrphanedModelFiles('fast-light');
@@ -225,19 +214,6 @@ describe('createModelHubApi memory and orphan wiring', () => {
     warn.mockRestore();
   });
 
-  it('readDownloadModelId returns the row model, null for a cleared row, and rejects on a read failure', async () => {
-    const store = makeStore();
-    const api = createModelHubApi(store as never);
-    store.get.mockResolvedValueOnce({ modelId: 'fast-light', status: 'paused', pauseState: null } as never);
-    await expect(api.readDownloadModelId()).resolves.toBe('fast-light');
-    store.get.mockResolvedValueOnce({ modelId: null, status: 'idle', pauseState: null } as never);
-    await expect(api.readDownloadModelId()).resolves.toBeNull();
-    store.get.mockRejectedValueOnce(new Error('db'));
-    await expect(api.readDownloadModelId()).rejects.toThrow('db');
-  });
-});
-
-describe('deleteOrphanedModelFiles with an unknown current path', () => {
   it('skips cleanup and resolves when getModelPath rejects', async () => {
     jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
     jest.mocked(entityStorage.getModelPath).mockRejectedValueOnce(new Error('storage'));

@@ -9,8 +9,17 @@ const mockSend = jest.fn();
 const mockClearRow = jest.fn();
 const mockReadRow = jest.fn();
 jest.mock('@/hooks/useModelHub', () => ({
-  useModelHub: () => ({ send: mockSend, stateValue: 'customImport', clearDownloadState: mockClearRow,
-    readDownloadModelId: () => mockReadRow(),
+  useModelHub: () => ({
+    send: mockSend,
+    stateValue: 'customImport',
+    abandonDownload: async () => {
+      await mockClearRow();
+      return { rowSaved: true };
+    },
+    readDownloadRow: async () => {
+      const id = await mockReadRow();
+      return id ? { modelId: id, status: 'paused' } : null;
+    },
   }),
 }));
 

@@ -13,12 +13,11 @@ jest.mock('expo-router', () => {
 });
 jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn(async () => ({})) }));
 const mockStatus = { value: 'downloading' as string };
-jest.mock('@/services/modelDownloadState', () => ({
-  createModelDownloadStateStore: () => ({
-    get: async () => ({ modelId: 'fast-light', status: mockStatus.value, pauseState: null }),
-    set: async () => undefined,
-    clear: async () => undefined,
-  }),
+const mockHub: { api: { downloads: unknown } | null } = { api: null };
+// The layout reads the singleton: tests hand it a controller built on a fake driver.
+jest.mock('@/services/modelDownloadController', () => ({
+  ...jest.requireActual('@/services/modelDownloadController'),
+  getModelDownloadController: () => mockHub.api?.downloads,
 }));
 jest.mock('@/lib/entityStorage', () => ({
   getModelId: async () => null,
@@ -50,9 +49,17 @@ jest.mock('@/machines/modelHubMachine', () => ({
 }));
 
 import Layout from '@/app/model-hub/_layout';
+import { makeHubApi } from './helpers/hubApi';
 
 describe('real hub layout: restore over cellular', () => {
-beforeEach(() => { mockStart.mockClear(); mockReplace.mockClear(); });
+beforeEach(() => {
+  mockStart.mockClear();
+  mockReplace.mockClear();
+  mockHub.api = makeHubApi({
+    startDownload: mockStart,
+    initialRow: { modelId: 'fast-light', status: mockStatus.value as never, pauseState: null },
+  });
+});
 
 it('shows the sheet once, replaces to the download screen, and downloads only after confirm', async () => {
   const screen = await render(<Layout />);
