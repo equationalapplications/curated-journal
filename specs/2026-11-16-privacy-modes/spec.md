@@ -168,12 +168,13 @@ tensions. INTENT wins each one, or the owner has ruled on it, or (item
    owner can confirm or overrule it when ruling on #129.
 7. **The share sheet carries text, not a file.** Rule 11's share-sheet
    exception names files. This spec reads it as covering a text
-   hand-off (a link address), per the owner ruling of 2026-11-21. No
+   hand-off (a link address), follows from the owner ruling of 2026-11-21 (the dialog, with
+   Share…, shows in every mode, strict included). No
    amendment unless the owner wants the wording widened.
 
 Rules each requirement rests on: rule 1 (the journal works with no
-network), rule 2 (models are installed only by the user, in the model
-hub), rule 8 (answers cite their sources), rule 9 (the default mode),
+network), rule 2 (bring-your-own inference: models installed only by the
+user, no hosted AI), rule 8 (answers cite their sources), rule 9 (the default mode),
 rule 10 (version cost), rule 11 (strict privacy), rule 12 (each step
 away from strict is an informed choice), rule 13 (the journal never
 depends on connectivity), and the out-of-scope items "Any off-device
@@ -197,7 +198,7 @@ survey is re-run on every engine bump (R17).
 | 4 | Launch-time native update check | Off: `updates.checkAutomatically: 'NEVER'` in `app.config.ts`, asserted by `__tests__/appConfig.test.ts` and checked on every built artifact (VERSIONING.md train step 4). | — | Nothing | Never runs | Never runs |
 | 5 | Tip jar (iOS, Android) | `openTipJar` in `src/lib/tipJarStore.ts` (`expo-iap` `initConnection`, `fetchProducts`, `getAvailablePurchases`, `requestPurchase`, `finishTransaction`, `endConnection`). Reached from Open and the tip buttons in `src/components/settings/TipJarSection.tsx`. Gated today by `canUseStorePurchases()` at the start and before `requestPurchase`. | Apple App Store or Google Play | The user | Allowed | Blocked (alert exists) |
 | 6 | Support link (web build only) | `Linking.openURL(SUPPORT_PAYPAL_URL)` in `TipJarSection.tsx`. Already gated by `canOpenSupportLink()`. | PayPal | The user | Allowed | Blocked (alert exists) |
-| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. Today no renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`474c7ac` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; its props leave out `rules` and `renderer`. Lint rules in `eslint.config.js` forbid value-importing the library anywhere else, including its subpaths, a dynamic `import()` and a `require()` (type imports, such as `markdownRules.tsx`'s `import type { RenderRules }`, are allowed). The wrapper passes every other prop through, `onLinkPress` included. That text comes from the model or from an imported OKF bundle. | None: after the change, nothing opens. Share… hands the address to the OS share sheet, where the user chooses | The user (a tap shows a dialog and nothing more) | Nothing opens, any scheme. A dialog shows the full address with Share… and OK (owner, 2026-11-21; OQ-3 and OQ-8 superseded) | Nothing opens, any scheme. The same dialog, same copy (R6) |
+| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. Today no renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`474c7ac` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; its props leave out `rules` and `renderer`. Lint rules in `eslint.config.js` forbid value-importing the library anywhere else, including its subpaths, a dynamic `import()` and a `require()` (type imports, such as `markdownRules.tsx`'s `import type { RenderRules }`, are allowed). The wrapper passes every other prop through, `onLinkPress` included. That text is written by the model or an imported bundle, so the app can't tell a link you wrote from one it invented. | None: after the change, nothing opens. Share… hands the address to the OS share sheet, where the user chooses | The user (a tap shows a dialog and nothing more) | Nothing opens, any scheme. A dialog shows the full address with Share… and OK (owner, 2026-11-21; OQ-3 and OQ-8 superseded) | Nothing opens, any scheme. The same dialog, same copy (R6) |
 | 8 | Images inside notes | The same library's `image` rule renders `![…](url)` with `react-native-fit-image`, which fetches the URL as soon as the note is shown. By default it allows `https://` and `http://`, and it adds `https://` to a source with no scheme. | Whatever host the image names | **Nothing; it happens on its own** | Blocked by #118 (owner, OQ-4) | Blocked by #118 |
 | 9 | iOS StoreKit listeners at launch | Two sources in `expo-iap` 6.4.1, both before any JavaScript: (a) `ExpoIapAppDelegateSubscriber` creates `OpenIapModule.shared` in `didFinishLaunching`, and OpenIAP's StoreKit module then starts a `PurchaseIntent.intents` listener (iOS 16.4 and later) or adds an `SKPaymentQueue` observer (earlier iOS); (b) `ExpoIapModule`'s `OnCreate` calls `ExpoIapHelper.setupStore` when the native module is created, which adds the purchase-updated, purchase-error, promoted-product and billing-issue listeners. On Android, billing loads only on the first `initConnection`. | Apple's StoreKit on the device. This survey found no request that it sends, but cannot rule out StoreKit doing something on its own. | The app, at every launch | Runs today | Must go (owner, OQ-5): #119, MAJOR. JS cannot gate it. |
 
@@ -629,7 +630,7 @@ network-capable code path in the app asks the mode before acting".)*
 
 **R5 — Strict privacy blocks every path.** In strict privacy, paths 1,
 2, 3, 5 and 6 start nothing (paths 7 and 8 are blocked in both modes:
-7 by the link dialog in R6, 8 by #118). A blocked tap on paths 1–6
+7 by the link dialog in R6, 8 by #118). A blocked tap on paths 1, 2, 3, 5 and 6
 shows an alert that explains why and how to step out. The path 7 dialog
 (R6) says no mode opens links and offers no step-out. Neither makes a
 silent network call. Every alert and the dialog end "Nothing was
@@ -643,6 +644,8 @@ sent."
 | Open or a tip (tip jar) | Tips are off in strict privacy | The existing copy (`STRICT_PRIVACY_TIP_MESSAGE`), changed to say "step out of strict privacy in Settings → Privacy". |
 | Support (web) | Tips are off in strict privacy | The existing `STRICT_PRIVACY_LINK_MESSAGE`, with the same Settings → Privacy change. |
 | A link in a note, any scheme (one dialog, one copy, in both modes; R6) | Links don't open from notes | Curated Journal doesn't open links from your notes, in any mode. You can share or copy this address and open it yourself: `<full href>`. Nothing was sent. Buttons: **Share…** and **OK**. |
+| The same tap, empty href (`[x]()`) | Links don't open from notes | Curated Journal doesn't open links from your notes, in any mode. This link has no address. Nothing was sent. Button: **OK** only. |
+| The same tap, web build where `navigator.share` is undefined | Links don't open from notes | Curated Journal doesn't open links from your notes, in any mode. You can copy this address and open it yourself: `<full href>`. Nothing was sent. Button: **OK** only. |
 
 "Try again" on a failed smoke test (`smokeFailed`'s `RETRY` →
 `verifying`) is not blocked: it runs on the device and keeps working in
@@ -690,15 +693,34 @@ tip-jar alert pattern rule 11 already requires.)*
   The "unqualified, with no iOS caveat" rule (owner, 2026-11-21)
   applies to the strict-privacy mode description (the copy under
   Settings → Privacy), not to this dialog or to the R5 alerts.
-- **The dialog** is `useConfirmSheet` (`src/components/ui/confirm-sheet.tsx`,
-  DESIGN.md 1.6), rendered by `NoteMarkdown` through its
+- **The dialog** is `useConfirmSheet` (`src/components/ui/confirm-sheet.tsx`):
+  the app's themed, web-safe stand-in for `Alert.alert` (convention:
+  the `confirm-sheet.tsx` header and
+  `docs/superpowers/specs/2026-11-02-tip-jar.md`); its dialog shape is
+  Curated Thoughts' `docs/design/DESIGN.md` §1.6, Dialog. It is rendered by `NoteMarkdown` through its
   `confirmElement`. `Alert.alert` is a no-op on react-native-web, so it
   is not used. **OK** is the `cancel`-style button, so a scrim tap or a
   back press counts as OK. The address is shown in full and is
   selectable (the hook's message text is not selectable on main, so
-  Step 2 adds an optional `selectable` flag to it; JS only). Inside `GraphNodeSheet`, the dialog presents above that
-  sheet. An empty href (`[x]()`) shows "This link has no address." and
-  hides Share….
+  Step 2 adds an optional `selectable` flag to `ConfirmButton`'s
+  options; JS only). On iOS, selectable text copies the whole
+  message, and Share… covers Copy. Button order: **Share…** first,
+  **OK** last, so OK is the primary button (the hook gives the last
+  button the primary variant). Inside `GraphNodeSheet`, the dialog
+  presents above that sheet, and OK returns to it. Two variants hide
+  Share… and show **OK** only: an empty href (`[x]()`) shows "Curated
+  Journal doesn't open links from your notes, in any mode. This link
+  has no address. Nothing was sent."; and on web without
+  `navigator.share`, "Curated Journal doesn't open links from your
+  notes, in any mode. You can copy this address and open it yourself:
+  `<href>`. Nothing was sent." 
+- **Share… keeps the dialog open; the share sheet presents above it;
+  OK closes the dialog.** On main, `run` calls `onClose()` before
+  `onPress`, so Share… would close the dialog first. Step 2 adds a
+  JS-only `keepOpen` flag to `ConfirmButton`, alongside `selectable`:
+  a button with `keepOpen` skips `onClose()`. Presenting a share sheet
+  while a Modal is closing is a known react-native failure (likely,
+  not device-verified), which is why the dialog stays open.
 - **Share…** calls exactly `Share.share({ message: href })`, react-native
   core. It never passes `url`, so the sheet gets a plain string and
   fetches no link preview. The OS share sheet offers Copy. A rejection
@@ -1326,6 +1348,8 @@ carries a PATCH for the spec alone. Step 2 is JS/TS only:
 - the gates in the download service, the update check, the tip jar
   and the hub machine, and the download service's pause owner;
 - the hub-machine changes in rows M0–M13;
+- the JS-only `selectable` and `keepOpen` options on
+  `useConfirmSheet` (R6);
 - the shared `onLinkPress` in `src/components/NoteMarkdown.tsx` (the
   wrapper and the image rule are #118's, in PR #120);
 - the privacy policy page;
@@ -1437,7 +1461,9 @@ must pass):
     save queue, run a Night Shift librarian pass, ask a question and
     get a cited answer, load the graph, export an OKF bundle, import
     one, and show a note that has a remote image and a link, tap the link, then
-    Share…, then OK, and assert no network spy fired.
+    Share… (with `Share.share` mocked to resolve), then OK (the dialog
+    is still open after Share…, because it stays open), and assert no
+    network spy fired.
   - Expect: every feature succeeds, and no spy fired.
   - What it shows: the app's own code starts no traffic through the
     APIs the test watches. It cannot see native code, or a library
@@ -1461,16 +1487,17 @@ must pass):
     `source` with a remote `uri`; and an outside `http(s)` address
     passed to `Link`, `router.push`, `router.replace` or `Redirect`.
   - It also watches react-native `Share` and `expo-sharing`.
-  - It fails if a file outside three reviewed allowlists uses one:
+  - It fails if a file outside four reviewed allowlists uses one:
     - **Gated:** each file must import its gate from
-      `@/lib/privacyMode`. Markdown renderers must use the shared
-      wrapper: only `src/components/NoteMarkdown.tsx` may value-import
-      `react-native-markdown-display` (#120's lint rules enforce this
-      too, for static imports, subpaths, `import()` and `require()`;
-      type imports, such as `markdownRules.tsx`'s
-      `import type { RenderRules }`, are allowed), it must pass
-      #118's image rule and the shared `onLinkPress`, and its props
-      must leave out `rules`, `renderer` and `onLinkPress`.
+      `@/lib/privacyMode`.
+    - **Wrapper only:** `src/components/NoteMarkdown.tsx`. Only this
+      file may value-import `react-native-markdown-display` (#120's
+      lint rules enforce this too, for static imports, subpaths,
+      `import()` and `require()`; type imports, such as
+      `markdownRules.tsx`'s `import type { RenderRules }`, are
+      allowed). It imports nothing from `@/lib/privacyMode` (R4). It
+      must pass #118's image rule and the shared `onLinkPress`, and
+      its props must leave out `rules`, `renderer` and `onLinkPress`.
     - **No gate needed:** files that use such an API but send
       nothing, each with the reason written next to it:
       `src/lib/networkGate.ts` (asks only the OS) and
@@ -1664,15 +1691,28 @@ must pass):
   href; one copy in both modes) and never calls `Linking.openURL`.
   **Share…** calls `Share.share` with exactly `{ message: href }` (no
   `url`); a rejected `Share.share` is ignored and shows nothing; **OK**
-  calls nothing. An empty href shows "This link has no address." and no
-  Share….
+  calls nothing. Share… keeps the dialog open: the test asserts the
+  dialog is still shown after Share… and gone after OK. An empty href
+  shows exactly "Curated Journal doesn't open links from your notes,
+  in any mode. This link has no address. Nothing was sent." and no
+  Share…. With `Platform.OS = 'web'`, there is no Share… and the copy
+  variant shows when `navigator.share` is undefined, and Share…
+  shows when it is defined.
   - **Positive control for the `Linking.openURL` assertions (this test
     only):** render the bare library with its lint rule disabled and no
     `onLinkPress`, tap a link, and assert the `Linking.openURL` spy
     fired. With that same spy, assert `NoteMarkdown` never fires it,
     and assert the shared handler's return value is not `true`.
-  - A `@ts-expect-error` test: passing `onLinkPress` to `NoteMarkdown`
-    does not type-check. A runtime test: a cast-in `onLinkPress` is
+  - The compile-time check: passing `onLinkPress` to `NoteMarkdown`
+    does not type-check. A `@ts-expect-error` inside `__tests__` checks
+    nothing, because `tsconfig.test.json` inherits the base
+    `exclude: ["__tests__", …]` (issue #134 tracks that CI gap). So the
+    check lives in a never-imported file that `tsc` does check,
+    `src/components/NoteMarkdown.typecheck.tsx`, holding the
+    `@ts-expect-error` line. It must pass lint (`expo lint`). The
+    coverage test and its allowlists look only for the network APIs
+    listed above, and this file uses none, so it needs no entry. A
+    runtime test: a cast-in `onLinkPress` is
     never called, because the wrapper sets `onLinkPress` after the
     props spread.
 - `__tests__/appConfig.test.ts` keeps asserting
@@ -1750,7 +1790,12 @@ status line, un-drafting or cleanup (AGENTS.md):
       and a `tel:` link in a note. Each shows the "Links don't open
       from notes" dialog with its full address, and opens nothing.
       Share… opens the OS share sheet with the address (Copy is there);
-      OK closes the dialog.
+      OK closes the dialog. iOS: open the link from the journal and
+      from `GraphNodeSheet`, and confirm the share sheet presents
+      above the dialog (a share sheet presented while a Modal closes
+      is a known react-native failure; likely, not device-verified).
+- [ ] Tap a link inside a graph node's sheet. The dialog shows above
+      the sheet, and OK returns to it.
 - [ ] In strict privacy, with a proxy log running: tap a note link,
       then Share…, then Copy. Confirm no request is made.
 - [ ] Turn on strict from Settings when the download can't be kept,
