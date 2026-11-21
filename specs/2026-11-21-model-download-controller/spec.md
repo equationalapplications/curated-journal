@@ -354,7 +354,7 @@ TypeScript, not an XState actor, so nothing that stops the hub stops it
   generation id and last progress;
 - the record of the current download: model id, phase and pause state;
 - the saved download row. The controller creates the only
-  `createModelDownloadStateStore` instance. The database is opened
+  `createModelDownloadStateStore` instance that is live; a dropped one is never used. The database is opened
   lazily, as part of the first store call (see Every store call is
   bounded), and every row write in the app goes through it (I4).
 
@@ -466,7 +466,8 @@ row in the snapshot omits the pause state.
   first read leaves the controller unloaded.** The operation that
   triggered it rejects with the store's error, and the next operation
   retries the load. Nothing is cached from a failed read. **That
-  includes a failed open or schema step** (next bullet).
+  includes a failed open or schema step** (see Row writes and the
+  failed-save rule).
 - **No re-entry.** An operation never awaits another queued operation.
   Listeners are called inside the operation that emits, after its
   state change. Anything a listener queues runs after that operation.
@@ -728,18 +729,23 @@ call (How #117 shrinks).
   may still pass a ready `store`. The controller creates the store
   promise on the first load. The open, the schema creation inside the
   store's `ensureSchema()` and the first read all run inside the one
-  10 s bound below. **If that first load fails or times out, the
-  controller drops its store promise (and closes the DB handle if the
-  open had finished, ignoring errors), so the next load calls
-  `openStore()` again and gets a fresh database and a fresh store.** A
-  late settlement of the dropped open is ignored. Why this mechanism and
+  10 s bound below. **If any load before the first successful one fails or times out, the
+  controller drops its store promise and leaves the handle open. Native
+  connections are shared with the wiki and reference-counted, so a stray
+  close could release the wiki's reference. Today's layout never closes
+  its handle either. The next load calls `openStore()` again and gets a
+  fresh handle (on native, a new reference to the shared connection) and
+  a fresh store.** A hang inside the shared connection or the web worker
+  is bounded, not cleared. A late resolve of the dropped open is
+  discarded. A late reject is caught with a no-op handler, so React
+  Native logs no unhandled rejection. Why this mechanism and
   not "`ensureSchema` resets `ready` on rejection": `ensureSchema()`
   caches its promise (`if (!ready) ready = db.execAsync(SCHEMA)...`), and
   a hung `execAsync`, or a hung web `openDatabaseAsync` (a worker round
   trip in `expo-sqlite/web/SQLiteModule.ts` that may never answer),
   never rejects, so a reset-on-rejection fix cannot unstick it. Today's
   `_layout.tsx` opens a new DB and store on every hub open, which is why
-  Retry works today; the singleton must give that property back.
+  closing and reopening the hub recovers today; the singleton must give that property back.
   `modelDownloadState.ts` is therefore **not changed**.
 - **Every store call is bounded at 10 s** (`timers` input). A call that
   has not settled by then counts as failed: a write is `rowSaved:
@@ -824,9 +830,10 @@ acknowledges with `record(modelId, 'failed')` or `abandon()`, which
 clear the phase (T-C10).
 
 **Construction.** The module exports
-`createModelDownloadController({ driver, store, timers, gate? })` and
+`createModelDownloadController({ driver, store? | openStore?, timers, gate? })` and
 the singleton getter `getModelDownloadController()`, which builds one
-with the real driver, the real store and real timers, and no gate. Tests
+with the real driver, an `openStore` over the real store and real timers, and no gate. Exactly one of `store` or `openStore` is given, and a ready
+`store` is never reopened. Tests
 build their own. `driver` supplies
 `start(modelId, { onProgress })` and
 `resume(modelId, pauseState, { onProgress })`, each returning
@@ -869,7 +876,7 @@ pause procedure and `abandon()` cancel internally.
   only while the hub is in `downloading` or `pausing`, or while no hub
   is mounted (P13), or in `failed` after a `start`/`resume` rejected with `TransferInFlightError` (unreachable: `SELECT_MODEL` of a different model abandons first, H8). Every other hub state has none: `selecting`,
   `checkingExisting`, `retiringCurrent`, `confirmingNetwork`,
-  `awaitingWifi`, `cellularConfirm`, `paused`, `failed`, `verifying`,
+  `awaitingWifi`, `cellularConfirm`, `paused`, `failed` (except the unreachable carve-out above), `verifying`,
   `smokeTest`, `smokeFailed`, `customImport` and `complete`. The hub
   leaves `downloading` only on a controller event that reports the
   transfer ended (`completed`, `failed` or `stopped`, the last through
@@ -996,12 +1003,6 @@ states, target or effects.
   data-safe: the partial is an orphan for the next sweep, and P7 covers
   any resume.
 
-- **D8 — Web ends a start as Paused.** At baseline, `runDownload`
-  sends nothing on a null result (`src/machines/modelHubMachine.ts:204`
-  at 8f5f484: `if (!cancelled && completed)`), so web sits in
-  `downloading` at zero. After this PR, the null is an unrequested stop
-  and web shows Paused (reason `user`); Resume cycles start, null,
-  paused.
 - **D7 — Accepted edges.** After a closed hub, a transfer that fails
   with disk-full leaves its partial on disk, because the controller
   deletes no file (P12 deletes it today only through the hub). The next
@@ -1009,6 +1010,17 @@ states, target or effects.
   to `checkingExisting` (H9b), and a later `start()` for it still
   reports `completed`; if the hub's verification then fails, the user
   sees the verify error and not a silent re-download (T-C10).
+  Pre-existing, not introduced here and tracked in #135: the store's row
+  writes share the wiki's SQLite connection, so a write that lands inside
+  the engine's `withTransactionAsync` joins that transaction and can be
+  rolled back after it reported `rowSaved: true`.
+
+- **D8 — Web ends a start as Paused.** At baseline, `runDownload`
+  sends nothing on a null result (`src/machines/modelHubMachine.ts:204`
+  at 8f5f484: `if (!cancelled && completed)`), so web sits in
+  `downloading` at zero. After this PR, the null is an unrequested stop
+  and web shows Paused (reason `user`); Resume cycles start, null,
+  paused.
 
 ## How #117 shrinks
 
@@ -1180,7 +1192,12 @@ row says otherwise.
   that returns a store over that DB: the first `load()` rejects, and the
   second `load()` succeeds. A first `openStore()` that never settles
   times out at 10 s the same way, and the next `load()` calls
-  `openStore()` again. *Catches:* a cached schema or open failure
+  `openStore()` again. **Late settle (fake timers):** the first
+  `openStore()` resolves at 15 s with store A; the second resolves at
+  once with store B and the second `load()` succeeds. Advance past 15 s:
+  a later `record()` writes through B, and A's `set` is never called. A
+  variant where the first open rejects late asserts no unhandled
+  rejection. *Catches:* a cached schema or open failure
   (a Retry that can never recover); a late settlement of a dropped open
   overwriting the new store; re-reading over a newer in-memory truth; starting anything
   at load (rule 11); caching a failed read; dropping a failed row's
@@ -1576,7 +1593,7 @@ On-device, the user's to run when they choose. They never block:
 MINOR, 9.2.0 → 9.3.0, in `package.json`, `app.json` and the
 `package-lock.json` root. JS-only: no native module, no config plugin,
 no permission change. The PR touches `modelDownloadState.ts` not at all:
-the open-failure fix lives in the controller (Lazy load). The runtime version derives from the MAJOR, so it
+the open-failure fix lives in the controller (Row writes and the failed-save rule). The runtime version derives from the MAJOR, so it
 stays on the installed island. MINOR, not PATCH, because user-visible
 download behavior changes (D4 adds a Pausing state, and D5 attaches on
 reopen) and a new module takes over ownership. That is the lead's
