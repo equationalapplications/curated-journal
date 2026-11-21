@@ -30,19 +30,29 @@ const rel = (f: string) => path.relative(SRC, f).split(path.sep).join('/');
 const files = sources(SRC).map((f) => ({ file: rel(f), text: stripComments(fs.readFileSync(f, 'utf8')) }));
 
 describe('T-own download ownership', () => {
-  it('only the service imports DownloadTask', () => {
-    const offenders = files
-      .filter(({ text }) => /import[^;]*\bDownloadTask\b[^;]*from/.test(text) || /\bimport\s*\*\s*as\s+\w+\s+from\s*'expo-file-system'/.test(text))
-      .map((f) => f.file);
+  it('only the service names DownloadTask, however it reaches it', () => {
+    // A namespace import, a require or a re-export still has to spell `DownloadTask` to use it.
+    const offenders = files.filter(({ text }) => /\bDownloadTask\b/.test(text)).map((f) => f.file);
     expect(offenders).toEqual(['services/modelDownloadService.ts']);
   });
 
-  it('only the controller imports the transfer functions or the store factory', () => {
-    const importers = files.filter(({ text }) => specifiers(text).some((s) => /modelDownloadService$/.test(s)));
+  it('only the controller reaches the transfer functions or the store factory', () => {
+    const importers = files.filter(
+      ({ file, text }) =>
+        file !== 'services/modelDownloadService.ts' &&
+        file !== 'services/modelDownloadController.ts' &&
+        specifiers(text).some((s) => /modelDownloadService$/.test(s)),
+    );
     for (const { file, text } of importers) {
-      // Multi-line imports and re-exports included: take every `import|export ... from '...modelDownloadService'` clause.
-      const clauses = [...text.matchAll(/(?:import|export)\b[\s\S]*?\bfrom\s*['"][^'"]*modelDownloadService['"]/g)].map((m) => m[0]);
-      if (clauses.some((c) => /\b(startDownload|resumeDownload)\b/.test(c))) expect(file).toBe('services/modelDownloadController.ts');
+      // Every importer other than the controller may use only the file helpers: no namespace
+      // import, no require, no dynamic import (they could reach startDownload through a member),
+      // and the transfer function names never appear.
+      const bypass =
+        /import\s*\*\s*as\s+\w+\s+from\s*['"][^'"]*modelDownloadService['"]/.test(text) ||
+        /\brequire\s*\(\s*['"][^'"]*modelDownloadService['"]\s*\)/.test(text) ||
+        /\bimport\s*\(\s*['"][^'"]*modelDownloadService['"]\s*\)/.test(text) ||
+        /\b(startDownload|resumeDownload)\b/.test(text);
+      expect({ file, bypass }).toEqual({ file, bypass: false });
     }
     const store = files.filter(({ text }) => /\bcreateModelDownloadStateStore\b/.test(text)).map((f) => f.file);
     expect(store.sort()).toEqual(['services/modelDownloadController.ts', 'services/modelDownloadState.ts']);

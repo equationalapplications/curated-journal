@@ -585,7 +585,10 @@ hub pause that cross"):
      yields no data (wiping the resume data) or never settles. The cutoff
      is a 500 ms foreground grace: a progress event delivered in the
      first 500 ms after the ask may have been emitted before it and is
-     stale, so only progress delivered between 500 ms and 1 s counts. The
+     stale, so only progress delivered between 500 ms and 1 s counts. The grace
+     re-runs after every foreground return (both timers re-arm with their
+     full windows), so progress delivered before a return never counts
+     toward the re-issue that follows it. The
      re-issue is one-shot (it never fires twice for one pause, whatever
      the app does in between). A silent transfer is never re-issued.
    - **The watchdog (OQ-3).** 30 s.
@@ -1429,11 +1432,17 @@ row says otherwise.
 - **T-H6 — Reopen with a live transfer** (S5, OQ-1). Close the hub
   mid-download, then build the layout's restore from `load()`: the
   machine is `downloading`, one task was ever constructed, progress is
-  seeded, there is no `checkNetwork` call, and Pause works. Two more cases: a
-  transfer that **fails** and one that is **stopped** between the
-  layout's `load()` and the hub's first call: the hub gets `not-live`,
-  goes to `confirmingNetwork` with the continuation, creates no task
-  before the check passes, and (cellular) shows the prompt. A snapshot of
+  seeded, there is no `checkNetwork` call, and Pause works. Two more cases,
+  both with the transfer ending between the layout's `load()` and the
+  hub's first call. A transfer that **fails** leaves phase `failed`, so
+  `attach()` reports `failed` and the hub goes to `failed` through `FAIL`,
+  with no check and no new task. A transfer that is **stopped** (an
+  unrequested null) leaves phase `paused`, and its settle step was queued
+  before the attach, so `attach()` reports `not-live`: the hub goes to
+  `confirmingNetwork` with the continuation, creates no task before the
+  check passes, and (cellular) shows the prompt. (A stop that lands after
+  the attach reaches a hub already in `downloading` as `TRANSFER_STOPPED`
+  with reason `unrequested`, which T-H9 covers.) A snapshot of
   phase `completed` restores to `checkingExisting` and runs verify, with
   no check and no task (H9b). *Catches:* restoring through
   `checkingExisting` (a second task, or a check); a `start()` in the live
@@ -1604,6 +1613,9 @@ On-device, the user's to run when they choose. They never block:
 - [ ] Android and iOS: Pause in the last seconds of a download. It goes
   on to "Checking the model runs on this device…", not to "Could not
   pause".
+- [ ] iOS: Pause during a download on the background session. Progress
+  is kept: trailing progress after `cancelByProducingResumeData` does not
+  trigger the F8 re-issue.
 - [ ] iOS: background during a download, return, and check that the
   download continues behind the network check (P1), on Wi-Fi and on
   cellular.

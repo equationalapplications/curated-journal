@@ -6,6 +6,10 @@
  * progress event (F8), a slow but effective pause, a cancel that never settles
  * (F4), a cancel erased before the start took effect (F11), late results, and
  * a transfer that ends in `completed` or `error`.
+ *
+ * NOT modelled: the iOS main-queue ordering of `release()` after the queued `start`
+ * (spec F11). It is assumed from reading the installed package; `release()` here stops a
+ * transfer whose cancel was lost, immediately.
  */
 type Listener = (data: { bytesWritten: number; totalBytes: number }) => void;
 

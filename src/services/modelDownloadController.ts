@@ -496,7 +496,9 @@ export function createModelDownloadController(options: ControllerOptions): Model
     else if (o.res.kind === 'failed') {
       emit({ type: 'failed', modelId, code: o.res.code as DownloadErrorCode, message: o.res.message });
     } else if (o.res.kind === 'pause-failed') {
-      emit({ type: 'failed', modelId, code: 'unknown', message: PAUSE_FAILED_MESSAGE });
+      // The transfer was cancelled and the pause state the controller kept is the truth: report
+      // it as an unrequested stop so the hub's copy matches (a `failed` would drop it, P12).
+      emit({ type: 'stopped', modelId, pauseState: o.res.pauseState, reason: 'unrequested' });
     }
   }
 
@@ -574,13 +576,11 @@ export function createModelDownloadController(options: ControllerOptions): Model
         // Progress delivered inside the grace is stale (emitted before the ask): only
         // progress between the grace's end and the re-issue counts. Both timers count
         // foreground time and re-arm together.
-        const grace = foregroundTimer(
-          REISSUE_GRACE_MS,
-          () => {
-            L.progressSinceAsk = false;
-          },
-          true,
-        );
+        // The grace is not one-shot: it re-runs after every foreground return, so progress
+        // delivered before a return never counts toward the re-issue that follows it.
+        const grace = foregroundTimer(REISSUE_GRACE_MS, () => {
+          L.progressSinceAsk = false;
+        });
         const reissue = foregroundTimer(
           REISSUE_MS,
           () => {
@@ -670,6 +670,15 @@ export function createModelDownloadController(options: ControllerOptions): Model
   }
 
   async function pauseOp(modelId: CuratedModelId, j: Join): Promise<PauseResult> {
+    try {
+      return await pauseOpInner(modelId, j);
+    } finally {
+      // Cleared on every exit, including a throw, so a stopForStrict() never joins a dead pause.
+      if (join === j) join = null;
+    }
+  }
+
+  async function pauseOpInner(modelId: CuratedModelId, j: Join): Promise<PauseResult> {
     await loadInternal();
     checkModel(modelId);
     let outcome: Outcome;
@@ -697,10 +706,16 @@ export function createModelDownloadController(options: ControllerOptions): Model
     }
     if (j.strictJoined) {
       const mapped = mapStrict(outcome);
-      j.strictResult =
-        outcome.res.kind === 'paused' ? mapped : ({ ...mapped, rowSaved: outcome.ran ? kwSaved : mapped.rowSaved } as StrictResult);
+      // A held record means this call asked for no write: rowSaved is true, as for an unjoined stop.
+      j.strictResult = !outcome.ran
+        ? ({ ...mapped, rowSaved: true } as StrictResult)
+        : outcome.res.kind === 'paused'
+          ? mapped
+          : ({ ...mapped, rowSaved: kwSaved } as StrictResult);
       emitStrict(outcome, modelId);
     }
+    // No stopForStrict() can join from here on: the decision above was the last read of strictJoined.
+    if (join === j) join = null;
     return outcome.res;
   }
 
@@ -708,11 +723,8 @@ export function createModelDownloadController(options: ControllerOptions): Model
     if (join && join.modelId === modelId) return join.promise;
     const j: Join = { modelId, strictJoined: false, promise: undefined as unknown as Promise<PauseResult> };
     j.promise = enqueue(() => pauseOp(modelId, j));
-    join = j;
-    const clear = () => {
-      if (join === j) join = null;
-    };
-    j.promise.then(clear, clear);
+    // A join for another model is never overwritten (that pause is about to reject or be a no-op).
+    if (!join) join = j;
     return j.promise;
   }
 
@@ -729,6 +741,8 @@ export function createModelDownloadController(options: ControllerOptions): Model
         emitStrict(outcome, modelId);
         return result;
       }
+      // A held completed or failed record is reported as it is and emits nothing: its settlement
+      // already emitted (spec: "A strict stop that finds a held record").
       outcome = heldOutcome();
       if (outcome && rec.modelId) {
         // No write was asked for: rowSaved is true (spec).
@@ -749,12 +763,13 @@ export function createModelDownloadController(options: ControllerOptions): Model
   function stopForStrict(): Promise<StrictResult> {
     latch = true;
     if (!loadedOnce) return Promise.resolve({ kind: 'nothing-running', rowSaved: true });
-    if (join && !join.strictJoined) {
+    if (join && !join.strictJoined && live && join.modelId === live.modelId) {
       const j = join;
       j.strictJoined = true;
+      // If the joined pause rejects (or decided without a strict result), the strict stop still runs.
       return j.promise.then(
-        () => j.strictResult ?? ({ kind: 'not-keepable', why: 'pause-failed', rowSaved: false } as StrictResult),
-        () => ({ kind: 'not-keepable', why: 'pause-failed', rowSaved: false }) as StrictResult,
+        () => j.strictResult ?? enqueue(strictOp),
+        () => enqueue(strictOp),
       );
     }
     return enqueue(strictOp);

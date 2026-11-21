@@ -466,3 +466,38 @@ describe('download controller (hub): review round 1', () => {
     actor.stop();
   });
 });
+
+describe('download controller (hub): T-H6 transfer ends between load() and attach', () => {
+  it('a transfer that FAILS after the layout load: attach reports failed, the hub goes to failed, no task, no check', async () => {
+    const h = build();
+    const first = await startDownloading(h);
+    first.stop();
+    await h.downloads.load();
+    (h.api.checkNetwork as jest.Mock).mockClear();
+    native().failTransfer(new Error('connection lost'));
+    await flush();
+    const actor = h.spawn();
+    actor.send({ type: 'RESTORE_DOWNLOAD', modelId: A, status: 'downloading', pauseState: null, live: true });
+    await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.error?.message).toBe('connection lost');
+    expect(world.instances).toHaveLength(1);
+    expect(h.api.checkNetwork).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it('a transfer STOPPED after the layout load, before attach: not-live, behind the check with the continuation, no task before it passes', async () => {
+    const h = build();
+    const first = await startDownloading(h);
+    first.stop();
+    (h.api.checkNetwork as jest.Mock).mockResolvedValue('cellular');
+    await h.downloads.load();
+    native().endTransfer(null); // nobody asked: the settle step is queued before the attach
+    await flush();
+    const actor = h.spawn();
+    actor.send({ type: 'RESTORE_DOWNLOAD', modelId: A, status: 'downloading', pauseState: null, live: true });
+    await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+    expect(world.instances).toHaveLength(1);
+    expect(actor.getSnapshot().context.continuation).toBe(true);
+    actor.stop();
+  });
+});

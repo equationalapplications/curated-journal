@@ -1113,13 +1113,13 @@ describe('controller: review round 1', () => {
     const cases: Array<[string, (stub: { state: string; savable: jest.Mock }) => void, string]> = [
       ['completed', (st) => (st.state = 'completed'), 'completed'],
       ['error', (st) => (st.state = 'error'), 'failed'],
-      ['cancelled', (st) => (st.state = 'cancelled'), 'failed'],
+      ['cancelled', (st) => (st.state = 'cancelled'), 'stopped'],
       ['unsavable', (st) => {
         st.state = 'paused';
         st.savable.mockImplementation(() => {
           throw new Error('savable threw');
         });
-      }, 'failed'],
+      }, 'stopped'],
     ];
     for (const [name, prep, expected] of cases) {
       const k = stubKit();
@@ -1131,6 +1131,103 @@ describe('controller: review round 1', () => {
       expect(k.controller.snapshot().phase).not.toBe('active');
       void name;
     }
+  });
+});
+
+describe('controller: review round 2', () => {
+  function scanKit() {
+    let state = 'active';
+    let resolvePause!: () => void;
+    const task = {
+      get state() {
+        return state;
+      },
+      pause: jest.fn(),
+      pauseAsync: jest.fn(
+        () =>
+          new Promise<void>((r) => {
+            resolvePause = () => {
+              state = 'paused';
+              r();
+            };
+          }),
+      ),
+      cancel: jest.fn(() => {
+        if (state === 'active') state = 'cancelled';
+      }),
+      release: jest.fn(),
+      savable: jest.fn(() => P),
+      addListener: jest.fn(() => ({ remove: jest.fn() })),
+    };
+    const { store } = makeStore();
+    const driver: TransferDriver = {
+      platform: 'android',
+      start: () => ({ task: task as never, promise: new Promise(() => undefined), kind: 'started' }),
+      resume: () => ({ task: task as never, promise: new Promise(() => undefined), kind: 'resumed' }),
+      onAppState: (l) => {
+        l('active');
+        return () => undefined;
+      },
+    };
+    const controller = createModelDownloadController({
+      driver,
+      store,
+      timers: { setTimeout: () => ({}), clearTimeout: () => undefined },
+    });
+    const events: ControllerEvent[] = [];
+    controller.subscribe((e) => events.push(e));
+    return { controller, events, resolvePause: () => resolvePause() };
+  }
+
+  it('MINOR 1 a strict stop at every microtask offset after the pause settles is never a fabricated pause-failed', async () => {
+    for (let n = 0; n < 40; n++) {
+      const k = scanKit();
+      await k.controller.start(A);
+      const pausePromise = k.controller.pause(A);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      k.resolvePause();
+      for (let i = 0; i < n; i++) await Promise.resolve();
+      const strict = await k.controller.stopForStrict();
+      const pr = await pausePromise;
+      expect({ n, kind: strict.kind }).toEqual({ n, kind: 'kept' });
+      expect(strict).toMatchObject({ pauseState: P, rowSaved: true });
+      expect(pr).toMatchObject({ kind: 'paused' });
+      expect(k.events.filter((e) => e.type === 'stopped')).toHaveLength(1);
+    }
+  });
+
+  it('MINOR 1 a joined pause that rejects: the strict procedure still runs on the live transfer', async () => {
+    const t = setup();
+    await t.controller.start(A); // live transfer for A
+    const abandoned = t.controller.abandon();
+    const recordedB = t.controller.record(B, 'failed'); // no live transfer, a record for another model
+    const pauseA = t.controller.pause(A); // queued while A is live: registers the join
+    const strict = t.controller.stopForStrict(); // joins it
+    const rejected = expect(pauseA).rejects.toBeInstanceOf(Error);
+    await abandoned;
+    await recordedB;
+    await rejected;
+    const result = await strict;
+    expect(result).toEqual({ kind: 'nothing-running', rowSaved: true }); // the strict op ran, not a fabricated pause-failed
+    expect(t.controller.snapshot().stoppedForStrict).toBe(true);
+    expect(t.controller.snapshot().phase).not.toBe('active');
+  });
+
+  it('NIT the 500 ms grace re-runs after a foreground return: earlier progress never triggers the re-issue', async () => {
+    const t = setup();
+    await t.controller.start(A);
+    world.config.slowFirstPause = true;
+    const paused = t.controller.pause(A);
+    await flush();
+    await t.timers.advance(600);
+    native().emitProgress(5); // counts so far
+    t.kit.setApp('background');
+    await t.timers.advance(5_000);
+    t.kit.setApp('active');
+    await t.timers.advance(1_500); // no progress since the return
+    expect(native().pauseCalls).toBe(1);
+    native().deliverPause();
+    expect(await paused).toMatchObject({ kind: 'paused' });
   });
 });
 
