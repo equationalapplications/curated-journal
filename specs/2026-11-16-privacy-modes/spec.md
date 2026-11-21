@@ -3,6 +3,8 @@
 **Status: Draft** — first written 2026-11-16; amended the same day
 (owner answers OQ-1 through OQ-8, then review findings applied); owner
 ruling 2026-11-21 applied (note links never open in either mode).
+Opus review converged 2026-11-21 (round 11). Stays Draft until it
+shrinks to the #133 download controller and that change is reviewed.
 ROADMAP Step 1 (BINDING).
 
 How this spec moves (INTENT "How changes are made", item 1, followed
@@ -708,7 +710,7 @@ tip-jar alert pattern rule 11 already requires.)*
   message, and Share… covers Copy. Button order: **Share…** first,
   **OK** last, so OK is the primary button (the hook gives the last
   button the primary variant). Inside `GraphNodeSheet`, the dialog
-  presents above that sheet, and OK returns to it. Two variants hide
+  presents above that sheet, and OK returns to it. Two variants (an empty href wins on every platform) hide
   Share… and show **OK** only: an empty href (`[x]()`) shows "Curated
   Journal doesn't open links from your notes, in any mode. This link
   has no address. Nothing was sent."; and on web without
