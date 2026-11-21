@@ -706,6 +706,7 @@ describe('modelHubMachine', () => {
       actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
       await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
       actor.send({ type: 'PAUSE' });
+      expect(actor.getSnapshot().matches('pausing')).toBe(true); // D4: not Paused until the pause settles
       await tick();
       expect(actor.getSnapshot().matches('paused')).toBe(true);
       actor.send({ type: 'RESUME' });
@@ -762,6 +763,7 @@ describe('modelHubMachine', () => {
       actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
       await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
       actor.send({ type: 'PAUSE' });
+      expect(actor.getSnapshot().matches('pausing')).toBe(true); // D4
       await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
       expect(actor.getSnapshot().status).toBe('active');
       expect(actor.getSnapshot().context.error).toEqual({

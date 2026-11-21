@@ -40,11 +40,9 @@ describe('T-own download ownership', () => {
   it('only the controller imports the transfer functions or the store factory', () => {
     const importers = files.filter(({ text }) => specifiers(text).some((s) => /modelDownloadService$/.test(s)));
     for (const { file, text } of importers) {
-      const importLines = text
-        .split('\n')
-        .filter((l) => /import|from/.test(l))
-        .join('\n');
-      if (/\b(startDownload|resumeDownload)\b/.test(importLines)) expect(file).toBe('services/modelDownloadController.ts');
+      // Multi-line imports and re-exports included: take every `import|export ... from '...modelDownloadService'` clause.
+      const clauses = [...text.matchAll(/(?:import|export)\b[\s\S]*?\bfrom\s*['"][^'"]*modelDownloadService['"]/g)].map((m) => m[0]);
+      if (clauses.some((c) => /\b(startDownload|resumeDownload)\b/.test(c))) expect(file).toBe('services/modelDownloadController.ts');
     }
     const store = files.filter(({ text }) => /\bcreateModelDownloadStateStore\b/.test(text)).map((f) => f.file);
     expect(store.sort()).toEqual(['services/modelDownloadController.ts', 'services/modelDownloadState.ts']);

@@ -8,13 +8,14 @@ jest.mock('@/hooks/use-color-scheme', () => ({
 const mockSend = jest.fn();
 const mockClearRow = jest.fn();
 const mockReadRow = jest.fn();
+const mockRowSaved = { value: true };
 jest.mock('@/hooks/useModelHub', () => ({
   useModelHub: () => ({
     send: mockSend,
     stateValue: 'customImport',
     abandonDownload: async () => {
       await mockClearRow();
-      return { rowSaved: true };
+      return { rowSaved: mockRowSaved.value };
     },
     readDownloadRow: async () => {
       const id = await mockReadRow();
@@ -118,6 +119,7 @@ describe('model-hub custom import', () => {
     jest.clearAllMocks();
     mockOrder.length = 0;
     mockReadRow.mockResolvedValue(null);
+    mockRowSaved.value = true;
     mockSmokeTest.mockResolvedValue({ ok: true });
     mockClearRow.mockImplementation(async () => {
       mockOrder.push('clear-row');
@@ -321,6 +323,14 @@ describe('model-hub custom import', () => {
 
     it('keeps the file in the only sweep when the row clear fails', async () => {
       mockClearRow.mockRejectedValue(new Error('db down'));
+      await pressImport();
+      await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));
+      expect(mockDeleteOrphans).toHaveBeenCalledTimes(1);
+      expect(mockDeleteOrphans.mock.calls[0][0].keepModelId).toBe('fast-light');
+    });
+
+    it('treats a clear that did not land (rowSaved false) like a failed clear: the sweep keeps the file', async () => {
+      mockRowSaved.value = false;
       await pressImport();
       await waitFor(() => expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ type: 'IMPORT_SMOKE_OK' })));
       expect(mockDeleteOrphans).toHaveBeenCalledTimes(1);

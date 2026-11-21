@@ -40,9 +40,11 @@ type Row = { modelId: string | null; status: ModelDownloadStatus; pauseState: Do
 function build(opts: { row?: Row | null; network?: 'wifi' | 'cellular' | 'offline'; verified?: boolean } = {}) {
   let row: Row | null = opts.row ?? null;
   const writes: string[] = [];
+  let gateSet: Promise<void> | null = null;
   const store: StoreLike = {
     get: async () => row,
     set: async (r) => {
+      if (gateSet) await gateSet;
       writes.push(r.status);
       row = { ...r };
     },
@@ -78,6 +80,7 @@ function build(opts: { row?: Row | null; network?: 'wifi' | 'cellular' | 'offlin
       clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
     },
   });
+  const subscribeSpy = jest.spyOn(downloads, 'subscribe');
   const verified = { value: opts.verified ?? false };
   const api: ModelHubApi = {
     downloads,
@@ -92,7 +95,12 @@ function build(opts: { row?: Row | null; network?: 'wifi' | 'cellular' | 'offlin
     deleteOrphanedModelFiles: jest.fn(async () => undefined),
   };
   const spawn = () => createActor(modelHubMachine, { input: { api } }).start();
-  return { api, downloads, spawn, writes, verified, row: () => row };
+  return {
+    api, downloads, spawn, writes, verified, subscribeSpy, row: () => row,
+    setGate: (g: Promise<void> | null) => {
+      gateSet = g;
+    },
+  };
 }
 
 const native = (i?: number) => world.instances[i ?? world.instances.length - 1];
@@ -355,6 +363,106 @@ describe('download controller (hub)', () => {
     await until(() => world.instances.length === 2);
     await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
     expect(actor.getSnapshot().context.pausedReason).toBe('user');
+    actor.stop();
+  });
+});
+
+describe('download controller (hub): review round 1', () => {
+  const restoreDownloading = (actor: Actor) =>
+    actor.send({ type: 'RESTORE_DOWNLOAD', modelId: A, status: 'downloading', pauseState: null });
+
+  it('M4 a strict stop on phase none with a restored downloading row ends paused strict in each network state, with no task', async () => {
+    for (const net of ['cellular', 'offline', 'hang'] as const) {
+      world.reset();
+      const h = build({ row: { modelId: A, status: 'downloading', pauseState: null }, network: net === 'hang' ? 'wifi' : net });
+      if (net === 'hang') (h.api.checkNetwork as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+      await h.downloads.load();
+      const actor = h.spawn();
+      restoreDownloading(actor);
+      const want = net === 'cellular' ? 'cellularConfirm' : net === 'offline' ? 'awaitingWifi' : 'confirmingNetwork';
+      await waitFor(actor, (st) => st.matches(want), { timeout: 3000 });
+      expect(await h.downloads.stopForStrict()).toMatchObject({ kind: 'nothing-running' });
+      await waitFor(actor, (st) => st.matches('paused'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.pausedReason).toBe('strict');
+      expect(world.instances).toHaveLength(0);
+      actor.stop();
+    }
+  });
+
+  async function pausedThenChecking(h: ReturnType<typeof build>, resolveCheck: { fn: () => void }) {
+    const actor = await startDownloading(h);
+    send(actor, { type: 'PAUSE' });
+    await waitFor(actor, (st) => st.matches('paused'), { timeout: 3000 });
+    (h.api.checkNetwork as jest.Mock).mockImplementation(
+      () => new Promise((r) => (resolveCheck.fn = () => r('wifi'))),
+    );
+    send(actor, { type: 'RESUME' });
+    await waitFor(actor, (st) => st.matches('confirmingNetwork'), { timeout: 3000 });
+    await until(() => typeof resolveCheck.fn === 'function' && (h.api.checkNetwork as jest.Mock).mock.calls.length >= 2);
+    return actor;
+  }
+
+  it('M4 T-H9b case 3: the check wins and resume() is queued BEHIND the strict stop: refused, one task ever', async () => {
+    const h = build();
+    const rc = { fn: () => undefined as void };
+    const actor = await pausedThenChecking(h, rc);
+    rc.fn();
+    const strict = h.downloads.stopForStrict();
+    await strict;
+    await waitFor(actor, (st) => st.matches('paused'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.pausedReason).toBe('strict');
+    await flush(30);
+    expect(world.instances).toHaveLength(1);
+    expect(h.row()).toMatchObject({ status: 'paused', pauseState: expect.objectContaining({ resumeData: 'rd' }) });
+    expect(h.downloads.snapshot().stoppedForStrict).toBe(true);
+    actor.stop();
+  });
+
+  it('M4 T-H9b case 3: resume() queued AHEAD of the strict stop and not begun: refused by the latch, one task ever', async () => {
+    const h = build();
+    const rc = { fn: () => undefined as void };
+    const actor = await pausedThenChecking(h, rc);
+    let open!: () => void;
+    h.setGate(new Promise<void>((r) => (open = r)));
+    const blocker = h.downloads.record(A, 'failed'); // holds the queue on its write; keeps P
+    await flush();
+    rc.fn();
+    await waitFor(actor, (st) => st.matches('downloading'), { timeout: 3000 });
+    const strict = h.downloads.stopForStrict(); // arrives after resume() was queued, before it began
+    h.setGate(null);
+    open();
+    await Promise.all([blocker, strict]);
+    await waitFor(actor, (st) => st.matches('paused'), { timeout: 3000 });
+    expect(actor.getSnapshot().context.pausedReason).toBe('strict');
+    await flush(30);
+    expect(world.instances).toHaveLength(1);
+    expect(h.row()).toMatchObject({ status: 'paused' });
+    expect(h.downloads.snapshot().stoppedForStrict).toBe(true);
+    actor.stop();
+  });
+
+  it('M4 T-H4 second order: the completion is queued before the pause: verifying then complete, no pauseAsync', async () => {
+    const h = build();
+    const actor = await startDownloading(h);
+    h.verified.value = true;
+    native().finish();
+    send(actor, { type: 'PAUSE' });
+    await waitFor(actor, (st) => st.matches('complete'), { timeout: 3000 });
+    expect(native().pauseCalls).toBe(0);
+    expect(actor.getSnapshot().context.error).toBeNull();
+    expect(h.writes).not.toContain('paused');
+    actor.stop();
+  });
+
+  it('M4 controllerEvents subscribes once at start; only runDownload adds a subscription per download', async () => {
+    const h = build();
+    const actor = h.spawn();
+    expect(h.subscribeSpy).toHaveBeenCalledTimes(1);
+    send(actor, { type: 'SELECT_MODEL', modelId: A });
+    await waitFor(actor, (st) => st.matches('downloading'), { timeout: 3000 });
+    send(actor, { type: 'PAUSE' });
+    await waitFor(actor, (st) => st.matches('paused'), { timeout: 3000 });
+    expect(h.subscribeSpy).toHaveBeenCalledTimes(2); // root + the one runDownload
     actor.stop();
   });
 });

@@ -25,7 +25,6 @@ export type HubApiOverrides = Partial<Omit<ModelHubApi, 'downloads'>> & {
   pauseDownload?: () => Promise<DownloadPauseStateRecord | null>;
   persistDownloadState?: (record: Row) => Promise<void>;
   clearDownloadState?: () => Promise<void>;
-  readDownloadModelId?: () => Promise<CuratedModelId | null>;
   /** The row the store holds before the first load. */
   initialRow?: Row | null;
   gate?: (modelId: CuratedModelId, op: 'start' | 'resume') => { allowed: true } | { allowed: false; reason: string };
@@ -45,7 +44,6 @@ export function makeHubApi(overrides: HubApiOverrides = {}) {
     pauseDownload: pauseImpl = jest.fn(async () => DEFAULT_PAUSE),
     persistDownloadState: persistImpl = jest.fn(async () => undefined),
     clearDownloadState: clearImpl = jest.fn(async () => undefined),
-    readDownloadModelId: readImpl = jest.fn(async () => null),
     initialRow = null,
     gate,
     ...apiOverrides
@@ -55,7 +53,6 @@ export function makeHubApi(overrides: HubApiOverrides = {}) {
   const pauseDownload = jest.fn(pauseImpl);
   const persistDownloadState = jest.fn(persistImpl);
   const clearDownloadState = jest.fn(clearImpl);
-  const readDownloadModelId = jest.fn(readImpl);
   let row: Row | null = initialRow;
 
   const store: StoreLike = {
@@ -155,14 +152,12 @@ export function makeHubApi(overrides: HubApiOverrides = {}) {
     pauseDownload,
     persistDownloadState,
     clearDownloadState,
-    readDownloadModelId,
   }) as ModelHubApi & {
     startDownload: typeof startDownload;
     resumeDownload: typeof resumeDownload;
     pauseDownload: typeof pauseDownload;
     persistDownloadState: typeof persistDownloadState;
     clearDownloadState: typeof clearDownloadState;
-    readDownloadModelId: typeof readDownloadModelId;
     seedRow: (row: Row | null) => void;
   };
 }

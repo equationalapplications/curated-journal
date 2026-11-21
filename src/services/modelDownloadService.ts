@@ -3,6 +3,7 @@ import { DownloadTask, File, Paths } from 'expo-file-system';
 import type { CuratedModel } from '@/catalog/modelManifest';
 import { buildUserAgent } from '@/lib/buildUserAgent';
 import { classifyDownloadError, coerceInt64, type DownloadErrorCode } from '@/lib/downloadErrorTaxonomy';
+import type { TransferHandle } from '@/services/modelDownloadController';
 import type { DownloadPauseStateRecord } from '@/services/modelDownloadState';
 
 export type { DownloadErrorCode };
@@ -10,13 +11,6 @@ export { classifyDownloadError };
 
 export type DownloadCallbacks = {
   onProgress?: (data: { bytesWritten: number; totalBytes: number }) => void;
-};
-
-/** A started or resumed transfer, handed to the controller (the only caller). */
-export type TransferHandle = {
-  task: DownloadTask;
-  promise: Promise<File | null>;
-  kind: 'started' | 'resumed';
 };
 
 // The SDK's progress payload crosses the Int64→BigInt boundary; normalize here

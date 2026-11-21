@@ -582,10 +582,12 @@ hub pause that cross"):
      replaces `_pauseRequest` and overwrites `_resumeData`, and
      `pauseAsync()` awaits the latest request. On iOS a second
      `cancelByProducingResumeData` on a task that is already cancelled
-     yields no data (wiping the resume data) or never settles. The plan
-     picks the exact cutoff for progress events that were already in
-     flight when the pause was asked. The spec requires only that a
-     silent transfer is never re-issued.
+     yields no data (wiping the resume data) or never settles. The cutoff
+     is a 500 ms foreground grace: a progress event delivered in the
+     first 500 ms after the ask may have been emitted before it and is
+     stale, so only progress delivered between 500 ms and 1 s counts. The
+     re-issue is one-shot (it never fires twice for one pause, whatever
+     the app does in between). A silent transfer is never re-issued.
    - **The watchdog (OQ-3).** 30 s.
 2. Branch on `task.state`, never on whether the call threw (F2). When the
    watchdog fires, **re-read `task.state` first and run this same
