@@ -41,8 +41,7 @@ The cause is structural. Several independent actors start, pause,
 resume and drop downloads, and nothing puts their work in order (see
 Survey). Each fix in #117 added another rule about which actor may do
 what, in which state, and each rule opened another window. The owner
-chose (2026-11-21) to stop patching the privacy spec (relayed by the lead,
-2026-11-21) and give model downloads **one owner**: a model download controller that runs one
+chose (2026-11-21) to stop patching the privacy spec and give model downloads **one owner**: a model download controller that runs one
 operation at a time and is the only code that touches a transfer or
 the saved download row.
 
@@ -69,7 +68,7 @@ requirement here contradicts INTENT on intent. The rules it touches:
 - **Rule 11 (strict privacy: no model downloads, no exceptions; nothing
   may act before the mode is honored).** The controller does not build
   strict privacy. It makes it buildable: it is the only code that may
-  create a `DownloadTask` (I1, T-own), so #117 has one place to gate.
+  create a `DownloadTask` (I1, T-own), so #117 has one place to gate (the controller's `gate` input).
   `load()` only reads the saved row and starts nothing, so it cannot
   act before #117's mode load. `stopForStrict()` follows #117's owner
   rulings (a running download pauses at once and keeps what it can;
@@ -308,8 +307,10 @@ type ControllerSnapshot = {
 };
 ```
 
-`stoppedForStrict` is true from the moment a strict stop ends a transfer
-until the next `start()`, `resume()` or `abandon()`. It is set on the
+`stoppedForStrict` is set when `stopForStrict()` ends a transfer or
+reports a held record (`paused`, `completed` or `failed`). A strict stop
+on phase `none` does not set it. It stays set until the next `start()`,
+`resume()`, `park()`, `record()` or `abandon()`. It is set on the
 record, so it survives a hub that closes or a hub pause that wins the
 race (see "A strict stop and a hub pause that cross"). `toRestoreState`
 takes `{ modelId, status, pauseState }`; the layout composes it from
@@ -332,18 +333,27 @@ snapshot omits the pause state.
   operation's effects (transfer changes, row writes, emitted events)
   are complete before the next operation starts (I3).
 - **Joins.** A `pause()` for a transfer while a pause of that same
-  transfer is queued or running returns the same promise (promise
-  identity, T-C2). A `pause()` that joins a running `stopForStrict()`
-  returns the **pause-shaped result** of that procedure (`paused`,
-  `completed`, `failed` or `pause-failed`), never `kept` or
+  transfer is queued or running returns the same promise. Promise
+  identity (T-C2) holds only pause-to-pause. A `pause()` that joins a
+  running `stopForStrict()` is a different call shape and returns its
+  own promise, carrying the **pause-shaped result** of that procedure
+  (`paused`, `completed`, `failed` or `pause-failed`), never `kept` or
   `not-keepable`, so the hub's `pausing` `onDone` always has a case for
   it (H3). A `stopForStrict()` that joins a running `pause()` returns
   its own result shape from the same outcome. A `start()` or `resume()`
   for the model whose transfer is live attaches to it and never creates
   a second task.
-- **Lazy load.** Every operation, including `start()`, `resume()` and
-  `readRow()`, first awaits an internal `load()`. `snapshot()` before
-  the first load returns phase `none`, no model and `row: null`.
+- **Lazy load.** Every operation, including `start()`, `resume()`,
+  `attach()` and `readRow()`, first awaits an internal `load()`, with one
+  exception: `stopForStrict()` before any successful load does not wait
+  for one and does not read the row. It returns `nothing-running` at
+  once (no transfer can exist before the first successful load, because
+  only `start()` and `resume()` create one, and both load first), with
+  `rowSaved: true` because it made no write. `snapshot()` before the
+  first load returns phase `none`, no model and `row: null`. **A failed
+  first read leaves the controller unloaded.** The operation that
+  triggered it rejects with the store's error, and the next operation
+  retries the load. Nothing is cached from a failed read.
 - **No re-entry.** An operation never awaits another queued operation.
   Listeners are called inside the operation that emits, after its
   state change. Anything a listener queues runs after that operation.
@@ -358,7 +368,8 @@ snapshot omits the pause state.
   `null` result the controller did not ask for (no pause in progress)
   is handled as the `paused` branch of the pause procedure, and it emits
   `stopped` with reason `unrequested` so a hub in `downloading` is never
-  left waiting (I2).
+  left waiting (I2). A `stopped` event carries a `reason`: `strict` (from
+  `stopForStrict()`) or `unrequested` (the controller did not ask).
 - **Settlement bookkeeping.** The controller attaches
   `.then(settle, settle)` to the transfer's promise synchronously when
   the task is created, so a rejection is never unhandled (a cancelled
@@ -375,16 +386,40 @@ snapshot omits the pause state.
 `pause()` and `stopForStrict()` share this procedure when a transfer is
 `active`:
 
+0. If the task is not `active` when the procedure starts (it settled
+   between the queue check and now), skip step 1 and go to step 2 with
+   no `pauseAsync` call. `pauseAsync()` on a settled task throws at once
+   (F1).
 1. Ask for the pause (`task.pauseAsync()`) and wait for it to settle,
    fulfilled or rejected. Two timers bound the wait, and both count
    **foreground time only** (the driver's `onAppState` input: a timer is
    suspended while the app is in the background and re-armed with its
-   full window when the app becomes active, F9):
+   full window when the app becomes active, F9). The clock comes from
+   the driver's `onAppState(listener)`: it delivers the current state
+   (`AppState.currentState`) to the listener when it subscribes, and on
+   every change. **`inactive` counts as foreground**: the iOS app
+   switcher and the notification shade are transient, and the provider
+   sends only `background` and `active` to the hub (`useModelHub.tsx`),
+   so the controller sees `background` only when the app is truly
+   backgrounded. A pause that starts because of `APP_BACKGROUND` begins
+   while backgrounded, so its timers start suspended and are armed with
+   the full window at the next foreground:
    - **The re-issue (F8).** If `pauseAsync` has not settled about 1 s
-     after the pause was asked, the controller calls `task.pause()` once
-     more, if the task is still `active`. The call is wrapped, because
-     it throws once the task is no longer `active` (F1). Re-issuing is
-     harmless when the first pause is already effective.
+     after the pause was asked, **and a progress event has arrived since
+     the pause was asked** (the transfer is demonstrably still
+     running, so the first pause was lost), the controller calls
+     `task.pause()` once more, if the task is still `active`. The call
+     is wrapped, because it throws once the task is no longer `active`
+     (F1). With no progress event since the ask, it does not re-issue
+     and waits for the watchdog. A re-issue is **not** harmless when the
+     first pause is effective: every `pause()` in `NetworkTasks.js`
+     replaces `_pauseRequest` and overwrites `_resumeData`, and
+     `pauseAsync()` awaits the latest request. On iOS a second
+     `cancelByProducingResumeData` on a task that is already cancelled
+     yields no data (wiping the resume data) or never settles. The plan
+     picks the exact cutoff for progress events that were already in
+     flight when the pause was asked. The spec requires only that a
+     silent transfer is never re-issued.
    - **The watchdog (OQ-3).** 30 s.
 2. Branch on `task.state`, never on whether the call threw (F2). When the
    watchdog fires, **re-read `task.state` first and run this same
@@ -421,11 +456,11 @@ after its state change, and each outcome emits exactly one event:
 
 | Outcome | Result of `pause()` | Result of `stopForStrict()` | Event emitted |
 |---|---|---|---|
-| paused with a pause state | `paused` | `kept` | `stopped` for a strict stop, none for a plain `pause()` |
-| paused, no resume data (F5) | `paused` (pause state null) | `not-keepable` (`no-resume-data`) | `stopped` for a strict stop, none for a plain `pause()` |
+| paused with a pause state | `paused` | `kept` | `stopped` (reason `strict`) for a strict stop, none for a plain `pause()` |
+| paused, no resume data (F5) | `paused` (pause state null) | `not-keepable` (`no-resume-data`) | `stopped` (reason `strict`) for a strict stop, none for a plain `pause()` |
 | completed during the pause | `completed` | `completed` | `completed` |
 | error during the pause | `failed` | `not-keepable` (`failed`) | `failed` |
-| pause failed or timed out, cancelled | `pause-failed` | `not-keepable` (`pause-failed`) | `stopped` (strict stop), none for a plain `pause()` (the caller has the result) |
+| pause failed or timed out, cancelled | `pause-failed` | `not-keepable` (`pause-failed`) | `stopped` (reason `strict`) for a strict stop, none for a plain `pause()` (the caller has the result) |
 | unrequested `null` (no pause asked) | n/a (a settle step) | n/a | `stopped`, reason `unrequested` |
 
 A plain `pause()` emits no event for its own outcome: its caller has
@@ -434,16 +469,28 @@ a hub in `downloading` that did not ask.
 
 **A strict stop and a hub pause that cross.** The record's
 `stoppedForStrict` flag is set by the procedure whenever it ran for
-`stopForStrict()`, whichever caller got there first. If the hub's
-`pause()` ran first, `stopForStrict()` then finds a paused (or ended)
-transfer and reports from the held record (`kept` or `not-keepable`),
-with `nothing-running` only when the record is phase `none`, and it
-sets the flag. `pause()` results and the snapshot carry the flag, and
-the hub maps `paused` with the flag set to `pausedReason: 'strict'`
-(H3, H13). So the strict guarantee (no `APP_FOREGROUND` continuation,
-#117 R10d) holds even when the hub's own pause won the race. #117's
-later gate on `start` and `resume` (How #117 shrinks) is the second
-line, not the only one.
+`stopForStrict()`, whichever caller got there first. Two orders:
+
+- **The strict stop runs first, and the hub's `pause()` joins it.** The
+  `pause()` result carries `strict: true`, and the hub maps it to
+  `pausedReason: 'strict'` (H3).
+- **The hub's `pause()` ran first.** `stopForStrict()` then finds a
+  paused (or ended) transfer and reports from the held record (`kept` or
+  `not-keepable`), with `nothing-running` only when the record is phase
+  `none`, and it sets the flag. The `pause()` result was computed
+  before the flag was set, so it says `strict: false`. The strict stop
+  emits `stopped` (reason `strict`) for the held record. The hub
+  accepts it in **`pausing`** (sets `pausedReason: 'strict'`, clears
+  `resumeOnSettle`, and keeps waiting for the pause's `onDone`) and in
+  **`paused`** (relabels it `strict`), so a `stopped` that lands before
+  or after the `onDone` ends the same way (H3, H13).
+
+So the strict guarantee (no `APP_FOREGROUND` continuation, #117 R10d)
+holds even when the hub's own pause won the race. One order stays open:
+a `stopped` that lands after the `onDone` has already sent the hub on to
+`confirmingNetwork` (the `resumeOnSettle` case) finds a hub that ignores
+it. That is why #117's gate on `start` and `resume` (the `gate` input,
+under Construction) is the second line, not an optional one.
 
 ### Row writes and the failed-save rule
 
@@ -454,13 +501,17 @@ line, not the only one.
 - **Every store call is bounded at 10 s** (`timers` input). A call that
   has not settled by then counts as failed: a write is `rowSaved:
   false`, and the first read of `load()` rejects as a failed read does
-  (the layout handles that as today). A hung SQLite (the database is
+  (the layout catches it and shows an error with a Retry button, see
+  Screens). A hung SQLite (the database is
   shared with the wiki engine) therefore cannot block the queue for
   longer than the bound per call. The worst case of one `load()` queued
-  behind a pause is the 30 s watchdog (foreground time) plus the
+  behind a `pause()` is the 30 s watchdog (foreground time) plus the
   pause's own row write (10 s) plus the load's read (10 s): 50 s of
-  foreground time, plus any time the app spends in the background. The
-  layout shows its spinner for that long at most. The `pausing` screen
+  foreground time. Queued behind a `stopForStrict()` it is the
+  kill-window write (10 s), the 30 s watchdog, the `paused` write (10 s)
+  and the read (10 s): 60 s. Either figure excludes any time the app
+  spends in the background. The layout shows its spinner for that long
+  at most. The `pausing` screen
   still has no buttons (OQ-6, owner-ruled). These bounds guarantee that
   it exits.
 - **When a write fails**, the operation does not fail. Its result
@@ -490,23 +541,26 @@ guarantees.
 
 | Operation | Precondition | Effect | Guaranteed when it returns |
 |---|---|---|---|
-| `load(): Promise<ControllerSnapshot>` | none | Also awaited internally by every other operation (Lazy load). The first call in a process reads the row: `downloading` becomes phase `none` with its pause state (null, P9); `paused` becomes `paused`; any other status becomes `none` with that row. Later calls reuse the in-memory record. Each call writes any pending row again. | The snapshot is the truth for this process. No transfer was started. It rejects only when the first read fails, as `store.get()` does today. |
+| `load(): Promise<ControllerSnapshot>` | none | Also awaited internally by every other operation (Lazy load). The first call in a process reads the row: `downloading` becomes phase `none` with its pause state (null, P9); `paused` becomes `paused`; any other status becomes `none` with that row. A `failed` row holds its pause state (`RETRY` implies it, P1, P12). Later calls reuse the in-memory record. Each call writes any pending row again. | The snapshot is the truth for this process. No transfer was started. It rejects only when the first read fails, as `store.get()` does today, and then the controller stays unloaded: the next operation retries the load. |
 | `snapshot(): ControllerSnapshot` | none | sync read | — |
-| `subscribe(listener) → unsubscribe` | none | Events: `progress`, `completed`, `failed`, `stopped` (strict). Each carries the model id. | — |
+| `subscribe(listener) → unsubscribe` | none | Events: `progress`, `completed`, `failed`, `stopped` (reason `strict` or `unrequested`). Each carries the model id. | — |
 | `readRow(): Promise<Row \| null>` | none | Queued read of the row as last asked for. It replaces `readDownloadModelId` and the sweep's `store.get()`. | It reflects every earlier operation. It rejects only when the row was never loaded and the read fails. |
-| `start(modelId)` | No live transfer for another model (else it rejects with `TransferInFlightError`). A record for another model with no live transfer is replaced. | Live for this model: attach. Phase `completed` for this model: report it. Otherwise: drop any held pause state, clear `stoppedForStrict`, write `downloading` (pause state null), and create a fresh task. | `started` (a task exists and is `active`), `attached`, `completed` or `failed` (the start threw). `rowSaved` says whether the write landed. |
-| `resume(modelId)` | as `start` | Like `start`, but it resumes from the held pause state when that has resume data (the P7 guard stays in the service), and otherwise starts fresh. | `resumed`, `started`, `attached`, `completed` or `failed` |
-| `pause(modelId)` | The record is for this model or for none (else it rejects with `TransferInFlightError` or `WrongModelError`). | `active`: the pause procedure. `paused`: no-op. `completed` or `failed`: reports it. `none`: **park**, writing the row `paused` with the held pause state (P2, P3). | **No transfer is in flight.** `paused` (pause state, `rowSaved`), `completed`, `failed` or `pause-failed` |
-| `park(modelId)` | No live transfer (else it rejects with `TransferInFlightError`) | Saves the row `downloading` with **no pause state** and starts no transfer: the record becomes phase `none` for this model with a null pause state. It is the row #117's R10g needs while a continuation waits on the network. | The write was awaited. `rowSaved` says whether it landed. |
+| `start(modelId)` | No live transfer for another model (else it rejects with `TransferInFlightError`). A record for another model with no live transfer is replaced. | First the optional `gate` (Construction): a refusal returns `refused` and changes nothing. Then, live for this model: attach. Phase `completed` for this model: report it. Otherwise: drop any held pause state, clear `stoppedForStrict`, write `downloading` (pause state null), and create a fresh task. If the driver throws before a task exists, the phase becomes `failed` with the classified `error`. | `started` (a task exists and is `active`), `attached`, `completed`, `failed` (the start threw) or `refused`. `rowSaved` says whether the write landed. |
+| `resume(modelId)` | as `start` | Like `start` (the gate runs first), but it resumes from the held pause state when that has resume data (the P7 guard stays in the service), and otherwise starts fresh. The result's `kind` says which one happened. | `resumed`, `started`, `attached`, `completed`, `failed` or `refused` |
+| `attach(modelId)` | none | **Attach only: it never creates a task and never writes the row, and it is not gated** (it starts nothing). Phase `active` for this model: attach. Phase `completed` or `failed` for this model: report it. Anything else (phase `none` or `paused`, or another model): `not-live`. | `attached`, `completed`, `failed` (with `{ code, message }`) or `not-live`, each carrying the snapshot. `not-live` means the caller restores normally (a continuation behind the network check, P1). |
+| `pause(modelId)` | The record is for this model or for none. A record for another model with a live transfer rejects with `TransferInFlightError`; a record for another model with no live transfer rejects with `WrongModelError`. | `active`: the pause procedure. `paused`: no-op. `completed` or `failed`: reports it. `none`: **writes the row `paused`** with the held pause state (P2, P3) and starts nothing. | **No transfer is in flight.** `paused` (pause state, `rowSaved`), `completed`, `failed` or `pause-failed` |
+| `park(modelId)` | No live transfer (else it rejects with `TransferInFlightError`) | Saves the row `downloading` with **no pause state** and starts no transfer: the record becomes phase `none` for this model with a null pause state, and `stoppedForStrict` is cleared. It is not the pause-on-`none` case above (that writes `paused`). It is the row #117's R10g needs while a continuation waits on the network. | The write was awaited. `rowSaved` says whether it landed. |
 | `abandon()` | none | Cancels a live transfer (F4: no await), clears the row, and forgets the record. It deletes no file: the sweeps do that, as today (P5, P6, P8). | No transfer is in flight, the record is empty, and `rowSaved` says whether the clear landed |
-| `record(modelId, status)`, where `status` is `'failed'`, `'smoke-testing'` or `'smoke-failed'` | No live transfer (else it rejects with `TransferInFlightError`: a programming error, which T-C11 tests) | Writes that status. `failed` keeps the held pause state, and the others write none, as today. A `completed` or `failed` phase becomes `none`. | The write was awaited. `rowSaved` says whether it landed. |
+| `record(modelId, status)`, where `status` is `'failed'`, `'smoke-testing'` or `'smoke-failed'` | No live transfer (else it rejects with `TransferInFlightError`: a programming error, which T-C11 tests) | Writes that status. `failed` keeps the held pause state, and the others write none, as today. A `completed` or `failed` phase becomes `none`, and `stoppedForStrict` is cleared. | The write was awaited. `rowSaved` says whether it landed. |
 | `stopForStrict()` (OQ-5) | none | `active`: write `paused` with no pause state first (#117's kill window), then the pause procedure, set `stoppedForStrict`, then emit per the events table. Held record (`paused`, `completed`, `failed`): set the flag and report from the record. Phase `none`: nothing. | **No transfer is in flight.** `nothing-running`, `kept` (pause state), `not-keepable` (why: `no-resume-data`, `pause-failed` or `failed`), or `completed` (the row stays `paused` with none). Every result carries `rowSaved`, so #117 R8 can see a failed kill-window save. |
 
 **Types.** Results are discriminated unions on a `kind` field, each
 carrying `rowSaved` where a write was made. `start` and `resume` return
 `started`, `resumed` or `attached` (each carrying the snapshot, so the
-hub can seed progress), `completed`, or `failed` (carrying
-`{ code, message }`). `pause` returns `{ kind: 'paused', pauseState,
+hub can seed progress), `completed`, `refused` (carrying the gate's
+reason) or `failed` (carrying `{ code, message }`). `attach` returns
+`attached`, `completed`, `failed` or `not-live`, each with the snapshot.
+The `stopped` event carries `reason: 'strict' | 'unrequested'`. `pause` returns `{ kind: 'paused', pauseState,
 strict, rowSaved }`, `{ kind: 'completed' }`, `{ kind: 'failed', code,
 message }` or `{ kind: 'pause-failed', pauseState, strict, rowSaved }`.
 Errors are `TransferInFlightError` and `WrongModelError`, both exported
@@ -520,13 +574,32 @@ acknowledges with `record(modelId, 'failed')` or `abandon()`, which
 clear the phase (T-C10).
 
 **Construction.** The module exports
-`createModelDownloadController({ driver, store, timers })` and the
-singleton getter `getModelDownloadController()`, which builds one with
-the real driver, the real store and real timers. Tests build their own.
-`driver` supplies `start(modelId)` and `resume(modelId, pauseState)`,
-each returning `{ task, promise }` (the service's start and resume hand
-back the `DownloadTask` and its promise), and `onAppState(listener)`.
-`timers` supplies `setTimeout` and `clearTimeout`, so tests need no
+`createModelDownloadController({ driver, store, timers, gate? })` and
+the singleton getter `getModelDownloadController()`, which builds one
+with the real driver, the real store and real timers, and no gate. Tests
+build their own. `driver` supplies
+`start(modelId, { onProgress })` and
+`resume(modelId, pauseState, { onProgress })`, each returning
+`{ task, promise, kind }`. The service's start and resume hand back the
+`DownloadTask` and its promise, and `kind` is `'started'` or
+`'resumed'`, so the controller can tell a resume from the fresh start
+that the P7 guard falls back to (`resumed` is reported only when a
+resume really ran). Progress reaches the controller through that
+`onProgress` option, and the controller fans it out to subscribers.
+`driver` also supplies `onAppState(listener)`, which delivers the
+current state on subscribe (The pause procedure).
+
+**The `gate` input (#117's hook).** An optional
+`gate(modelId, op: 'start' | 'resume')` returning
+`{ allowed: true }` or `{ allowed: false, reason }` (it may be async).
+`start()` and `resume()` call it **before any write or state change**:
+before the held pause state is dropped, before the flag is cleared, and
+before the `downloading` row is written. A refusal returns `refused` and
+leaves the record and the row exactly as they were. The default is
+allow. This spec ships the input and tests it (T-C21), and nothing
+supplies one until #117 does (a strict-mode gate, Rule 11). `attach()`,
+`park()`, `pause()` and the other operations are not gated, because none
+of them starts a transfer. `timers` supplies `setTimeout` and `clearTimeout`, so tests need no
 global patching. The singleton has no reset: tests do not use it.
 
 `cancel` is not public. Every caller that stops a transfer needs a
@@ -556,7 +629,8 @@ pause procedure and `abandon()` cancel internally.
 - **I7 — Only `start()` and `resume()` start a transfer,** and they
   are called by the hub's `downloading` state, with one exception:
   #117's R10g Cancel from Settings may call `start`, `resume` and
-  `park` with the hub closed. `park` starts no transfer.
+  `park` with the hub closed. `park` starts no transfer. `attach` starts
+  none either.
 - **I8 — A cancel is immediate,** and a late settlement of an older
   generation is dropped.
 
@@ -568,32 +642,40 @@ states, target or effects.
 
 | Row | Event or state | Source | Target | Effects |
 |---|---|---|---|---|
-| H1 | `downloading` | — | — | Entry no longer writes the row (`start` and `resume` do, before the task exists, which is today's queue order). `runDownload` subscribes for its model, then calls `resume(modelId)` when the context holds a pause state with resume data, and `start(modelId)` otherwise. Its results and events map to the same machine events as before: `completed` → `DOWNLOAD_COMPLETE`, `failed` → `FAIL`, and `attached` seeds progress from the snapshot. When a `start` or `resume` result of `completed` or `failed` and the matching event could both arrive, the **result is authoritative** and the machine ignores the event for a generation it already handled (the controller emits the event only for a settlement, never for a result it returns). A new event, `TRANSFER_STOPPED`, comes from `stopped`. Cleanup only unsubscribes. It never pauses or cancels. |
+| H1 | `downloading` | — | — | Entry no longer writes the row (`start` and `resume` do, before the task exists, which is today's queue order). `runDownload` subscribes for its model, then calls `resume(modelId)` when the context holds a pause state with resume data, and `start(modelId)` otherwise. Its results and events map to the same machine events as before: `completed` → `DOWNLOAD_COMPLETE`, `failed` → `FAIL`, and `attached` seeds progress from the snapshot. When a `start` or `resume` result of `completed` or `failed` and the matching event could both arrive, the **result is authoritative** and the machine ignores the event for a generation it already handled (the controller emits the event only for a settlement, never for a result it returns). A new event, `TRANSFER_STOPPED` (carrying the `reason`), comes from `stopped`. A `start` or `resume` that rejects (`TransferInFlightError`, `WrongModelError`) maps to `FAIL`. A `refused` result is handled by #117 (How #117 shrinks). Cleanup only unsubscribes. It never pauses or cancels. |
 | H2 | `PAUSE`, `APP_BACKGROUND` | `downloading` | `pausing` | `pausedReason` becomes `user` or `background`. `resumeOnSettle: false`. Every entry to `pausing` resets `resumeOnSettle` (see H4). |
-| H3 | `pausing` (new) | — | — | Invokes `pause(modelId)`. `onDone` by result: `paused` → the context's pause state takes the result's, then `confirmingNetwork` (with `continuation`) if the reason is `background` and `resumeOnSettle` is set, otherwise `paused`. A result with `strict: true` sets `pausedReason: 'strict'` and goes to `paused` (never to the network check, H13). `completed` → `verifying`, pause state null. `failed` → `failed`, as `FAIL` does today (P12). `pause-failed` → `failed` with "Could not pause the download. Try again.", pause state kept. `onError` (an invariant error) → `failed`, with the same message. The controller has already cancelled the transfer in every one of these cases (the pause procedure, step 4), so `failed` never holds a live transfer. With reason `background`, `APP_FOREGROUND` sets `resumeOnSettle` and `APP_BACKGROUND` clears it. Every other event is ignored, so `RESUME` cannot arrive (S1, S2). |
-| H4 | Idle pauses | `confirmingNetwork` + `APP_BACKGROUND`; `cellularConfirm` + `APP_BACKGROUND`; `cellularConfirm` + `CELLULAR_CANCEL` (continuations only, as today) | `pausing` | Reason `background`, `background` or `restored`. `resumeOnSettle` is reset on **every** entry to `pausing`, these included. With no transfer, `pause()` parks. This replaces `idlePause` (P2, P3). |
-| H5 | `paused` | — | — | No invoke: `paused` is entered only once the pause has settled. `RESUME` and `APP_FOREGROUND` (reason `background`) → `confirmingNetwork`, as today. `idlePause` is removed. |
+| H3 | `pausing` (new) | — | — | Invokes `pause(modelId)`. `onDone` by result: `paused` → the context's pause state takes the result's, then `confirmingNetwork` (with `continuation`) if the reason is `background` and `resumeOnSettle` is set, otherwise `paused`. A result with `strict: true` sets `pausedReason: 'strict'` and goes to `paused` (never to the network check, H13). `completed` → `verifying`, pause state null. `failed` → `failed`, as `FAIL` does today (P12). `pause-failed` → `failed` with "Could not pause the download. Try again.", pause state kept. `onError` (an invariant error) → `failed`, with the same message. The controller has already cancelled the transfer in every one of these cases (the pause procedure, step 4), so `failed` never holds a live transfer. With reason `background`, `APP_FOREGROUND` sets `resumeOnSettle` and `APP_BACKGROUND` clears it. `TRANSFER_STOPPED` with reason `strict` sets `pausedReason: 'strict'` and clears `resumeOnSettle`, and the state keeps waiting for `onDone` (so a hub pause that a strict stop crossed ends `paused` and never reaches the network check, whichever of the two arrives first). Every other event is ignored, so `RESUME` cannot arrive (S1, S2). |
+| H4 | Idle pauses | `confirmingNetwork` + `APP_BACKGROUND`; `cellularConfirm` + `APP_BACKGROUND`; `cellularConfirm` + `CELLULAR_CANCEL` (continuations only, as today) | `pausing` | Reason `background`, `background` or `restored`. `resumeOnSettle` is reset on **every** entry to `pausing`, these included. With no transfer, `pause()` writes the row `paused` (the pause-on-`none` case). This replaces `idlePause` (P2, P3). |
+| H5 | `paused` | — | — | No invoke: `paused` is entered only once the pause has settled. `RESUME` and `APP_FOREGROUND` (reason `background`) → `confirmingNetwork`, as today. `idlePause` is removed. `TRANSFER_STOPPED` with reason `strict` relabels it: `pausedReason: 'strict'`, with the pause state from the event (H13). |
 | H6 | `failed` entry | — | — | `record(modelId, 'failed')` replaces the unawaited write, with a `.catch` so a rejection (a programming error such as `TransferInFlightError`) is logged and never unhandled. It is queued, so a quick `RETRY` that starts a download is ordered after it (S6). |
 | H7 | `smokeFailed` | — | — | Entry calls `record(modelId, 'smoke-failed')`. `CHOOSE_ANOTHER` calls `abandon()` in place of `clearDownloadState`. |
 | H8 | `SELECT_MODEL` (different model), `IMPORT_SMOKE_OK` | as today | as today | `abandon()` replaces `clearDownloadState`. It is queued ahead of any later `start` or `readRow`, so the `checkingExisting` sweep sees the cleared row. |
-| H9 | `RESTORE_DOWNLOAD` with `live: true` (new, guarded first) | `selecting` | `downloading` | The model comes from the event, with pause state null, `continuation: true` and progress from the snapshot. `start()` attaches. No network check: the transfer never stopped (OQ-1). |
+| H9 | `RESTORE_DOWNLOAD` with `live: true` (new, guarded first) | `selecting` | `downloading` | The model comes from the event, with `continuation: true` and an `attachOnly` flag. `runDownload` calls **`attach(modelId)`** and never `start()`. `attached` seeds progress from the snapshot (no network check: the transfer never stopped, OQ-1). `completed` → `DOWNLOAD_COMPLETE`, `failed` → `FAIL`. `not-live` (the transfer settled or was stopped between the layout's `load()` and this call) → `NOT_LIVE`, which goes to `confirmingNetwork` with `continuation` and the pause state from the result's snapshot, so a restore never creates a task without the check (P1). |
+| H9b | `RESTORE_DOWNLOAD` with `finished: true` (new, guarded before H9) | `selecting` | `checkingExisting` | The layout's snapshot has phase `completed`: the file finished while no hub was open, so the restore goes straight to the verify path with no network check and no new transfer (D7). The row stays `downloading` until the hub's own `record(…)` or `abandon()`. |
 | H10 | `RESTORE_DOWNLOAD` of a `paused` row | `selecting` | `paused` | As today. The controller already holds the pause state from `load()`. |
 | H11 | `runSmokeTestAndCommit` | — | — | Its writes become `record(…)` calls and its clear becomes `abandon()`. A `smoke-testing` marker that did not land (`rowSaved: false`) throws before the load, as a rejected write does today (P10). |
-| H12 | Context | — | — | `idlePause` is removed and `resumeOnSettle` is added. `pausedReason` gains `'strict'` (from `TRANSFER_STOPPED`, OQ-5). `pauseState` stays as a read-only copy, taken from controller results. It is used only to choose `resume` over `start` and for P12's guard. The controller never reads it. |
-| H13 | `TRANSFER_STOPPED` (OQ-5) | `downloading` | `paused` | `pausedReason: 'strict'`, with the pause state from the event. `APP_FOREGROUND` never continues it, because its guard requires `background` (#117 R10d). The same state is reached from H3 when `pause()` reports `strict: true`, so a hub pause that crossed a strict stop ends the same way. |
-| H14 | `ModelHubApi` | — | — | Drop `startDownload`, `resumeDownload`, `pauseDownload`, `persistDownloadState`, `clearDownloadState` and `readDownloadModelId`. Add `downloads`, the controller's public API, injected so tests can pass a controller built with `createModelDownloadController` on a fake transfer driver. `ModelHubRestoreState` and the `RESTORE_DOWNLOAD` event gain `live: true` (H9). `deleteOrphanedModelFiles` reads `downloads.readRow()`. |
+| H12 | Context | — | — | `idlePause` is removed and `resumeOnSettle` is added. `pausedReason` gains `'strict'` (from `TRANSFER_STOPPED` with reason `strict`, OQ-5). A `TRANSFER_STOPPED` with reason `unrequested` sets `pausedReason: 'user'`. `pauseState` stays as a read-only copy, taken from controller results. It is used only to choose `resume` over `start` and for P12's guard. The controller never reads it. |
+| H13 | `TRANSFER_STOPPED` (OQ-5) | `downloading` | `paused` | Reason `strict`: `pausedReason: 'strict'`. Reason `unrequested`: `pausedReason: 'user'`. The pause state comes from the event in both. `APP_FOREGROUND` never continues a `strict` pause, because its guard requires `background` (#117 R10d). A hub pause that crossed a strict stop ends the same way: through H3 when `pause()` reports `strict: true`, or through the `stopped` event accepted in `pausing` (H3) or `paused` (H5). |
+| H14 | `ModelHubApi` | — | — | Drop `startDownload`, `resumeDownload`, `pauseDownload`, `persistDownloadState`, `clearDownloadState` and `readDownloadModelId`. Add `downloads`, the controller's public API, injected so tests can pass a controller built with `createModelDownloadController` on a fake transfer driver. `ModelHubRestoreState` and the `RESTORE_DOWNLOAD` event gain `live: true` (H9) and `finished: true` (H9b). `deleteOrphanedModelFiles` reads `downloads.readRow()`. |
 
 ### Screens, provider, layout
 
 - **`_layout.tsx`.** It no longer opens SQLite or creates a store. It
   awaits `smokeTestSettled()` as today, then
-  `getModelDownloadController().load()`. A phase of `active` restores
-  `{ status: 'downloading', live: true }`. Anything else goes through
+  `getModelDownloadController().load()`. **It catches a rejection** of
+  either (a failed first read, a hung store call) and shows an error with
+  a Retry button, in place of the spinner. Today's layout has no `catch`
+  and would spin forever. Retry runs the same sequence again (the
+  controller is still unloaded after a failed read). A phase of `active`
+  restores `{ status: 'downloading', live: true }`. A phase of `completed`
+  restores `{ finished: true }` (H9b): the row still says `downloading`,
+  and sending that through the network check would prompt for cellular or
+  wait for Wi-Fi over a complete file. Anything else goes through
   `toRestoreState({ modelId, status, pauseState })`, composed from the
   snapshot's `row` and `pauseState` (the row omits the pause state), as
   today. `ModelHubRestoreState` and `RESTORE_DOWNLOAD` gain `live: true`
-  for the first case. The layout's `load()` can wait up to the bounds in
-  "Row writes" (50 s worst case); it shows its spinner meanwhile. Its "unrestorable
+  and `finished: true` for the first two cases. The layout's `load()` can wait up to the bounds in
+  "Row writes" (60 s worst case); it shows its spinner meanwhile. Its "unrestorable
   row" clear becomes `abandon()`, and it never runs while the phase is
   `active`.
 - **`useModelHub.tsx`.** `createModelHubApi` takes the controller. The
@@ -622,14 +704,16 @@ states, target or effects.
 - **D3 — A failed pause cancels the transfer** (#132, S3). The copy is
   unchanged.
 - **D4 — Pausing is a state of its own** (#127, S1, S2). `paused`,
-  with its Resume button, appears only once the pause has settled. This
-  rewrites tests whose assertions assumed an immediate `PAUSE` →
-  `paused`: `modelHubMachine.test.ts` B1, B2 and B6 (lines 667–790 at
-  `8f5f484`, which assert `paused` at once against a `pauseDownload`
-  mock) now assert `pausing` and then `paused` once the controller's
-  `pause()` settles; and the `pauseDownload` tests in
-  `modelDownloadService.test.ts` (lines 64–74) go with the function (the
-  coverage moves to T-C3, T-C5 and T-C13).
+  with its Resume button, appears only once the pause has settled. Two tests change their assertions, in
+  `modelHubMachine.test.ts` at
+  `8f5f484`: "a pause that returns null resumes with a fresh start"
+  (lines 700–720) and "pauseTask rejection lands in failed" (lines
+  757–775). They now assert `pausing` and then `paused` (or `failed`)
+  once the controller's `pause()` settles. The other tests in the B1,
+  B2 and B6 block (lines 667–793) are mock changes only. The
+  `pauseDownload` tests in `modelDownloadService.test.ts` (lines 64–75)
+  go with the function (the coverage moves to T-C3, T-C5 and T-C13). Every
+  other #125 test is a mock change only.
 - **D5 — Reopening the hub with a live transfer attaches to it** (S5,
   OQ-1). Today the restore runs the check and starts a second transfer.
 - **D6 — The import's commit-failure corner** (#125's accepted
@@ -644,9 +728,10 @@ states, target or effects.
 - **D7 — Accepted edges.** After a closed hub, a transfer that fails
   with disk-full leaves its partial on disk, because the controller
   deletes no file (P12 deletes it today only through the hub). The next
-  sweep removes it (P6, P8). A `completed` phase left by a closed hub is
-  re-reported by `start()`; if the hub's verification then fails, the
-  user sees the verify error and not a silent re-download (T-C10).
+  sweep removes it (P6, P8). A `completed` phase left by a closed hub restores straight
+  to `checkingExisting` (H9b), and a later `start()` for it still
+  reports `completed`; if the hub's verification then fails, the user
+  sees the verify error and not a silent re-download (T-C10).
 
 ## How #117 shrinks
 
@@ -671,8 +756,9 @@ stops re-specifying transfer ownership:
   a crossed hub pause (H3) replace #117's own flag.
 - **Rows that stay, as thin calls:** M1 (relabel a settled `paused`);
   M3 (Turn on and remove: `abandon()`, then #117 deletes the partial);
-  M4a (a refusal: #117 adds a gate to `start` and `resume` that returns
-  `refused` and parks); M7 and M8 (M8's row rewrite is
+  M4a (a refusal: #117 supplies the controller's `gate` input, which runs
+  before any write in `start` and `resume` and returns `refused`; the
+  hub then parks); M7 and M8 (M8's row rewrite is
   `pause(modelId)`, a park); M10; M11; R10g's Cancel from Settings, with
   the hub closed: `start()` or `resume()` after #117's network decision,
   and `park(modelId)` for the row #117 wants saved `downloading` with no
@@ -710,7 +796,12 @@ behavior and not our copy of it. The fake native task can: never settle
 a cancelled promise (F4); drop a pause issued before the first progress
 event (**drop mode**, F8); deliver its results late (a simulated
 suspension, F9); and end a transfer in `completed` or `error`. The tests
-drive the order in which native promises settle. Hub tests run the real machine against a real
+drive the order in which native promises settle. The seam
+is the two modules `NetworkTasks.js` imports: `./ExpoFileSystem` (it
+runs `new ExpoFileSystem.FileSystemDownloadTask()`, so the fake native
+task is supplied by mocking `expo-file-system/build/ExpoFileSystem`) and
+`./File` (it runs `new File(result)` on completion, so `File` is stubbed
+with a `size` by mocking `expo-file-system/build/File`). Hub tests run the real machine against a real
 controller built on that fake and an in-memory store, except where a
 row says otherwise.
 
@@ -723,7 +814,9 @@ row says otherwise.
   or `paused` lands before `downloading`).
 - **T-C2 — The join.** Two `pause()` calls during one pause: one
   `pauseAsync`, one `paused` write, and the two returned promises are
-  **the same object** (`expect(p2).toBe(p1)`). *Catches:* no join. With
+  **the same object** (`expect(p2).toBe(p1)`). Identity is asserted
+  only for pause-to-pause: a `pause()` that joins `stopForStrict()` is
+  tested in T-C14b and is a separate promise. *Catches:* no join. With
   a FIFO queue and a `paused` no-op, the second call would also return
   an equal result, so only promise identity fails without the join.
 - **T-C3 — Completion inside the pause** (S4). `pauseAsync` resolves
@@ -767,47 +860,37 @@ row says otherwise.
   guard.
 - **T-C12 — `load()`.** The row is read once per process. A second
   `load()` returns the in-memory record with no read. A pending write
-  is retried. `load()` creates no task. *Catches:* re-reading over a
-  newer in-memory truth; starting anything at load (rule 11).
+  is retried. `load()` creates no task. A rejected first read leaves the controller unloaded: the operation
+  rejects with the store's error, and the next operation reads again
+  and succeeds. A `failed` row loads with its pause state held.
+  *Catches:* re-reading over a newer in-memory truth; starting anything
+  at load (rule 11); caching a failed read; dropping a failed row's
+  pause state.
 - **T-C13 — The pause watchdog** (OQ-3, fake timers). `pauseAsync`
   never settles and the task stays `active`: after the bound, `cancel()`
   runs and the result is `pause-failed`. *Catches:* an unbounded wait
   that blocks the queue.
-- **T-C13b — The watchdog counts foreground time only** (F1, F9). The
-  app is backgrounded for longer than the bound while `pauseAsync` is
-  pending. It returns to the foreground, and `pauseAsync` then settles
-  with the task `paused`: the result is `paused` with the pause state,
-  and `cancel()` was never called. A second case: the watchdog fires on
-  a task that is already `paused` and takes the `paused` branch.
-  *Catches:* a wall-clock timer that cancels a pause that succeeded
-  (#127 again), and a cancel of a paused task.
-- **T-C15 — The lost pause** (F8). The fake's drop mode ignores a
-  `pause()` issued before the first progress event. After `start()`,
-  `pause()` is re-issued about 1 s later, and `pauseAsync` settles
-  `paused` before the watchdog. *Catches:* no re-issue (the wait runs to
-  the watchdog and the download is cancelled).
-- **T-C16 — Settlement bookkeeping.** After each terminal branch, a
-  second settle of the same promise (a `null`, a file, a rejection)
-  emits nothing and writes nothing. An unasked `null` emits `stopped`
-  (`unrequested`) and sets phase `paused`. A `completed` clears the held
-  pause state, so a following `record(id, 'failed')` writes no stale
-  resume data. A cancelled promise that rejects is never unhandled.
-  *Catches:* an unretired generation; a stale pause state after a
-  completion.
-- **T-C17 — A queued `abandon()` during a pause.** `abandon()` issued
-  while the pause procedure runs waits for it, then clears the row and
-  the record, with no transfer live. *Catches:* a re-entrant abandon.
-- **T-C18 — Never loaded.** `start()`, `resume()` and `readRow()` before
-  any `load()` await the lazy load first; `snapshot()` before it
-  returns phase `none`. *Catches:* a start that overwrites a saved
-  `paused` row before it was read.
-- **T-C19 — Store bounds.** A store call that never settles resolves as
-  `rowSaved: false` after 10 s and the queue proceeds; a first `load()`
-  read that never settles rejects after 10 s. *Catches:* a hung SQLite
-  blocking the queue (F2).
-- **T-C20 — `park()`.** It writes `downloading` with no pause state and
-  creates no task. It rejects with `TransferInFlightError` while a
-  transfer is live. *Catches:* a park that starts a transfer.
+- **T-C13b — The watchdog counts foreground time only** (F1, F9). This
+  is a **unit test with a stub task** and a fake `onAppState`, because
+  the real `NetworkTasks.js` cannot show it: its `_state = 'paused'`
+  (line 391) is set a few microtasks before `pauseAsync()` resolves, so
+  no timer can fire between them. Case 1: a pause starts while
+  foreground. The app is backgrounded for longer than the bound, then
+  returns to the foreground. The timers re-arm with their full window at
+  that point (asserted: no cancel before it elapses again), and
+  `pauseAsync` then settles with the task `paused`: the result is
+  `paused` with the pause state, and `cancel()` was never called. Case
+  2: the same, but `pauseAsync` never settles after the return: the
+  watchdog cancels after the full window of foreground time. Case 3: a
+  pause that starts on `APP_BACKGROUND` begins suspended, and counts only
+  after the foreground. Case 4: the stub task's state is `paused` and
+  `pauseAsync` never settles: the watchdog takes the `paused` branch
+  with the pause state, and `cancel()` is never called. Case 5: the
+  driver delivers `AppState.currentState` on subscribe (a controller
+  built while backgrounded starts its timers suspended), and `inactive`
+  counts as foreground. *Catches:* a wall-clock timer that cancels a
+  pause that succeeded (#127 again), a cancel of a paused task, and a
+  wrong clock at subscribe.
 - **T-C14 — `stopForStrict()`** (OQ-5). The `paused` write with no
   pause state lands before `pauseAsync`. The outcomes `kept`,
   `not-keepable` (no resume data, failed pause, failed), `completed` (the
@@ -822,6 +905,56 @@ row says otherwise.
   paused returns `kept` from the record, not `nothing-running`, and
   sets `stoppedForStrict`; `start()` clears the flag. *Catches:* a join
   that returns `kept` (a stuck `pausing`), and a lost strict flag.
+- **T-C15 — The lost pause** (F8). The fake's drop mode ignores a
+  `pause()` issued before the first progress event. After `start()`,
+  `pause()` is re-issued about 1 s later (progress kept arriving), and
+  `pauseAsync` settles `paused` before the watchdog. A second fake mode,
+  **slow but effective first pause**, delivers its pause late with no
+  progress meanwhile, and a second `pause()` on it would return null
+  resume data: the controller does **not** re-issue, the pause settles
+  `paused`, and the pause state survives with its resume data. *Catches:*
+  no re-issue (the wait runs to the watchdog and the download is
+  cancelled), and a blind re-issue that wipes the resume data (M1).
+- **T-C16 — Settlement bookkeeping.** After each terminal branch, a
+  second settle of the same promise (a `null`, a file, a rejection)
+  emits nothing and writes nothing. An unasked `null` emits `stopped`
+  (`unrequested`) and sets phase `paused`. A `completed` clears the held
+  pause state, so a following `record(id, 'failed')` writes no stale
+  resume data. A cancelled promise that rejects is never unhandled.
+  *Catches:* an unretired generation; a stale pause state after a
+  completion.
+- **T-C17 — A queued `abandon()` during a pause.** `abandon()` issued
+  while the pause procedure runs waits for it, then clears the row and
+  the record, with no transfer live. *Catches:* a re-entrant abandon.
+- **T-C18 — Never loaded.** `start()`, `resume()` and `readRow()` before
+  any `load()` await the lazy load first; `snapshot()` before it
+  returns phase `none`. `stopForStrict()` before any successful load returns `nothing-running` without reading the row. A load that fails and then succeeds is covered in T-C12. *Catches:* a start that overwrites a saved
+  `paused` row before it was read; a strict stop that waits on, or fails with, a hung load.
+- **T-C19 — Store bounds.** A store call that never settles resolves as
+  `rowSaved: false` after 10 s and the queue proceeds; a first `load()`
+  read that never settles rejects after 10 s. *Catches:* a hung SQLite
+  blocking the queue (F2).
+- **T-C20 — `park()`.** It writes `downloading` with no pause state and
+  creates no task. It rejects with `TransferInFlightError` while a
+  transfer is live. Both `park()` and `record()` clear
+  `stoppedForStrict`: after a strict stop, `park()` (or `record()`), then
+  a plain `pause()` on phase `none` returns `strict: false` and the hub
+  gets reason `user`, not `strict`. `pause()` on phase `none` writes
+  `paused`, not `downloading`. *Catches:* a park that starts a
+  transfer; a stale strict flag (M4).
+- **T-C21 — The `gate`.** With a gate that refuses, `start()` and
+  `resume()` return `refused` and change nothing: no write, no task, the
+  held pause state and `stoppedForStrict` untouched, and the row as it
+  was. With a gate that allows, they run as before. `attach()`, `park()`
+  and `pause()` do not call it. *Catches:* a gate that runs after the
+  pause state was dropped or the `downloading` row was written (the
+  refusal would destroy a kept download).
+- **T-C22 — `attach()`.** A live transfer: `attached` with the snapshot,
+  one task ever constructed, no write. Phase `completed` or `failed`
+  for the model: reported. A transfer that settled or was stopped after
+  `load()`: `not-live`, with no task created and no write, and a
+  following `resume()` is the caller's choice. *Catches:* an attach that
+  starts a transfer (it would skip the network check, P1).
 
 **Hub machine** (`__tests__/modelHubMachine.test.ts`, a new
 `describe('download controller')` block):
@@ -849,8 +982,16 @@ row says otherwise.
 - **T-H6 — Reopen with a live transfer** (S5, OQ-1). Close the hub
   mid-download, then build the layout's restore from `load()`: the
   machine is `downloading`, one task was ever constructed, progress is
-  seeded, there is no `checkNetwork` call, and Pause works. *Catches:*
-  restoring through `checkingExisting` (a second task, or a check).
+  seeded, there is no `checkNetwork` call, and Pause works. Two more cases: a
+  transfer that **fails** and one that is **stopped** between the
+  layout's `load()` and the hub's first call: the hub gets `not-live`,
+  goes to `confirmingNetwork` with the continuation, creates no task
+  before the check passes, and (cellular) shows the prompt. A snapshot of
+  phase `completed` restores to `checkingExisting` and runs verify, with
+  no check and no task (H9b). *Catches:* restoring through
+  `checkingExisting` (a second task, or a check); a `start()` in the live
+  restore (a task with no check); sending a finished file through the
+  network check.
 - **T-H7 — The at-rest invariant, by graph.** Over every state node of
   the machine (`xstate/graph`, exported by the installed `xstate`
   5.33.3), excluding the root's `SET_DISPLAY_NAME`: only `downloading`
@@ -858,9 +999,11 @@ row says otherwise.
   listed ones (a closed list asserted by source state and event), and its only
   transitions are `PAUSE` and `APP_BACKGROUND` → `pausing`,
   `DOWNLOAD_COMPLETE` → `verifying`, `FAIL` → `failed`,
-  `TRANSFER_STOPPED` → `paused`, and `DOWNLOAD_PROGRESS` (self).
-  `pausing` has no transitions except its `onDone`, `onError` and the
-  `resumeOnSettle` self-updates. *Catches:* any new edge from
+  `TRANSFER_STOPPED` → `paused`, `NOT_LIVE` → `confirmingNetwork` (H9),
+  and `DOWNLOAD_PROGRESS` (self). `pausing` has no transitions except its
+  `onDone`, `onError`, the `resumeOnSettle` self-updates and the
+  `TRANSFER_STOPPED` self-update (reason `strict`, H3). `paused` has the
+  `TRANSFER_STOPPED` relabel (H5) in addition to today's. *Catches:* any new edge from
   `downloading` or `pausing` to a state at rest, such as restoring
   today's `PAUSE` → `paused`.
 - **T-H8 — A failed save does not move the hub** (D1). A declined
@@ -869,15 +1012,22 @@ row says otherwise.
   first. *Catches:* routing `rowSaved: false` to `failed`.
 - **T-H9 — `TRANSFER_STOPPED`** (OQ-5). `stopForStrict()` under a
   running machine: `paused`, reason `strict`, the stop's pause state, no
-  second `pauseAsync`, and a later `APP_FOREGROUND` stays `paused`.
-  *Catches:* auto-continuing a strict pause; a double pause.
+  second `pauseAsync`, and a later `APP_FOREGROUND` stays `paused`. A
+  `stopped` with reason `unrequested` under a running machine goes to
+  `paused` with reason `user`. *Catches:* auto-continuing a strict
+  pause; a double pause; mapping every stop to `strict`.
 - **T-H9b — Strict stop interleaved with the hub's pause.**
   `stopForStrict()` while the machine is `pausing` from `PAUSE`, and
   again from `APP_BACKGROUND`: the machine ends `paused` with reason
   `strict` (not `user` or `background`), one `pauseAsync` ran, and a
   later `APP_FOREGROUND` stays `paused`. The reverse order (the hub's
-  pause settles first, then `stopForStrict()`) also ends with the flag
-  set and reason `strict` on the next restore. *Catches:* a join that
+  pause settles first, then `stopForStrict()`) is asserted with a **live
+  hub**: the `stopped` event (reason `strict`) arrives while the machine
+  is `pausing` (with `resumeOnSettle` set by an `APP_FOREGROUND`: it is
+  cleared, and the machine ends `paused`, not `confirmingNetwork`) and,
+  in a second case, after the machine is `paused` (reason `user`: it is
+  relabelled `strict`). A later `APP_FOREGROUND` stays `paused`, and the
+  flag is set for the next restore. *Catches:* a join that
   hands the hub a shape it cannot map (a stuck `pausing`), and a strict
   pause that the foreground then continues.
 - **T-H10 — #125's suites stay green** (P1–P13): the `describe('continued
@@ -888,7 +1038,10 @@ row says otherwise.
   `modelHubDownloadSmokeFailed.test.tsx`, `modelHubImport.test.tsx`, the
   `resumeDownload partial guard` block in `modelDownloadService.test.ts`,
   `useModelHub.test.ts` and `modelFiles.test.ts`. Their mocks move to
-  the controller's API. Their assertions change only as D1, D4 and D6
+  the controller's API. Tests that render the real layout
+  (`modelHubLayoutRestoreCellular.test.tsx`) override the controller with
+  `jest.mock('@/services/modelDownloadController')` and a getter that
+  returns a controller built on the fake driver. Their assertions change only as D1, D4 and D6
   say (D4 lists the rewritten tests).
 
 **Ownership and screens:**
@@ -910,6 +1063,10 @@ row says otherwise.
   list while `pausing` pushes the download screen. *Catches:* a
   missing entry, which would strand the list without the download
   screen.
+- **T-S3** (`_layout.tsx`). A `load()` that rejects shows the error and
+  a Retry button (no endless spinner). Retry runs again, and after a
+  successful read the hub restores. *Catches:* a layout with no `catch`
+  (a spinner forever, M7).
 
 ## Verification
 
@@ -918,7 +1075,7 @@ Automated, required for `Implemented`:
 - [ ] `npx tsc --noEmit` clean.
 - [ ] `npm run lint` shows no new errors (warnings as on `main`).
 - [ ] `npx jest --maxWorkers=2`: every suite passes, including T-C1 to
-  T-C20, T-H1 to T-H10, T-own, T-S1 and T-S2.
+  T-C22, T-H1 to T-H10, T-own, T-S1, T-S2 and T-S3.
 - [ ] RED first, as a requirement of the implementation plan: the
   plan writes the reproductions **against #125's service and machine**
   (`fix/download-cellular-continuation`, head `8f5f484`; the controller
