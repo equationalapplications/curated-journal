@@ -70,6 +70,12 @@ Owner rulings, 2026-11-16, encoded below:
   (PR [#125](https://github.com/equationalapplications/curated-journal/pull/125);
   Baseline).
 
+Owner ruling, 2026-11-21, encoded below: no link in a note opens, in
+either mode. A tap shows a dialog with the full address, **Share…** and
+**OK** (R6; supersedes OQ-3 and OQ-8). The ladder is Strict ⊂ Standard ⊂
+Connected (Names). Standard needs no rule 9 ¶2 amendment, and the
+strict-privacy mode description stays unqualified, with no iOS caveat.
+
 Lead rulings, 2026-11-16 unless dated, encoded below (the owner may
 overrule each):
 
@@ -96,7 +102,7 @@ merges later re-bumps, so this spec cites those PRs without versions.)
 ## INTENT check
 
 Checked against INTENT.md (static since 2026-11-04) and ROADMAP v1.2.
-No requirement here contradicts INTENT on intent. The check found six
+No requirement here contradicts INTENT on intent. The check found seven
 tensions. INTENT wins each one, or the owner has ruled on it, or (item
 6) the reading waits on the owner:
 
@@ -136,13 +142,16 @@ tensions. INTENT wins each one, or the owner has ruled on it, or (item
    the implementation, added to the same pull request after that.
 5. **Links in notes, and downloads that outlive the app.** Today's
    code opens a note's link on the user's tap, for any scheme. Note
-   text comes from the model or an imported bundle, never from the
-   user, so opening its links is the riskiest traffic. The owner ruled
+   text is written by the model or an imported bundle, so the app can't
+   tell a link you wrote from one it invented, and opening its links is
+   the riskiest traffic. The owner ruled
    (2026-11-21, superseding OQ-3 and OQ-8) that no link opens in any
-   mode: a tap shows an alert with the address and a Share… button.
-   Standard's traffic is then exactly what rule 9 ¶2 lists (downloads,
+   mode: a tap shows a dialog with the address and a Share… button.
+   Standard's traffic is then only the kinds rule 9 ¶2 lists (downloads,
    update checks, tips), so no INTENT amendment is needed, and the
-   on-screen copy says so (rule 12). Separately, the owner ruled (OQ-7) that iOS
+   on-screen copy says so (rule 12). A download the user started that
+   continues after reopening is read as part of "model downloads the
+   user starts"; no amendment (owner, 2026-11-21). Separately, the owner ruled (OQ-7) that iOS
    downloads run in a foreground session. That changes how a Standard
    download behaves on iOS while the app is suspended, and the owner
    accepted that cost.
@@ -157,6 +166,10 @@ tensions. INTENT wins each one, or the owner has ruled on it, or (item
    are outside it. OKF exports stay files the user hands to a picker or
    share sheet. This reading depends on #129 merging as written, and the
    owner can confirm or overrule it when ruling on #129.
+7. **The share sheet carries text, not a file.** Rule 11's share-sheet
+   exception names files. This spec reads it as covering a text
+   hand-off (a link address), per the owner ruling of 2026-11-21. No
+   amendment unless the owner wants the wording widened.
 
 Rules each requirement rests on: rule 1 (the journal works with no
 network), rule 2 (models are installed only by the user, in the model
@@ -184,7 +197,7 @@ survey is re-run on every engine bump (R17).
 | 4 | Launch-time native update check | Off: `updates.checkAutomatically: 'NEVER'` in `app.config.ts`, asserted by `__tests__/appConfig.test.ts` and checked on every built artifact (VERSIONING.md train step 4). | — | Nothing | Never runs | Never runs |
 | 5 | Tip jar (iOS, Android) | `openTipJar` in `src/lib/tipJarStore.ts` (`expo-iap` `initConnection`, `fetchProducts`, `getAvailablePurchases`, `requestPurchase`, `finishTransaction`, `endConnection`). Reached from Open and the tip buttons in `src/components/settings/TipJarSection.tsx`. Gated today by `canUseStorePurchases()` at the start and before `requestPurchase`. | Apple App Store or Google Play | The user | Allowed | Blocked (alert exists) |
 | 6 | Support link (web build only) | `Linking.openURL(SUPPORT_PAYPAL_URL)` in `TipJarSection.tsx`. Already gated by `canOpenSupportLink()`. | PayPal | The user | Allowed | Blocked (alert exists) |
-| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. Today no renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`474c7ac` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; its props leave out `rules` and `renderer`. Lint rules in `eslint.config.js` forbid value-importing the library anywhere else, including its subpaths, a dynamic `import()` and a `require()` (type imports, such as `markdownRules.tsx`'s `import type { RenderRules }`, are allowed). The wrapper passes every other prop through, `onLinkPress` included. That text comes from the model or from an imported OKF bundle. | None: after the change, nothing opens. Share… hands the address to the OS share sheet, where the user chooses | The user (a tap shows an alert and nothing more) | Nothing opens, any scheme. An alert shows the full address with Share… and OK (owner, 2026-11-21; OQ-3 and OQ-8 superseded) | Nothing opens, any scheme. The same alert, strict copy (R5) |
+| 7 | Links inside notes | `react-native-markdown-display` 7.0.2: its default `link` and `blocklink` rules call `openUrl`. Today no renderer passes `onLinkPress`, so a tap calls `Linking.openURL(href)` at once, for any scheme: `http(s)`, `mailto:`, `tel:`, other apps' schemes, and the app's own `cur://` links (markdown-it 14.3.3 drops only `javascript:`, `vbscript:`, `file:` and non-image `data:` links). Note text renders through it in `src/components/journal/JournalPane.tsx`, `src/app/entry/[factId].tsx` and `src/components/graph/GraphNodeSheet.tsx`. PR #120 (`474c7ac` on `fix/no-remote-images`) routes all three through one wrapper, `src/components/NoteMarkdown.tsx`, which forces #118's `markdownRules`; its props leave out `rules` and `renderer`. Lint rules in `eslint.config.js` forbid value-importing the library anywhere else, including its subpaths, a dynamic `import()` and a `require()` (type imports, such as `markdownRules.tsx`'s `import type { RenderRules }`, are allowed). The wrapper passes every other prop through, `onLinkPress` included. That text comes from the model or from an imported OKF bundle. | None: after the change, nothing opens. Share… hands the address to the OS share sheet, where the user chooses | The user (a tap shows a dialog and nothing more) | Nothing opens, any scheme. A dialog shows the full address with Share… and OK (owner, 2026-11-21; OQ-3 and OQ-8 superseded) | Nothing opens, any scheme. The same dialog, same copy (R6) |
 | 8 | Images inside notes | The same library's `image` rule renders `![…](url)` with `react-native-fit-image`, which fetches the URL as soon as the note is shown. By default it allows `https://` and `http://`, and it adds `https://` to a source with no scheme. | Whatever host the image names | **Nothing; it happens on its own** | Blocked by #118 (owner, OQ-4) | Blocked by #118 |
 | 9 | iOS StoreKit listeners at launch | Two sources in `expo-iap` 6.4.1, both before any JavaScript: (a) `ExpoIapAppDelegateSubscriber` creates `OpenIapModule.shared` in `didFinishLaunching`, and OpenIAP's StoreKit module then starts a `PurchaseIntent.intents` listener (iOS 16.4 and later) or adds an `SKPaymentQueue` observer (earlier iOS); (b) `ExpoIapModule`'s `OnCreate` calls `ExpoIapHelper.setupStore` when the native module is created, which adds the purchase-updated, purchase-error, promoted-product and billing-issue listeners. On Android, billing loads only on the first `initConnection`. | Apple's StoreKit on the device. This survey found no request that it sends, but cannot rule out StoreKit doing something on its own. | The app, at every launch | Runs today | Must go (owner, OQ-5): #119, MAJOR. JS cannot gate it. |
 
@@ -458,11 +471,13 @@ Notes on the table:
 - **Standard.** The default mode's on-screen name (owner, OQ-1). In
   code the mode stays `'default'`.
 - **Connected (future, informational; owner ruling 2026-11-21).** The
-  ladder is Strict ⊂ Standard ⊂ Connected. Connected is the tier of
-  ROADMAP Step 3 (sync), and takes the name sibling app Curated
-  Thoughts uses for its sync tier. Curated Thoughts' "Ephemeral"
-  (hosted AI generation) is not adopted: Curated Journal never calls a
-  hosted AI (INTENT rule 10). A future Connected spec may add opening
+  ladder is Strict ⊂ Standard ⊂ Connected. Connected is the name for
+  the less-strict tier(s) of ROADMAP Step 3 (the mode ladder; sync is
+  Steps 4–5), and takes the name sibling app Curated Thoughts uses for
+  its sync tier. Naming it does not close ROADMAP's "Shape of the sync
+  mode" open decision, which stays with the owner. Curated Thoughts'
+  "Ephemeral" (hosted AI generation) is not adopted: Curated Journal
+  never calls a hosted AI (INTENT rule 2). A future Connected spec may add opening
   note links as one of its named unlocks. This spec does not, and
   builds no Connected mode.
 
@@ -582,8 +597,7 @@ is the only place that knows the mode. It provides:
 - One gate per kind of path: `canUseStorePurchases()` (path 5, exists),
   `canOpenSupportLink()` (path 6, exists), `canDownloadModels()` (paths
   1 and 2), and `canCheckForUpdates()` (path 3). Path 7 needs no gate: no mode
-  opens a note's link, so the alert in R5 and R6 depends only on its
-  copy.
+  opens a note's link, so the dialog in R6 needs no mode check at all.
 - One error type, `PrivacyGateError`, in a module with no native
   imports, so that the hub's state machine can import it. It has a
   `reason`, `'refused'` (a gate said no) or `'stopped'` (the strict
@@ -615,9 +629,11 @@ network-capable code path in the app asks the mode before acting".)*
 
 **R5 — Strict privacy blocks every path.** In strict privacy, paths 1,
 2, 3, 5 and 6 start nothing (paths 7 and 8 are blocked in both modes:
-7 by the link alert in R6, 8 by #118). A blocked tap shows an alert that explains why and how to step
-out, and never makes a silent network call. Every alert ends "Nothing
-was sent."
+7 by the link dialog in R6, 8 by #118). A blocked tap on paths 1–6
+shows an alert that explains why and how to step out. The path 7 dialog
+(R6) says no mode opens links and offers no step-out. Neither makes a
+silent network call. Every alert and the dialog end "Nothing was
+sent."
 
 | Tap | Title | Message |
 |---|---|---|
@@ -626,7 +642,7 @@ was sent."
 | Check (app updates) | Update checks are off in strict privacy | Strict privacy keeps Curated Journal from reaching beyond this device, so it can't check for updates. To check, step out of strict privacy in Settings → Privacy, check, then step back in. Nothing was sent. |
 | Open or a tip (tip jar) | Tips are off in strict privacy | The existing copy (`STRICT_PRIVACY_TIP_MESSAGE`), changed to say "step out of strict privacy in Settings → Privacy". |
 | Support (web) | Tips are off in strict privacy | The existing `STRICT_PRIVACY_LINK_MESSAGE`, with the same Settings → Privacy change. |
-| A link in a note, any scheme (the same alert in Standard and strict; R6) | Links don't open from notes | Strict privacy keeps Curated Journal from opening links from your notes. You can copy this address and open it yourself: `<full href>`. Nothing was sent. Buttons: **Share…** and **OK**. |
+| A link in a note, any scheme (one dialog, one copy, in both modes; R6) | Links don't open from notes | Curated Journal doesn't open links from your notes, in any mode. You can share or copy this address and open it yourself: `<full href>`. Nothing was sent. Buttons: **Share…** and **OK**. |
 
 "Try again" on a failed smoke test (`smokeFailed`'s `RETRY` →
 `verifying`) is not blocked: it runs on the device and keeps working in
@@ -656,33 +672,50 @@ tip-jar alert pattern rule 11 already requires.)*
 - An abandoned download's row is cleared on a successful custom import
   and on picking a different model (BL7); Step 2 asks first (R10i).
 - **Note links never open, in either mode** (owner, 2026-11-21,
-  superseding OQ-3 and OQ-8). Note text comes from the model or an
-  imported bundle, never from the user, so opening its links would be
-  the riskiest traffic. A tap on any link in a note, for any scheme
+  superseding OQ-3 and OQ-8). Note text is written by the model or an
+  imported bundle, so the app can't tell a link you wrote from one it
+  invented, and opening its links would be the riskiest traffic. A tap
+  on any link in a note, for any scheme
   (`https`, `http`, `mailto:`, `tel:`, other apps' schemes, the app's
   own `cur://` links, no scheme), opens nothing and never calls
-  `Linking.openURL`. It shows an alert with the link's full address and
-  two buttons, **Share…** and **OK**. Standard's copy:
+  `Linking.openURL`. It shows a dialog with the link's full address and
+  two buttons, **Share…** and **OK**. One copy, in Standard and in
+  strict:
 
   > **Links don't open from notes**
-  > Curated Journal doesn't open links from your notes. You can copy
-  > this address and open it yourself: `<full href>`. Nothing was sent.
+  > Curated Journal doesn't open links from your notes, in any mode. You
+  > can share or copy this address and open it yourself: `<full href>`.
+  > Nothing was sent.
 
-  Strict's copy is in R5's table: the same title, buttons and
-  mechanics, with the strict sentence. Both are unqualified, with no
-  caveat about iOS (owner, 2026-11-21).
-- **Share…** calls react-native core `Share.share({ message: href })`;
-  the OS share sheet offers Copy. It is not `expo-clipboard`, which is
-  not installed: adding a native dependency would be a MAJOR change
+  The "unqualified, with no iOS caveat" rule (owner, 2026-11-21)
+  applies to the strict-privacy mode description (the copy under
+  Settings → Privacy), not to this dialog or to the R5 alerts.
+- **The dialog** is `useConfirmSheet` (`src/components/ui/confirm-sheet.tsx`,
+  DESIGN.md 1.6), rendered by `NoteMarkdown` through its
+  `confirmElement`. `Alert.alert` is a no-op on react-native-web, so it
+  is not used. **OK** is the `cancel`-style button, so a scrim tap or a
+  back press counts as OK. The address is shown in full and is
+  selectable (the hook's message text is not selectable on main, so
+  Step 2 adds an optional `selectable` flag to it; JS only). Inside `GraphNodeSheet`, the dialog presents above that
+  sheet. An empty href (`[x]()`) shows "This link has no address." and
+  hides Share….
+- **Share…** calls exactly `Share.share({ message: href })`, react-native
+  core. It never passes `url`, so the sheet gets a plain string and
+  fetches no link preview. The OS share sheet offers Copy. A rejection
+  is caught and ignored, and nothing is shown. On web, Share… is hidden
+  when `navigator.share` is undefined. It is not `expo-clipboard`, which
+  is not installed: adding a native dependency would be a MAJOR change
   plus the 14-day age gate. The share sheet counts as the user sending
-  something where they choose (the charter's exception, the same as an
-  export), so Share… stays available in strict.
+  something where they choose. Rule 11's exception names files; this
+  spec reads it as covering a text hand-off (a link address), per the
+  owner ruling of 2026-11-21 (INTENT check item 7). So Share… stays
+  available in strict.
 - Every note link goes through one decision point: a shared
-  `onLinkPress` that `src/components/NoteMarkdown.tsx` sets itself.
-  Its props leave `onLinkPress` out, as they already leave out
-  `rules` and `renderer` (PR #120), so no caller can replace it. It
-  reads the mode only to pick the alert's copy, and shows the alert. It
-  never returns `true`, which would make the library call
+  `onLinkPress` that `src/components/NoteMarkdown.tsx` sets itself,
+  after the props spread. Its props leave `onLinkPress` out, as they
+  already leave out `rules` and `renderer` (PR #120), so no caller can
+  replace it. It shows the dialog, and `NoteMarkdown` does not read the
+  mode. It never returns `true`, which would make the library call
   `Linking.openURL` on its own. There is no `canOpenNoteLinks()`.
 - Remote images in notes (path 8) never load, in Standard or in
   strict. The note renders `[image not loaded: <alt>]` with the
@@ -1388,8 +1421,9 @@ must pass):
     starts each path (a download start and a resume, an update check,
     opening the tip jar). So a silent spy in strict means the path was
     blocked, not that the spy was never wired up. `Linking.openURL` has
-    no Standard positive control, because no mode opens a note's link:
-    the markdown tests assert it is never called, in both modes.
+    no Standard positive control here, because no mode opens a note's
+    link. Its control is in the markdown test, where the bare library
+    fires the spy (see Markdown, below).
   - The update-check control needs two mocks. `src/lib/updateCheck.ts`
     returns `'unavailable'` before any network call when
     `__DEV__ || !Updates.isEnabled`, and under jest-expo that
@@ -1402,7 +1436,8 @@ must pass):
     (`__tests__/helpers/nodeSqliteAdapter.ts`): save a note through the
     save queue, run a Night Shift librarian pass, ask a question and
     get a cited answer, load the graph, export an OKF bundle, import
-    one, and show a note that has a remote image and a link.
+    one, and show a note that has a remote image and a link, tap the link, then
+    Share…, then OK, and assert no network spy fired.
   - Expect: every feature succeeds, and no spy fired.
   - What it shows: the app's own code starts no traffic through the
     APIs the test watches. It cannot see native code, or a library
@@ -1425,7 +1460,8 @@ must pass):
     `WebSocket`; `Image.getSize` and `Image.prefetch`; an `Image`
     `source` with a remote `uri`; and an outside `http(s)` address
     passed to `Link`, `router.push`, `router.replace` or `Redirect`.
-  - It fails if a file outside two reviewed allowlists uses one:
+  - It also watches react-native `Share` and `expo-sharing`.
+  - It fails if a file outside three reviewed allowlists uses one:
     - **Gated:** each file must import its gate from
       `@/lib/privacyMode`. Markdown renderers must use the shared
       wrapper: only `src/components/NoteMarkdown.tsx` may value-import
@@ -1440,6 +1476,14 @@ must pass):
       `src/lib/networkGate.ts` (asks only the OS) and
       `src/components/graph/GraphCanvas.web.tsx` (loads CanvasKit's
       bundled WebAssembly from the web build's own origin; web only).
+    - **User hand-off (charter exception):** files that use `Share` or
+      `expo-sharing` to give the OS share sheet something the user
+      chose to send, each with the reason written next to it:
+      `src/components/NoteMarkdown.tsx` (Share… hands a link address
+      to the share sheet on the user's tap; rule 11's exception, read
+      as covering text, INTENT check item 7) and `src/lib/okfExport.ts`
+      (the OKF export through the share sheet and the Android folder
+      picker).
   - It covers `src/` only. The survey covers libraries (R17). Together
     they cover ROADMAP Step 2's "and anything added later".
 - `__tests__/privacyMode.test.ts`, extended:
@@ -1616,13 +1660,21 @@ must pass):
   are not called in strict; the alert copy names Settings → Privacy.
 - Markdown: #118's tests stay in place. A link tap, in Standard and in
   strict, for every scheme (`https`, `http`, `mailto:`, `tel:`, another
-  app's scheme, `cur://`, no scheme), shows the alert (with the full
-  href, and the Standard or strict copy) and never calls
-  `Linking.openURL`. **Share…** calls `Share.share` with
-  `{ message: href }`; **OK** calls nothing. The library never calls
-  `Linking.openURL` itself (the shared `onLinkPress` never returns
-  `true`), and a caller cannot pass its own `onLinkPress` to
-  `NoteMarkdown`.
+  app's scheme, `cur://`, no scheme), shows the dialog (with the full
+  href; one copy in both modes) and never calls `Linking.openURL`.
+  **Share…** calls `Share.share` with exactly `{ message: href }` (no
+  `url`); a rejected `Share.share` is ignored and shows nothing; **OK**
+  calls nothing. An empty href shows "This link has no address." and no
+  Share….
+  - **Positive control for the `Linking.openURL` assertions (this test
+    only):** render the bare library with its lint rule disabled and no
+    `onLinkPress`, tap a link, and assert the `Linking.openURL` spy
+    fired. With that same spy, assert `NoteMarkdown` never fires it,
+    and assert the shared handler's return value is not `true`.
+  - A `@ts-expect-error` test: passing `onLinkPress` to `NoteMarkdown`
+    does not type-check. A runtime test: a cast-in `onLinkPress` is
+    never called, because the wrapper sets `onLinkPress` after the
+    props spread.
 - `__tests__/appConfig.test.ts` keeps asserting
   `checkAutomatically: 'NEVER'`.
 
@@ -1696,9 +1748,11 @@ status line, un-drafting or cleanup (AGENTS.md):
         download shows "Paused — strict privacy is on".
 - [ ] In Standard and in strict: tap an `https` link, a `mailto:` link
       and a `tel:` link in a note. Each shows the "Links don't open
-      from notes" alert with its full address, and opens nothing.
+      from notes" dialog with its full address, and opens nothing.
       Share… opens the OS share sheet with the address (Copy is there);
-      OK closes the alert.
+      OK closes the dialog.
+- [ ] In strict privacy, with a proxy log running: tap a note link,
+      then Share…, then Copy. Confirm no request is made.
 - [ ] Turn on strict from Settings when the download can't be kept,
       then tap Cancel on the warning. The app stays in Standard, and:
       - on Wi-Fi, the download starts over at once;
@@ -1725,9 +1779,9 @@ status line, un-drafting or cleanup (AGENTS.md):
       launch-time listeners, before and after #119. This is evidence
       for #119.
 
-## Resolved questions
+## Resolved questions (2026-11-16 and 2026-11-21)
 
-The owner answered these on 2026-11-16. Each question is kept as it was
+The owner answered these on 2026-11-16 and 2026-11-21. Each question is kept as it was
 asked, with the answer and where the spec encodes it.
 
 - **OQ-1 — The default mode's name.** *Asked:* The charter calls it
@@ -1879,14 +1933,20 @@ asked, with the answer and where the spec encodes it.
 - **Owner ruling 2026-11-21 — note links never open; tier naming; strict
   copy unqualified.** Reverses OQ-3 and supersedes OQ-8: Standard does
   not open links in notes, and neither does strict. Reason: note text
-  comes from the model or an imported OKF bundle, never from the user,
-  so opening its links is the riskiest traffic. A tap shows an alert
+  is written by the model or an imported OKF bundle, so the app can't
+  tell a link you wrote from one it invented, and opening its links is
+  the riskiest traffic. A tap shows a dialog
   with the full address and **Share…** and **OK**; Share… uses core
-  `Share.share` (no new dependency). Standard's traffic is exactly what
-  rule 9 ¶2 lists, so no INTENT amendment is needed. *Naming
+  `Share.share` (no new dependency). Standard's traffic is only the
+  kinds rule 9 ¶2 lists, so no INTENT amendment is needed. A download
+  the user started that continues after reopening is read as part of
+  "model downloads the user starts"; no amendment. Rule 11's
+  share-sheet exception names files; this ruling reads it as covering a
+  text hand-off (a link address). *Naming
   (informational):* the ladder is Strict ⊂ Standard ⊂ Connected (future,
-  ROADMAP Step 3, Curated Thoughts' name for its sync tier); Curated
-  Thoughts' "Ephemeral" is not adopted (rule 10); a future Connected
+  ROADMAP Step 3, Curated Thoughts' name for its sync tier; naming it
+  does not close the "Shape of the sync mode" open decision); Curated
+  Thoughts' "Ephemeral" is not adopted (INTENT rule 2); a future Connected
   spec may add opening note links as a named unlock. *Strict copy:* the
   on-screen strict-privacy text stays unqualified, with no iOS caveat.
   *Encoded in:* path 7, Names, the Standard and strict copy, R4, R5, R6,
@@ -1914,4 +1974,6 @@ None. The two raised in review (2026-11-16) were answered on 2026-11-21
   unqualified, with no iOS caveat. The caveat lives in the policy page
   (R15) and the iOS downloads-off alert (R5), as already written.
 - **INTENT rule 9, paragraph 2.** No amendment is needed: no link opens
-  in any mode, so Standard's traffic is exactly what ¶2 lists.
+  in any mode, so Standard's traffic is only the kinds ¶2 lists. A
+  download the user started that continues after reopening is read as
+  part of "model downloads the user starts".
