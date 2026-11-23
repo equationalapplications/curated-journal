@@ -2,7 +2,8 @@ import { assign, fromCallback, fromPromise, setup } from 'xstate';
 import { getCuratedModel, type CuratedModel, type CuratedModelId } from '@/catalog/modelManifest';
 import { classifyDownloadError, coerceInt64 } from '@/lib/downloadErrorTaxonomy';
 import type { NetworkGateState } from '@/lib/networkGate';
-import type { DownloadPauseStateRecord, ModelDownloadStatus } from '@/services/modelDownloadState';
+import type { DownloadPauseStateRecord } from '@/services/modelDownloadState';
+import type { ModelDownloadController } from '@/services/modelDownloadController';
 
 export type ModelHubMachineEvents =
   | { type: 'SELECT_MODEL'; modelId: CuratedModelId }
@@ -19,36 +20,36 @@ export type ModelHubMachineEvents =
   | { type: 'FAIL'; code: 'network' | 'disk-full' | 'unknown'; message: string }
   | { type: 'RETRY' }
   | { type: 'CHOOSE_ANOTHER' }
+  | { type: 'LEAVE_WAITING' }
   | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
   | { type: 'SET_DISPLAY_NAME'; displayName: string }
+  | { type: 'REFUSED' }
+  | { type: 'NOT_LIVE'; pauseState: DownloadPauseStateRecord | null }
+  | {
+      type: 'TRANSFER_STOPPED';
+      reason: 'strict' | 'unrequested';
+      modelId: CuratedModelId;
+      pauseState: DownloadPauseStateRecord | null;
+    }
   | {
       type: 'RESTORE_DOWNLOAD';
       modelId: CuratedModelId;
       status: 'downloading' | 'paused' | 'smoke-testing' | 'smoke-failed';
       pauseState: DownloadPauseStateRecord | null;
+      /** A transfer is running in this process: attach to it, no network check (H9). */
+      live?: boolean;
+      /** The file finished while no hub was open: verify it, no check and no transfer (H9b). */
+      finished?: boolean;
     };
 
 export type ModelHubApi = {
   checkNetwork: () => Promise<NetworkGateState>;
-  startDownload: (
-    model: CuratedModel,
-    onProgress: (p: { bytesWritten: number; totalBytes: number }) => void,
-  ) => Promise<boolean>;
-  resumeDownload: (
-    pauseState: DownloadPauseStateRecord,
-    onProgress: (p: { bytesWritten: number; totalBytes: number }) => void,
-  ) => Promise<boolean>;
-  pauseDownload: () => Promise<DownloadPauseStateRecord | null>;
+  /** The one owner of every transfer and of the saved download row. */
+  downloads: ModelDownloadController;
   verifyDownload: (model: CuratedModel) => boolean;
   deletePartialFile: (filename: string) => void;
   runSmokeTest: (model: CuratedModel) => Promise<{ ok: boolean }>;
-  persistDownloadState: (record: {
-    modelId: CuratedModelId | null;
-    status: ModelDownloadStatus;
-    pauseState: DownloadPauseStateRecord | null;
-  }) => Promise<void>;
-  clearDownloadState: () => Promise<void>;
   setModelPath: (model: CuratedModel) => Promise<void>;
   retireCurrentModel: () => Promise<RetireOutcome>;
   deleteModelFile: (path: string) => Promise<void>;
@@ -79,11 +80,20 @@ type Context = {
   progress: { bytesWritten: number; totalBytes: number };
   error: { code: ErrorCode; message: string } | null;
   pauseState: DownloadPauseStateRecord | null;
-  pausedReason: 'user' | 'background' | 'restored' | null;
+  pausedReason: 'user' | 'background' | 'restored' | 'strict' | null;
   displayName: string | null;
   smokeKilled: boolean;
-  afterCheck: 'network' | 'download';
+  /** The network check guards a continuation of an existing download (restore, resume, retry), not a fresh start. */
+  continuation: boolean;
+  /** An `APP_FOREGROUND` arrived while a background pause was still settling: continue when it does. */
+  resumeOnSettle: boolean;
+  /** The restore found a running transfer: `runDownload` attaches to it and never starts one (H9). */
+  attachOnly: boolean;
 };
+
+function classifyCode(code: string): 'network' | 'disk-full' | 'unknown' {
+  return code === 'network' || code === 'disk-full' ? code : 'unknown';
+}
 
 export function smokeFailureMessage(displayName: string, memoryLikely: boolean): string {
   return memoryLikely
@@ -129,7 +139,8 @@ async function runSmokeTestAndCommit(
   api: ModelHubApi,
   model: CuratedModel,
 ): Promise<{ ok: boolean }> {
-  await api.persistDownloadState({ modelId: model.id, status: 'smoke-testing', pauseState: null });
+  const marker = await api.downloads.record(model.id, 'smoke-testing');
+  if (!marker.rowSaved) throw new Error('Could not save the smoke-test marker');
   let result: Awaited<ReturnType<ModelHubApi['runSmokeTest']>>;
   try {
     result = await api.runSmokeTest(model);
@@ -144,19 +155,18 @@ async function runSmokeTestAndCommit(
   try {
     await api.setModelPath(model);
   } catch (cause) {
-    await api
-      .persistDownloadState({ modelId: model.id, status: 'failed', pauseState: null })
-      .catch(() => undefined);
+    await api.downloads.record(model.id, 'failed').catch(() => undefined);
     throw new ModelCommitError(cause);
   }
-  await api.clearDownloadState().catch(() => undefined);
+  await api.downloads.abandon().catch(() => undefined);
   return result;
 }
 
 function recordSmokeFailure(api: ModelHubApi, model: CuratedModel): Promise<void> {
-  return api
-    .persistDownloadState({ modelId: model.id, status: 'smoke-failed', pauseState: null })
-    .catch(() => undefined);
+  return api.downloads.record(model.id, 'smoke-failed').then(
+    () => undefined,
+    () => undefined,
+  );
 }
 
 export const modelHubMachine = setup({
@@ -169,33 +179,77 @@ export const modelHubMachine = setup({
     checkNetworkActor: fromPromise(async ({ input }: { input: { api: ModelHubApi } }) =>
       input.api.checkNetwork(),
     ),
+    controllerEvents: fromCallback(
+      ({ sendBack, input }: { sendBack: (event: ModelHubMachineEvents) => void; input: { api: ModelHubApi } }) =>
+        // The one root subscription (H1): `stopped` must reach the machine in
+        // every state, not only while `runDownload` exists.
+        input.api.downloads.subscribe((event) => {
+          if (event.type !== 'stopped') return;
+          sendBack({
+            type: 'TRANSFER_STOPPED',
+            reason: event.reason,
+            modelId: event.modelId,
+            pauseState: event.pauseState,
+          });
+        }),
+    ),
     runDownload: fromCallback(
       ({
         sendBack,
         input,
       }: {
         sendBack: (event: ModelHubMachineEvents) => void;
-        input: { api: ModelHubApi; model: CuratedModel; pauseState: DownloadPauseStateRecord | null };
+        input: {
+          api: ModelHubApi;
+          modelId: CuratedModelId;
+          pauseState: DownloadPauseStateRecord | null;
+          attachOnly: boolean;
+        };
       }) => {
         let cancelled = false;
-        const onProgress = (p: { bytesWritten: number; totalBytes: number }) => {
-          if (!cancelled) {
-            // Coerce again at this boundary: the service normalizes its own
-            // payloads, but api implementations are injected and this context
-            // is rendered with plain number arithmetic.
-            sendBack({
-              type: 'DOWNLOAD_PROGRESS',
-              bytesWritten: coerceInt64(p.bytesWritten),
-              totalBytes: coerceInt64(p.totalBytes),
-            });
-          }
+        const downloads = input.api.downloads;
+        const sendProgress = (p: { bytesWritten: number; totalBytes: number }) => {
+          if (cancelled) return;
+          // Coerce again at this boundary: this context is rendered with plain
+          // number arithmetic.
+          sendBack({
+            type: 'DOWNLOAD_PROGRESS',
+            bytesWritten: coerceInt64(p.bytesWritten),
+            totalBytes: coerceInt64(p.totalBytes),
+          });
         };
+        // Progress, completed and failed only: `stopped` goes through the root subscription.
+        const unsubscribe = downloads.subscribe((event) => {
+          if (cancelled || event.modelId !== input.modelId) return;
+          if (event.type === 'progress') sendProgress(event);
+          else if (event.type === 'completed') sendBack({ type: 'DOWNLOAD_COMPLETE' });
+          else if (event.type === 'failed') sendBack({ type: 'FAIL', code: event.code, message: event.message });
+        });
         (async () => {
           try {
-            const completed = input.pauseState?.resumeData
-              ? await input.api.resumeDownload(input.pauseState, onProgress)
-              : await input.api.startDownload(input.model, onProgress);
-            if (!cancelled && completed) sendBack({ type: 'DOWNLOAD_COMPLETE' });
+            if (input.attachOnly) {
+              const result = await downloads.attach(input.modelId);
+              if (cancelled) return;
+              if (result.kind === 'attached') sendProgress(result.snapshot.progress);
+              else if (result.kind === 'completed') sendBack({ type: 'DOWNLOAD_COMPLETE' });
+              else if (result.kind === 'failed') {
+                sendBack({
+                  type: 'FAIL',
+                  code: classifyCode(result.code),
+                  message: result.message,
+                });
+              } else sendBack({ type: 'NOT_LIVE', pauseState: result.snapshot.pauseState });
+              return;
+            }
+            const result = input.pauseState?.resumeData
+              ? await downloads.resume(input.modelId)
+              : await downloads.start(input.modelId);
+            if (cancelled) return;
+            // A result is authoritative: the controller emits an event only for a settlement.
+            if (result.kind === 'completed') sendBack({ type: 'DOWNLOAD_COMPLETE' });
+            else if (result.kind === 'failed') sendBack({ type: 'FAIL', code: result.code, message: result.message });
+            else if (result.kind === 'refused') sendBack({ type: 'REFUSED' });
+            else sendProgress(result.snapshot.progress);
           } catch (error) {
             if (!cancelled) {
               const message = error instanceof Error ? error.message : String(error);
@@ -205,27 +259,13 @@ export const modelHubMachine = setup({
         })();
         return () => {
           cancelled = true;
+          unsubscribe();
         };
       },
     ),
     pauseTask: fromPromise(
-      async ({
-        input,
-      }: {
-        input: {
-          api: ModelHubApi;
-          modelId: CuratedModelId | null;
-          pausedReason: Context['pausedReason'];
-          pauseState: DownloadPauseStateRecord | null;
-        };
-      }) => {
-        // A restored pause has no live download to pause, and its row is
-        // already persisted — hand back what was restored.
-        if (input.pausedReason === 'restored') return input.pauseState;
-        const pauseState = await input.api.pauseDownload();
-        await input.api.persistDownloadState({ modelId: input.modelId, status: 'paused', pauseState });
-        return pauseState;
-      },
+      async ({ input }: { input: { api: ModelHubApi; modelId: CuratedModelId } }) =>
+        input.api.downloads.pause(input.modelId),
     ),
     verifyTask: fromPromise(
       async ({ input }: { input: { api: ModelHubApi; model: CuratedModel } }) =>
@@ -259,8 +299,14 @@ export const modelHubMachine = setup({
     pausedReason: null,
     displayName: null,
     smokeKilled: false,
-    afterCheck: 'network' as const,
+    continuation: false,
+    resumeOnSettle: false,
+    attachOnly: false,
   }),
+  invoke: {
+    src: 'controllerEvents',
+    input: ({ context }) => ({ api: context.api }),
+  },
   on: {
     SET_DISPLAY_NAME: { actions: assign({ displayName: ({ event }) => event.displayName }) },
   },
@@ -271,26 +317,73 @@ export const modelHubMachine = setup({
           {
             guard: ({ event, context }) => event.modelId === context.currentModelId,
             target: 'checkingExisting',
-            actions: assign({
-              modelId: ({ event }) => event.modelId,
-              error: null,
-              pauseState: null,
-              pausedReason: null,
-              afterCheck: 'network' as const,
-            }),
+            actions: [
+              // Picking a different model abandons any saved continuation row
+              // (e.g. kept by LEAVE_WAITING): it would otherwise resume later.
+              ({ context, event }) => {
+                if (context.modelId && context.modelId !== event.modelId) {
+                  void context.api.downloads.abandon().catch(() => undefined);
+                }
+              },
+              assign({
+                modelId: ({ event }) => event.modelId,
+                error: null,
+                pauseState: null,
+                pausedReason: null,
+                continuation: false,
+              }),
+            ],
           },
           {
             target: 'retiringCurrent',
-            actions: assign({
-              modelId: ({ event }) => event.modelId,
-              error: null,
-              pauseState: null,
-              pausedReason: null,
-            }),
+            actions: [
+              // Picking a different model abandons any saved continuation row
+              // (e.g. kept by LEAVE_WAITING): it would otherwise resume later.
+              ({ context, event }) => {
+                if (context.modelId && context.modelId !== event.modelId) {
+                  void context.api.downloads.abandon().catch(() => undefined);
+                }
+              },
+              assign({
+                modelId: ({ event }) => event.modelId,
+                error: null,
+                // Re-picking the model whose saved row is still held keeps its
+                // resume data: it resumes (behind the network check) instead
+                // of restarting from zero over the saved row.
+                pauseState: ({ context, event }) =>
+                  event.modelId === context.modelId ? context.pauseState : null,
+                pausedReason: null,
+                continuation: ({ context, event }) =>
+                  event.modelId === context.modelId && context.pauseState !== null,
+              }),
+            ],
           },
         ],
         IMPORT_CUSTOM: { target: 'customImport' },
         RESTORE_DOWNLOAD: [
+          {
+            // H9b: the file finished while no hub was open.
+            guard: ({ event }) => event.finished === true,
+            target: 'checkingExisting',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              pauseState: ({ event }) => event.pauseState,
+              continuation: true,
+              error: null,
+            }),
+          },
+          {
+            // H9: a transfer is running in this process. Attach, no network check.
+            guard: ({ event }) => event.live === true,
+            target: 'downloading',
+            actions: assign({
+              modelId: ({ event }) => event.modelId,
+              pauseState: ({ event }) => event.pauseState,
+              continuation: true,
+              attachOnly: true,
+              error: null,
+            }),
+          },
           {
             guard: ({ event }) => event.status === 'paused',
             target: 'paused',
@@ -316,7 +409,7 @@ export const modelHubMachine = setup({
             actions: assign({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
-              afterCheck: 'download' as const,
+              continuation: true,
               error: null,
             }),
           },
@@ -335,11 +428,9 @@ export const modelHubMachine = setup({
         }),
         onDone: [
           { guard: ({ event }) => event.output === true, target: 'smokeTest' },
-          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
           { target: 'confirmingNetwork' },
         ],
         onError: [
-          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
           { target: 'confirmingNetwork' },
         ],
       },
@@ -355,7 +446,7 @@ export const modelHubMachine = setup({
           {
             guard: ({ event }) => event.output.identityCleared,
             target: 'checkingExisting',
-            actions: assign({ currentModelId: null, afterCheck: 'network' as const }),
+            actions: assign({ currentModelId: null }),
           },
           {
             // The model really was removed — only its stored identity outlived
@@ -386,11 +477,33 @@ export const modelHubMachine = setup({
       },
     },
     confirmingNetwork: {
+      on: {
+        // Nothing is downloading yet: re-pause so the next foreground re-checks.
+        APP_BACKGROUND: {
+          guard: ({ context }) => context.continuation,
+          target: 'pausing',
+          actions: assign({ pausedReason: 'background' as const }),
+        },
+        TRANSFER_STOPPED: {
+          // H15: the transfer is already stopped and the latch stays set. No controller call.
+          guard: ({ context, event }) => event.modelId === context.modelId && event.reason === 'strict',
+          target: 'paused',
+          actions: assign({
+            pausedReason: 'strict' as const,
+            continuation: false,
+            pauseState: ({ event }) => event.pauseState,
+          }),
+        },
+      },
       invoke: {
         src: 'checkNetworkActor',
         input: ({ context }) => ({ api: context.api }),
         onDone: [
-          { guard: ({ event }) => event.output === 'wifi', target: 'downloading' },
+          {
+            guard: ({ event }) => event.output === 'wifi',
+            target: 'downloading',
+            actions: assign({ attachOnly: false }),
+          },
           { guard: ({ event }) => event.output === 'cellular', target: 'cellularConfirm' },
           { target: 'awaitingWifi' },
         ],
@@ -405,31 +518,60 @@ export const modelHubMachine = setup({
       },
     },
     awaitingWifi: {
-      on: { CHECK_NETWORK: { target: 'confirmingNetwork' } },
+      on: {
+        CHECK_NETWORK: { target: 'confirmingNetwork' },
+        // The saved row stays as it is: a continuation resumes on a later open.
+        LEAVE_WAITING: { target: 'selecting' },
+        TRANSFER_STOPPED: {
+          // H15: the transfer is already stopped and the latch stays set. No controller call.
+          guard: ({ context, event }) => event.modelId === context.modelId && event.reason === 'strict',
+          target: 'paused',
+          actions: assign({
+            pausedReason: 'strict' as const,
+            continuation: false,
+            pauseState: ({ event }) => event.pauseState,
+          }),
+        },
+      },
     },
     cellularConfirm: {
       on: {
-        CELLULAR_CONFIRM: { target: 'downloading' },
-        CELLULAR_CANCEL: { target: 'selecting' },
+        CELLULAR_CONFIRM: { target: 'downloading', actions: assign({ attachOnly: false }) },
+        CELLULAR_CANCEL: [
+          {
+            // Declining a continuation keeps the download and its progress.
+            guard: ({ context }) => context.continuation,
+            target: 'pausing',
+            actions: assign({ pausedReason: 'restored' as const }),
+          },
+          { target: 'selecting' },
+        ],
+        APP_BACKGROUND: {
+          guard: ({ context }) => context.continuation,
+          target: 'pausing',
+          actions: assign({ pausedReason: 'background' as const }),
+        },
+        TRANSFER_STOPPED: {
+          // H15: the transfer is already stopped and the latch stays set. No controller call.
+          guard: ({ context, event }) => event.modelId === context.modelId && event.reason === 'strict',
+          target: 'paused',
+          actions: assign({
+            pausedReason: 'strict' as const,
+            continuation: false,
+            pauseState: ({ event }) => event.pauseState,
+          }),
+        },
       },
     },
     downloading: {
-      entry: [
-        assign({ pausedReason: null }),
-        ({ context }) => {
-          void context.api.persistDownloadState({
-            modelId: context.modelId,
-            status: 'downloading',
-            pauseState: null,
-          });
-        },
-      ],
+      entry: assign({ pausedReason: null }),
       invoke: {
         src: 'runDownload',
         input: ({ context }) => ({
           api: context.api,
-          model: getCuratedModel(context.modelId as CuratedModelId),
+          modelId: context.modelId as CuratedModelId,
           pauseState: context.pauseState,
+          attachOnly: context.attachOnly,
         }),
       },
       on: {
@@ -441,8 +583,27 @@ export const modelHubMachine = setup({
         // The resume data that got us here is spent: a later failure must not
         // RETRY by resuming from it.
         DOWNLOAD_COMPLETE: { target: 'verifying', actions: assign({ pauseState: null }) },
-        PAUSE: { target: 'paused', actions: assign({ pausedReason: 'user' }) },
-        APP_BACKGROUND: { target: 'paused', actions: assign({ pausedReason: 'background' }) },
+        PAUSE: { target: 'pausing', actions: assign({ pausedReason: 'user' as const }) },
+        APP_BACKGROUND: { target: 'pausing', actions: assign({ pausedReason: 'background' as const }) },
+        // A refusal (the strict latch or the gate) never starts anything: pause, which saves `paused`.
+        REFUSED: { target: 'pausing', actions: assign({ pausedReason: 'strict' as const }) },
+        // The attach found nothing running: restore normally, behind the network check (P1).
+        NOT_LIVE: {
+          target: 'confirmingNetwork',
+          actions: assign({
+            pauseState: ({ event }) => event.pauseState,
+            continuation: true,
+            attachOnly: false,
+          }),
+        },
+        TRANSFER_STOPPED: {
+          guard: ({ context, event }) => event.modelId === context.modelId,
+          target: 'paused',
+          actions: assign({
+            pausedReason: ({ event }) => (event.reason === 'strict' ? ('strict' as const) : ('user' as const)),
+            pauseState: ({ event }) => event.pauseState,
+          }),
+        },
         FAIL: {
           target: 'failed',
           actions: [
@@ -457,16 +618,71 @@ export const modelHubMachine = setup({
         },
       },
     },
-    paused: {
+    pausing: {
+      // Resume is not offered until the controller says no transfer is in flight.
+      entry: assign({ resumeOnSettle: false }),
       invoke: {
         src: 'pauseTask',
-        input: ({ context }) => ({
-          api: context.api,
-          modelId: context.modelId,
-          pausedReason: context.pausedReason,
-          pauseState: context.pauseState,
-        }),
-        onDone: { actions: assign({ pauseState: ({ event }) => event.output }) },
+        input: ({ context }) => ({ api: context.api, modelId: context.modelId as CuratedModelId }),
+        onDone: [
+          {
+            guard: ({ context, event }) =>
+              event.output.kind === 'paused' && (event.output.strict || context.pausedReason === 'strict'),
+            target: 'paused',
+            actions: assign({
+              pausedReason: 'strict' as const,
+              pauseState: ({ event }) => (event.output.kind === 'paused' ? event.output.pauseState : null),
+              resumeOnSettle: false,
+            }),
+          },
+          {
+            guard: ({ context, event }) =>
+              event.output.kind === 'paused' && context.pausedReason === 'background' && context.resumeOnSettle,
+            target: 'confirmingNetwork',
+            actions: assign({
+              pauseState: ({ event }) => (event.output.kind === 'paused' ? event.output.pauseState : null),
+              continuation: true,
+            }),
+          },
+          {
+            guard: ({ event }) => event.output.kind === 'paused',
+            target: 'paused',
+            actions: assign({
+              pauseState: ({ event }) => (event.output.kind === 'paused' ? event.output.pauseState : null),
+            }),
+          },
+          {
+            guard: ({ event }) => event.output.kind === 'completed',
+            target: 'verifying',
+            actions: assign({ pauseState: null }),
+          },
+          {
+            guard: ({ event }) => event.output.kind === 'failed',
+            target: 'failed',
+            actions: [
+              assign({
+                error: ({ event }) =>
+                  event.output.kind === 'failed'
+                    ? { code: classifyCode(event.output.code), message: event.output.message }
+                    : null,
+                pauseState: null,
+              }),
+              ({ context }) => {
+                if (context.error?.code === 'disk-full' && context.modelId) {
+                  context.api.deletePartialFile(getCuratedModel(context.modelId).filename);
+                }
+              },
+            ],
+          },
+          {
+            // pause-failed: the controller already cancelled the transfer.
+            target: 'failed',
+            actions: assign({
+              error: { code: 'unknown' as const, message: 'Could not pause the download. Try again.' },
+              pauseState: ({ event }) => (event.output.kind === 'pause-failed' ? event.output.pauseState : null),
+            }),
+          },
+        ],
         onError: {
           target: 'failed',
           actions: assign({
@@ -475,10 +691,36 @@ export const modelHubMachine = setup({
         },
       },
       on: {
-        RESUME: { target: 'downloading' },
         APP_FOREGROUND: {
           guard: ({ context }) => context.pausedReason === 'background',
-          target: 'downloading',
+          actions: assign({ resumeOnSettle: true }),
+        },
+        APP_BACKGROUND: {
+          guard: ({ context }) => context.pausedReason === 'background',
+          actions: assign({ resumeOnSettle: false }),
+        },
+        TRANSFER_STOPPED: {
+          guard: ({ context, event }) => event.modelId === context.modelId && event.reason === 'strict',
+          actions: assign({ pausedReason: 'strict' as const, resumeOnSettle: false }),
+        },
+      },
+    },
+    paused: {
+      on: {
+        // Resume asks first on cellular, like every continuation.
+        RESUME: { target: 'confirmingNetwork', actions: assign({ continuation: true }) },
+        APP_FOREGROUND: {
+          guard: ({ context }) => context.pausedReason === 'background',
+          target: 'confirmingNetwork',
+          actions: assign({ continuation: true }),
+        },
+        // A strict stop that arrives after the pause settled relabels it (H5).
+        TRANSFER_STOPPED: {
+          guard: ({ context, event }) => event.modelId === context.modelId && event.reason === 'strict',
+          actions: assign({
+            pausedReason: 'strict' as const,
+            pauseState: ({ event }) => event.pauseState,
+          }),
         },
       },
     },
@@ -556,13 +798,9 @@ export const modelHubMachine = setup({
           },
         }),
         ({ context }) => {
-          void context.api
-            .persistDownloadState({
-              modelId: context.modelId,
-              status: 'smoke-failed',
-              pauseState: null,
-            })
-            .catch(() => undefined);
+          if (context.modelId) {
+            void context.api.downloads.record(context.modelId, 'smoke-failed').catch(() => undefined);
+          }
         },
       ],
       on: {
@@ -575,7 +813,7 @@ export const modelHubMachine = setup({
               if (context.modelId && context.modelId !== context.currentModelId) {
                 context.api.deletePartialFile(getCuratedModel(context.modelId).filename);
               }
-              void context.api.clearDownloadState().catch(() => undefined);
+              void context.api.downloads.abandon().catch(() => undefined);
             },
             assign({ modelId: null, error: null, smokeKilled: false }),
           ],
@@ -589,6 +827,8 @@ export const modelHubMachine = setup({
           target: 'complete',
           actions: ({ context, event }) => {
             if (event.retirePath) void context.api.deleteModelFile(event.retirePath);
+            // A saved row for an abandoned curated download must not outlive the import.
+            void context.api.downloads.abandon().catch(() => undefined);
           },
         },
         IMPORT_FAILED: {
@@ -599,11 +839,12 @@ export const modelHubMachine = setup({
     },
     failed: {
       entry: ({ context }) => {
-        void context.api.persistDownloadState({
-          modelId: context.modelId,
-          status: 'failed',
-          pauseState: context.pauseState,
-        });
+        // Queued behind any other controller work, so a quick RETRY is ordered after it.
+        if (context.modelId) {
+          context.api.downloads.record(context.modelId, 'failed').catch((cause) => {
+            console.warn('[model-hub] could not record the failed download', cause);
+          });
+        }
       },
       on: {
         RETRY: [
@@ -612,7 +853,11 @@ export const modelHubMachine = setup({
             target: 'selecting',
             actions: assign({ modelId: null, pauseState: null, error: null }),
           },
-          { guard: ({ context }) => context.pauseState !== null, target: 'downloading' },
+          {
+            guard: ({ context }) => context.pauseState !== null,
+            target: 'confirmingNetwork',
+            actions: assign({ continuation: true }),
+          },
           { target: 'selecting' },
         ],
       },

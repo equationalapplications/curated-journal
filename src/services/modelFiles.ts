@@ -9,10 +9,12 @@ import { MODEL_CATALOG, type CuratedModelId } from '@/catalog/modelManifest';
  */
 export function deleteOrphanedCuratedModelFiles(input: {
   keepModelId: CuratedModelId | null;
+  /** A second model to spare (the saved download row's), or null. */
+  alsoKeepModelId?: CuratedModelId | null;
   currentModelPath: string | null;
 }): void {
   for (const model of MODEL_CATALOG) {
-    if (model.id === input.keepModelId) continue;
+    if (model.id === input.keepModelId || (input.alsoKeepModelId && model.id === input.alsoKeepModelId)) continue;
     try {
       const file = new File(Paths.document, model.filename);
       if (file.uri === input.currentModelPath) continue;

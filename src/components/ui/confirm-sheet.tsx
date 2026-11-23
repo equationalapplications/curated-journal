@@ -44,7 +44,7 @@ export function useConfirmSheet() {
   }, []);
 
   const element = options ? <ConfirmSheet options={options} onClose={close} key={key} /> : null;
-  return { confirm, confirmElement: element };
+  return { confirm, dismiss: close, confirmElement: element };
 }
 
 function ConfirmSheet({ options, onClose }: { options: Options; onClose: () => void }) {
