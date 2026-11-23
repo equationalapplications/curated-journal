@@ -21,9 +21,11 @@ literally — owner ruling 2026-11-16; AGENTS.md lifecycle):
   `Implemented`. A cleanup commit in this pull request then deletes
   `plan.md` and `LEDGER.md`, and only after that does the pull request
   leave draft. On-device checks never hold any of these steps.
-- No question is open for the owner: the two raised in review were
-  answered (2026-11-21; Open questions for the owner, at the end).
-  Step 2 waits on the owner's approval of this spec.
+- Five questions are open for the owner, raised 2026-11-23 when this
+  spec moved onto #133 (Open questions for the owner, at the end); each
+  carries a recommended default. The two raised earlier in review were
+  answered (2026-11-21). Step 2 waits on the owner's approval of this
+  spec.
 
 How to read it: what PR #125 and PR #133 already do is described once,
 in **Baseline** (items BL1–BL11 for #125, DC1–DC8 for #133). Every
@@ -470,7 +472,7 @@ that spec's.
 - `__tests__/modelDownloadService.test.ts`, the
   `describe('resumeDownload partial guard')` block (BL8);
 - `__tests__/useModelHub.test.ts` and `__tests__/modelFiles.test.ts`
-  (BL9, `readDownloadModelId`).
+  (BL9, now `readDownloadRow()`, DC8).
 
 A machine-state test alone cannot catch a prompt that never renders,
 so the screen and layout tests matter as much as the machine block.
