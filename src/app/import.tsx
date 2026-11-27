@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
@@ -15,6 +15,7 @@ import { ProgressBar } from '@/components/ui/progress';
 import { ErrorBanner } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { MAX_ZIP_UNCOMPRESSED_BYTES } from '@/lib/constants';
+import { deleteIosInboxCopy, deletePickerCopy } from '@/lib/stagingSweep';
 import { chunkedImportDump } from '@/lib/chunkedImportDump';
 import { walkMarkdownFiles } from '@/lib/walkDirectory';
 import { useJournal } from '@/contexts/JournalContext';
@@ -37,12 +38,18 @@ export default function ImportScreen() {
   // the screen's lifetime — true today (entityId is fixed per provider,
   // useWiki's instance is a context singleton) — and a dependency change
   // here would silently keep using the stale values.
+  // The picked file's original name, for deleting iOS's Inbox copy.
+  const pickedName = useRef<string | undefined>(undefined);
   const api: ImportApi = {
     pick: async () => {
       const picked = await DocumentPicker.getDocumentAsync({ type: 'application/zip' });
-      return picked.canceled || !picked.assets[0] ? null : { uri: picked.assets[0].uri };
+      if (picked.canceled || !picked.assets[0]) return null;
+      pickedName.current = picked.assets[0].name;
+      return { uri: picked.assets[0].uri };
     },
     prepare: async (uri, onPhase) => {
+      // Captured now: a cancel-and-repick during the copy overwrites the ref.
+      const pickedFileName = pickedName.current;
       const id = Crypto.randomUUID();
       const zipDest = new File(Paths.cache, `import-${id}.zip`);
       const extractDir = new Directory(Paths.cache, `import-${id}`);
@@ -62,6 +69,9 @@ export default function ImportScreen() {
         // MUST await: unzip raced this copy and opened a nonexistent file
         // ("Could not open ZIP file", nitro-unzip IOException on device).
         await new File(uri).copy(zipDest, { overwrite: true });
+        // The picker's own cache copy of the journal is no longer needed.
+        deletePickerCopy(uri);
+        deleteIosInboxCopy(pickedFileName);
         extractDir.create({ idempotent: true });
         onPhase('extracting');
         const result = await getUnzip().extract(zipDest.uri, extractDir.uri).await();
@@ -82,6 +92,10 @@ export default function ImportScreen() {
         return { dump, noteCount, cleanup };
       } catch (error) {
         cleanup();
+        // Idempotent: a failure before the post-copy delete leaves the
+        // picker's copy behind.
+        deletePickerCopy(uri);
+        deleteIosInboxCopy(pickedFileName);
         throw error;
       }
     },
