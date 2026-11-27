@@ -48,7 +48,19 @@ const HERMES_SYNTAX = {
     "This ES2023 Array method is not implemented by Hermes (React Native on Android) and will crash on device, even though Jest on Node passes. Use the ES2019 equivalent — e.g. [...xs].sort() instead of xs.toSorted().",
 };
 const EVENT_LOG_MSG =
-  "INTENT: the event log is never pruned — the engine's prune hard-deletes forgotten events; the app must never forget/erase.";
+  "INTENT: the event log is never pruned — the engine's prune hard-deletes forgotten events; the app must never forget/erase (rename non-engine members named forget/erase).";
+const RUN_PRUNE_MSG =
+  "INTENT: prune must go through useJournalWiki's wrapper, which passes retainEventsFor: null; the engine default deletes events older than 30 days.";
+const RUN_PRUNE_SYNTAX = [
+  { selector: "CallExpression[callee.property.name='runPrune']", message: RUN_PRUNE_MSG },
+  { selector: "CallExpression[callee.name='runPrune']", message: RUN_PRUNE_MSG },
+];
+const SRC_SYNTAX = [
+  HERMES_SYNTAX,
+  { selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]', message: EVENT_LOG_MSG },
+  { selector: "Identifier[name='forgotten_at']", message: EVENT_LOG_MSG },
+  { selector: "Literal[value='forgotten_at']", message: EVENT_LOG_MSG },
+];
 const ENGINE_PKGS = [
   '@equationalapplications/expo-llm-wiki',
   '@equationalapplications/react-llm-wiki',
@@ -80,20 +92,19 @@ module.exports = defineConfig([
     // [...xs].reverse() for toReversed, xs.filter for with/toSpliced.
     rules: {
       'no-restricted-syntax': ['error', HERMES_SYNTAX],
-
     },
   },
   {
     // Event-log rule (INTENT): the app never forgets/erases. Scoped to src/**;
     // no-restricted-syntax is restated with the Hermes entry because a later
     // flat-config entry for the same rule replaces the earlier one.
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx,js,jsx,mjs}'],
     rules: {
       'no-restricted-imports': [
         'error',
         ...ENGINE_PKGS.map((name) => ({
           name,
-          importNames: ['useWikiForget', 'Erase', 'EraseReport', 'EraseStepError', 'ForgetParams', 'ForgetResult', 'countForgettable'],
+          importNames: ['useWikiForget', 'EraseReport', 'EraseStepError', 'ForgetParams', 'ForgetResult'],
           message: EVENT_LOG_MSG,
         })),
       ],
@@ -102,18 +113,15 @@ module.exports = defineConfig([
         { property: 'forget', message: EVENT_LOG_MSG },
         { property: 'erase', message: EVENT_LOG_MSG },
       ],
-      'no-restricted-syntax': [
-        'error',
-        HERMES_SYNTAX,
-        {
-          selector: 'MemberExpression[computed=true][property.value=/^(forget|erase)$/]',
-          message: EVENT_LOG_MSG,
-        },
-        {
-          selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]',
-          message: EVENT_LOG_MSG,
-        },
-      ],
+      'no-restricted-syntax': ['error', ...SRC_SYNTAX, ...RUN_PRUNE_SYNTAX],
+    },
+  },
+  {
+    // Sanctioned prune sites: the wrapper (passes retainEventsFor: null) and
+    // the machine, which only calls that wrapper via its input interface.
+    files: ['src/hooks/useJournalWiki.tsx', 'src/machines/journalWikiMachine.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...SRC_SYNTAX],
     },
   },
   {
