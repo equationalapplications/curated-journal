@@ -19,6 +19,7 @@ export type ModelHubMachineEvents =
   | { type: 'FAIL'; code: 'network' | 'disk-full' | 'unknown'; message: string }
   | { type: 'RETRY' }
   | { type: 'CHOOSE_ANOTHER' }
+  | { type: 'LEAVE_WAITING' }
   | { type: 'IMPORT_SMOKE_OK'; retirePath?: string | null }
   | { type: 'IMPORT_FAILED'; message: string }
   | { type: 'SET_DISPLAY_NAME'; displayName: string }
@@ -49,6 +50,8 @@ export type ModelHubApi = {
     pauseState: DownloadPauseStateRecord | null;
   }) => Promise<void>;
   clearDownloadState: () => Promise<void>;
+  /** The saved download row's model id, or null when there is none. May reject. */
+  readDownloadModelId: () => Promise<CuratedModelId | null>;
   setModelPath: (model: CuratedModel) => Promise<void>;
   retireCurrentModel: () => Promise<RetireOutcome>;
   deleteModelFile: (path: string) => Promise<void>;
@@ -82,7 +85,10 @@ type Context = {
   pausedReason: 'user' | 'background' | 'restored' | null;
   displayName: string | null;
   smokeKilled: boolean;
-  afterCheck: 'network' | 'download';
+  /** The network check guards a continuation of an existing download (restore, resume, retry), not a fresh start. */
+  continuation: boolean;
+  /** Paused with no live download to pause (left the network check): the pause state is already the truth. */
+  idlePause: boolean;
 };
 
 export function smokeFailureMessage(displayName: string, memoryLikely: boolean): string {
@@ -217,10 +223,23 @@ export const modelHubMachine = setup({
           modelId: CuratedModelId | null;
           pausedReason: Context['pausedReason'];
           pauseState: DownloadPauseStateRecord | null;
+          idlePause: boolean;
+          continuation: boolean;
         };
       }) => {
-        // A restored pause has no live download to pause, and its row is
-        // already persisted — hand back what was restored.
+        // No live download to pause. A pause from the network check persists
+        // the row as paused with the kept pause state; a restored pause's row
+        // is already persisted.
+        if (input.idlePause) {
+          // A fresh pick has no row to hold: persisting one would trap the user in paused.
+          if (!input.continuation) return input.pauseState;
+          await input.api.persistDownloadState({
+            modelId: input.modelId,
+            status: 'paused',
+            pauseState: input.pauseState,
+          });
+          return input.pauseState;
+        }
         if (input.pausedReason === 'restored') return input.pauseState;
         const pauseState = await input.api.pauseDownload();
         await input.api.persistDownloadState({ modelId: input.modelId, status: 'paused', pauseState });
@@ -259,7 +278,8 @@ export const modelHubMachine = setup({
     pausedReason: null,
     displayName: null,
     smokeKilled: false,
-    afterCheck: 'network' as const,
+    continuation: false,
+    idlePause: false,
   }),
   on: {
     SET_DISPLAY_NAME: { actions: assign({ displayName: ({ event }) => event.displayName }) },
@@ -271,22 +291,46 @@ export const modelHubMachine = setup({
           {
             guard: ({ event, context }) => event.modelId === context.currentModelId,
             target: 'checkingExisting',
-            actions: assign({
-              modelId: ({ event }) => event.modelId,
-              error: null,
-              pauseState: null,
-              pausedReason: null,
-              afterCheck: 'network' as const,
-            }),
+            actions: [
+              // Picking a different model abandons any saved continuation row
+              // (e.g. kept by LEAVE_WAITING): it would otherwise resume later.
+              ({ context, event }) => {
+                if (context.modelId && context.modelId !== event.modelId) {
+                  void context.api.clearDownloadState().catch(() => undefined);
+                }
+              },
+              assign({
+                modelId: ({ event }) => event.modelId,
+                error: null,
+                pauseState: null,
+                pausedReason: null,
+                continuation: false,
+              }),
+            ],
           },
           {
             target: 'retiringCurrent',
-            actions: assign({
-              modelId: ({ event }) => event.modelId,
-              error: null,
-              pauseState: null,
-              pausedReason: null,
-            }),
+            actions: [
+              // Picking a different model abandons any saved continuation row
+              // (e.g. kept by LEAVE_WAITING): it would otherwise resume later.
+              ({ context, event }) => {
+                if (context.modelId && context.modelId !== event.modelId) {
+                  void context.api.clearDownloadState().catch(() => undefined);
+                }
+              },
+              assign({
+                modelId: ({ event }) => event.modelId,
+                error: null,
+                // Re-picking the model whose saved row is still held keeps its
+                // resume data: it resumes (behind the network check) instead
+                // of restarting from zero over the saved row.
+                pauseState: ({ context, event }) =>
+                  event.modelId === context.modelId ? context.pauseState : null,
+                pausedReason: null,
+                continuation: ({ context, event }) =>
+                  event.modelId === context.modelId && (context.pauseState !== null || context.continuation),
+              }),
+            ],
           },
         ],
         IMPORT_CUSTOM: { target: 'customImport' },
@@ -298,6 +342,7 @@ export const modelHubMachine = setup({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
               pausedReason: 'restored' as const,
+              idlePause: false,
               error: null,
             }),
           },
@@ -316,7 +361,7 @@ export const modelHubMachine = setup({
             actions: assign({
               modelId: ({ event }) => event.modelId,
               pauseState: ({ event }) => event.pauseState,
-              afterCheck: 'download' as const,
+              continuation: true,
               error: null,
             }),
           },
@@ -335,11 +380,9 @@ export const modelHubMachine = setup({
         }),
         onDone: [
           { guard: ({ event }) => event.output === true, target: 'smokeTest' },
-          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
           { target: 'confirmingNetwork' },
         ],
         onError: [
-          { guard: ({ context }) => context.afterCheck === 'download', target: 'downloading' },
           { target: 'confirmingNetwork' },
         ],
       },
@@ -355,7 +398,7 @@ export const modelHubMachine = setup({
           {
             guard: ({ event }) => event.output.identityCleared,
             target: 'checkingExisting',
-            actions: assign({ currentModelId: null, afterCheck: 'network' as const }),
+            actions: assign({ currentModelId: null }),
           },
           {
             // The model really was removed — only its stored identity outlived
@@ -386,6 +429,15 @@ export const modelHubMachine = setup({
       },
     },
     confirmingNetwork: {
+      on: {
+        // Nothing is downloading yet: re-pause so the next foreground re-checks
+        // (fresh starts too: a late wifi result must not start a download while
+        // backgrounded; a fresh pause persists nothing, see pauseTask).
+        APP_BACKGROUND: {
+          target: 'paused',
+          actions: assign({ pausedReason: 'background' as const, idlePause: true }),
+        },
+      },
       invoke: {
         src: 'checkNetworkActor',
         input: ({ context }) => ({ api: context.api }),
@@ -405,17 +457,39 @@ export const modelHubMachine = setup({
       },
     },
     awaitingWifi: {
-      on: { CHECK_NETWORK: { target: 'confirmingNetwork' } },
+      on: {
+        CHECK_NETWORK: { target: 'confirmingNetwork' },
+        // The saved row stays as it is: a continuation resumes on a later open.
+        LEAVE_WAITING: { target: 'selecting' },
+      },
     },
     cellularConfirm: {
       on: {
         CELLULAR_CONFIRM: { target: 'downloading' },
-        CELLULAR_CANCEL: { target: 'selecting' },
+        CELLULAR_CANCEL: [
+          {
+            // Declining a continuation keeps the download and its progress.
+            guard: ({ context }) => context.continuation,
+            target: 'paused',
+            actions: assign({ pausedReason: 'restored' as const, idlePause: true }),
+          },
+          { target: 'selecting' },
+        ],
+        // Only continuations re-pause here: a fresh pick's prompt just stays up
+        // (nothing downloads until the user taps), unlike confirmingNetwork,
+        // where a late wifi result could start a download while backgrounded.
+        APP_BACKGROUND: {
+          guard: ({ context }) => context.continuation,
+          target: 'paused',
+          actions: assign({ pausedReason: 'background' as const, idlePause: true }),
+        },
       },
     },
     downloading: {
       entry: [
-        assign({ pausedReason: null }),
+        // The network check is over once a download starts; nothing reads the
+        // flag later, and a stale true would send a later fresh pick's Cancel to paused.
+        assign({ pausedReason: null, idlePause: false, continuation: false }),
         ({ context }) => {
           void context.api.persistDownloadState({
             modelId: context.modelId,
@@ -465,6 +539,8 @@ export const modelHubMachine = setup({
           modelId: context.modelId,
           pausedReason: context.pausedReason,
           pauseState: context.pauseState,
+          idlePause: context.idlePause,
+          continuation: context.continuation,
         }),
         onDone: { actions: assign({ pauseState: ({ event }) => event.output }) },
         onError: {
@@ -475,10 +551,15 @@ export const modelHubMachine = setup({
         },
       },
       on: {
-        RESUME: { target: 'downloading' },
+        // Resume asks first on cellular, like every continuation.
+        RESUME: { target: 'confirmingNetwork', actions: assign({ continuation: true }) },
         APP_FOREGROUND: {
           guard: ({ context }) => context.pausedReason === 'background',
-          target: 'downloading',
+          target: 'confirmingNetwork',
+          // A pause from a live download (idlePause false) is a continuation; a fresh
+          // pick paused during its network check keeps continuation false; restored/held
+          // rows already carry true (set at restore/re-pick).
+          actions: assign({ continuation: ({ context }) => context.continuation || !context.idlePause }),
         },
       },
     },
@@ -589,6 +670,8 @@ export const modelHubMachine = setup({
           target: 'complete',
           actions: ({ context, event }) => {
             if (event.retirePath) void context.api.deleteModelFile(event.retirePath);
+            // A saved row for an abandoned curated download must not outlive the import.
+            void context.api.clearDownloadState().catch(() => undefined);
           },
         },
         IMPORT_FAILED: {
@@ -610,10 +693,14 @@ export const modelHubMachine = setup({
           {
             guard: ({ context }) => context.error?.code === 'disk-full',
             target: 'selecting',
-            actions: assign({ modelId: null, pauseState: null, error: null }),
+            actions: assign({ modelId: null, pauseState: null, error: null, continuation: false }),
           },
-          { guard: ({ context }) => context.pauseState !== null, target: 'downloading' },
-          { target: 'selecting' },
+          {
+            guard: ({ context }) => context.pauseState !== null,
+            target: 'confirmingNetwork',
+            actions: assign({ continuation: true }),
+          },
+          { target: 'selecting', actions: assign({ continuation: false }) },
         ],
       },
     },

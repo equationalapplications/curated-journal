@@ -35,6 +35,7 @@ function makeApi(overrides: Partial<ModelHubApi> = {}): ModelHubApi {
     deleteModelFile: jest.fn(async () => undefined),
     isLowMemoryFor: jest.fn(() => false),
     deleteOrphanedModelFiles: jest.fn(async () => undefined),
+    readDownloadModelId: jest.fn(async () => null),
     ...overrides,
   };
 }
@@ -228,12 +229,12 @@ describe('modelHubMachine', () => {
       actor.stop();
     });
 
-    it('no file on restore downloads without a network check', async () => {
+    it('no file on restore goes through the network check, then downloads on Wi-Fi with no prompt', async () => {
       const api = makeApi();
       const actor = start(api);
       actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
       await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
-      expect(api.checkNetwork).not.toHaveBeenCalled();
+      expect(api.checkNetwork).toHaveBeenCalled();
       expect(api.startDownload).toHaveBeenCalled();
       actor.stop();
     });
@@ -787,6 +788,440 @@ describe('modelHubMachine', () => {
         code: 'verify',
         message: 'Could not check the downloaded file. Try again.',
       });
+      actor.stop();
+    });
+  });
+
+  describe('continued downloads ask before using cellular data (#124)', () => {
+    const record = { url: fastLight.hfUrl, fileUri: 'file:///f.gguf', isDirectory: false, resumeData: 'rd' };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    it('restore after a kill on cellular shows cellularConfirm and downloads nothing until confirmed', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      await tick();
+      expect(api.startDownload).not.toHaveBeenCalled();
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      api.verifyDownload = jest.fn(() => true);
+      actor.send({ type: 'CELLULAR_CONFIRM' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('restore on Wi-Fi resumes from the saved pause state with no prompt', async () => {
+      const api = makeApi({ verifyDownload: jest.fn().mockReturnValueOnce(false).mockReturnValue(true) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      const seen: string[] = [];
+      actor.subscribe((s) => seen.push(String(s.value)));
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(seen).not.toContain('cellularConfirm');
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    async function backgrounded(network: 'wifi' | 'cellular') {
+      const checkNetwork = jest.fn(async () => 'wifi' as const);
+      const api = makeApi({
+        checkNetwork,
+        startDownload: jest.fn(async () => new Promise<boolean>(() => undefined)),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      checkNetwork.mockImplementation(async () => network);
+      return { api, actor };
+    }
+
+    it('foreground resume on cellular shows cellularConfirm and does not resume', async () => {
+      const { api, actor } = await backgrounded('cellular');
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.send({ type: 'CELLULAR_CONFIRM' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      await until(() => (api.resumeDownload as jest.Mock).mock.calls.length === 1);
+      actor.stop();
+    });
+
+    it('foreground resume on Wi-Fi resumes with no prompt', async () => {
+      const { api, actor } = await backgrounded('wifi');
+      const checksBefore = (api.checkNetwork as jest.Mock).mock.calls.length;
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      await until(() => (api.resumeDownload as jest.Mock).mock.calls.length === 1);
+      expect((api.checkNetwork as jest.Mock).mock.calls.length).toBe(checksBefore + 1);
+      actor.stop();
+    });
+
+    it('foreground decline keeps the download paused with its resume data; Resume asks again on cellular', async () => {
+      const { api, actor } = await backgrounded('cellular');
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      expect(actor.getSnapshot().context.pausedReason).toBe('restored');
+      expect(actor.getSnapshot().context.pauseState).toEqual(expect.objectContaining({ resumeData: 'rd' }));
+      expect(api.persistDownloadState).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'paused', pauseState: expect.objectContaining({ resumeData: 'rd' }) }),
+      );
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('Resume on Wi-Fi resumes with no prompt', async () => {
+      const api = makeApi({ verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      const seen: string[] = [];
+      actor.subscribe((s) => seen.push(String(s.value)));
+      actor.send({ type: 'RESUME' });
+      await until(() => (api.resumeDownload as jest.Mock).mock.calls.length === 1);
+      expect(seen).not.toContain('cellularConfirm');
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      actor.stop();
+    });
+
+    it('declining a fresh download still returns to selecting', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('declining a restore keeps it paused and persists the paused row with its pause state', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      expect(actor.getSnapshot().context.pauseState).toEqual(record);
+      expect(api.persistDownloadState).toHaveBeenCalledWith({ modelId: 'fast-light', status: 'paused', pauseState: record });
+      actor.stop();
+    });
+
+    it('APP_BACKGROUND during the network check re-pauses; the next foreground re-checks', async () => {
+      let release: (v: 'wifi') => void = () => undefined;
+      const checkNetwork = jest.fn(() => new Promise<'wifi'>((r) => { release = r; }));
+      const api = makeApi({ checkNetwork, verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      expect(actor.getSnapshot().context.pausedReason).toBe('background');
+      expect(actor.getSnapshot().context.pauseState).toEqual(record);
+      expect(api.pauseDownload).not.toHaveBeenCalled();
+      release('wifi');
+      await tick();
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      expect(checkNetwork).toHaveBeenCalledTimes(2);
+      actor.stop();
+    });
+
+    it('APP_BACKGROUND during a fresh start network check does not start the download', async () => {
+      let release: (v: 'wifi') => void = () => undefined;
+      const checkNetwork = jest.fn(() => new Promise<'wifi'>((r) => { release = r; }));
+      const api = makeApi({ checkNetwork });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      release('wifi');
+      await tick();
+      expect(api.startDownload).not.toHaveBeenCalled();
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      expect(api.persistDownloadState).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
+      actor.stop();
+    });
+
+    it('fresh pick backgrounded during the check, foregrounded offline: LEAVE_WAITING persists no paused row', async () => {
+      let release: (v: 'wifi') => void = () => undefined;
+      let calls = 0;
+      const checkNetwork = jest.fn(() => {
+        calls += 1;
+        return calls === 1 ? new Promise<'wifi'>((r) => { release = r; }) : Promise.resolve('offline' as const);
+      });
+      const api = makeApi({ checkNetwork, verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      release('wifi');
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      await tick();
+      expect(api.persistDownloadState).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
+      actor.stop();
+    });
+
+    it('live download backgrounded (pauseDownload null), foregrounded on cellular: Cancel returns to paused', async () => {
+      let net: 'wifi' | 'cellular' = 'wifi';
+      const api = makeApi({
+        checkNetwork: jest.fn(async () => net),
+        pauseDownload: jest.fn(async () => null),
+        startDownload: jest.fn(() => new Promise<boolean>(() => undefined)),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      net = 'cellular';
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('foreground before pauseTask resolves, on cellular: Cancel returns to paused', async () => {
+      let net: 'wifi' | 'cellular' = 'wifi';
+      let releasePause: () => void = () => undefined;
+      const api = makeApi({
+        checkNetwork: jest.fn(async () => net),
+        startDownload: jest.fn(() => new Promise<boolean>(() => undefined)),
+        pauseDownload: jest.fn(
+          () => new Promise<never>((r) => {
+            releasePause = () => (r as (v: unknown) => void)({ url: fastLight.hfUrl, fileUri: 'file:///f.gguf', isDirectory: false, resumeData: 'rd' });
+          }),
+        ),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('downloading'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      net = 'cellular';
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await tick();
+      releasePause();
+      await tick();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      actor.stop();
+    });
+
+    it('LEAVE_WAITING then re-selecting a held row without pause state stays a continuation', async () => {
+      let net: 'offline' | 'cellular' = 'offline';
+      const api = makeApi({ checkNetwork: jest.fn(async () => net), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      net = 'cellular';
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('APP_BACKGROUND on the cellular prompt of a continuation re-pauses', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.pausedReason).toBe('background');
+      actor.stop();
+    });
+
+    it('APP_BACKGROUND on the cellular prompt of a fresh pick stays in cellularConfirm and persists nothing', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(actor.getSnapshot().matches('cellularConfirm')).toBe(true);
+      expect(api.persistDownloadState).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('fail, RETRY, re-select on cellular: Cancel returns to selecting (stale continuation reset on RETRY to selecting; downloading.entry reset overlaps)', async () => {
+      let net: 'wifi' | 'cellular' = 'wifi';
+      const api = makeApi({
+        checkNetwork: jest.fn(async () => net),
+        verifyDownload: jest.fn(() => false),
+        startDownload: jest.fn().mockRejectedValue(new Error('boom')),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      net = 'cellular';
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('fresh pick backgrounded during the check, foregrounded on cellular: Cancel returns to selecting', async () => {
+      let release: (v: 'wifi') => void = () => undefined;
+      let calls = 0;
+      const checkNetwork = jest.fn(() => {
+        calls += 1;
+        return calls === 1 ? new Promise<'wifi'>((r) => { release = r; }) : Promise.resolve('cellular' as const);
+      });
+      const api = makeApi({ checkNetwork, verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      release('wifi');
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      await tick();
+      expect(api.persistDownloadState).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
+      actor.stop();
+    });
+
+    it('restore, smoke fails, RETRY verify fails, RETRY to selecting, re-pick on cellular: Cancel returns to selecting', async () => {
+      const api = makeApi({
+        checkNetwork: jest.fn(async () => 'cellular' as const),
+        verifyDownload: jest.fn().mockReturnValueOnce(true).mockReturnValue(false),
+        runSmokeTest: jest.fn(async () => ({ ok: false })),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('smokeFailed'), { timeout: 3000 });
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      await tick();
+      expect(api.persistDownloadState).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'paused' }));
+      actor.stop();
+    });
+
+    it('restore offline: awaitingWifi has an exit to the list, and custom import is reachable', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'offline' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      // LEAVE_WAITING alone is "not now": the row is kept.
+      expect(api.clearDownloadState).not.toHaveBeenCalled();
+      actor.send({ type: 'IMPORT_CUSTOM' });
+      expect(actor.getSnapshot().matches('customImport')).toBe(true);
+      actor.stop();
+    });
+
+    it('LEAVE_WAITING then a successful custom import clears the abandoned row', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'offline' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      actor.send({ type: 'IMPORT_CUSTOM' });
+      expect(api.clearDownloadState).not.toHaveBeenCalled();
+      actor.send({ type: 'IMPORT_SMOKE_OK' });
+      expect(actor.getSnapshot().matches('complete')).toBe(true);
+      expect(api.clearDownloadState).toHaveBeenCalledTimes(1);
+      actor.stop();
+    });
+
+    it('LEAVE_WAITING then picking a different model offline clears the abandoned row', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'offline' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      expect(api.clearDownloadState).not.toHaveBeenCalled();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'smarter-slower' });
+      expect(api.clearDownloadState).toHaveBeenCalledTimes(1);
+      actor.stop();
+    });
+
+    it('LEAVE_WAITING then re-selecting the same model keeps the row', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'offline' as const), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      expect(api.clearDownloadState).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('LEAVE_WAITING then re-selecting the same model resumes with its resume data', async () => {
+      let net: 'offline' | 'wifi' = 'offline';
+      const api = makeApi({ checkNetwork: jest.fn(async () => net) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'paused', pauseState: record });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      actor.send({ type: 'RESUME' });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      net = 'wifi';
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('complete'), { timeout: 3000 });
+      expect(api.resumeDownload).toHaveBeenCalledWith(record, expect.any(Function));
+      expect(api.startDownload).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('RETRY from failed with a pause state re-checks the network; declining pauses it', async () => {
+      const api = makeApi({
+        checkNetwork: jest.fn(async () => 'cellular' as const),
+        verifyDownload: jest.fn(() => false),
+        persistDownloadState: jest.fn(async (row: { status: string }) => {
+          if (row.status === 'paused') throw new Error('write failed');
+        }),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: record });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      expect(actor.getSnapshot().context.pauseState).toEqual(record);
+      (api.persistDownloadState as jest.Mock).mockImplementation(async () => undefined);
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      expect(api.resumeDownload).not.toHaveBeenCalled();
       actor.stop();
     });
   });

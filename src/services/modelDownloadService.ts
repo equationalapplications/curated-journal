@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { DownloadTask, File, Paths } from 'expo-file-system';
 import type { CuratedModel } from '@/catalog/modelManifest';
 import { buildUserAgent } from '@/lib/buildUserAgent';
@@ -22,13 +23,16 @@ function normalizeProgress(
     onProgress({ bytesWritten: coerceInt64(data.bytesWritten), totalBytes: coerceInt64(data.totalBytes) });
 }
 
-export async function startDownload(model: CuratedModel, callbacks: DownloadCallbacks): Promise<File | null> {
-  const dest = new File(Paths.document, model.filename);
-  activeTask = new DownloadTask(model.hfUrl, dest, {
+function freshDownload(url: string, dest: File, callbacks: DownloadCallbacks): Promise<File | null> {
+  activeTask = new DownloadTask(url, dest, {
     headers: { 'User-Agent': buildUserAgent() },
     onProgress: callbacks.onProgress ? normalizeProgress(callbacks.onProgress) : undefined,
   });
   return activeTask.downloadAsync();
+}
+
+export async function startDownload(model: CuratedModel, callbacks: DownloadCallbacks): Promise<File | null> {
+  return freshDownload(model.hfUrl, new File(Paths.document, model.filename), callbacks);
 }
 
 export async function pauseDownload(): Promise<DownloadPauseStateRecord | null> {
@@ -37,10 +41,36 @@ export async function pauseDownload(): Promise<DownloadPauseStateRecord | null> 
   return normalizePauseState(activeTask.savable());
 }
 
+function partialCoversOffset(pauseState: DownloadPauseStateRecord): boolean {
+  const raw = pauseState.resumeData;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return false;
+  const offset = Number(raw);
+  try {
+    const file = new File(pauseState.fileUri);
+    return file.exists && coerceInt64(file.size) >= offset;
+  } catch {
+    return false;
+  }
+}
+
 export async function resumeDownload(
   pauseState: DownloadPauseStateRecord,
   callbacks: DownloadCallbacks,
 ): Promise<File | null> {
+  // Android's resume does RandomAccessFile(dest).setLength(offset): a missing or
+  // shorter partial is zero-filled up to the offset, and the size-only verify then
+  // passes a corrupt file. Android resumeData is the partial's byte length as a
+  // decimal string. iOS resume data references an OS-owned temp file (no
+  // app-owned partial to check), so iOS is left unchanged.
+  if (Platform.OS === 'android' && !partialCoversOffset(pauseState)) {
+    const dest = new File(pauseState.fileUri);
+    try {
+      if (dest.exists) dest.delete();
+    } catch (cause) {
+      console.warn('[model-download] could not delete short partial', cause);
+    }
+    return freshDownload(pauseState.url, dest, callbacks);
+  }
   activeTask = DownloadTask.fromSavable(pauseState, {
     headers: { 'User-Agent': buildUserAgent() },
     onProgress: callbacks.onProgress ? normalizeProgress(callbacks.onProgress) : undefined,

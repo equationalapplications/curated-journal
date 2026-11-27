@@ -181,8 +181,59 @@ describe('createModelHubApi memory and orphan wiring', () => {
     await api.deleteOrphanedModelFiles('fast-light');
     expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
       keepModelId: 'fast-light',
+      alsoKeepModelId: null,
       currentModelPath: 'file:///doc/cur.gguf',
     });
+  });
+
+  it('deleteOrphanedModelFiles also keeps a paused row model', async () => {
+    jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
+    jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
+    const store = makeStore();
+    store.get.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'paused', pauseState: null } as never);
+    const api = createModelHubApi(store as never);
+    await api.deleteOrphanedModelFiles('fast-light');
+    expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
+      keepModelId: 'fast-light',
+      alsoKeepModelId: 'smarter-slower',
+      currentModelPath: null,
+    });
+  });
+
+  it('deleteOrphanedModelFiles does not spare a failed row model', async () => {
+    jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
+    jest.mocked(entityStorage.getModelPath).mockResolvedValueOnce(null);
+    const store = makeStore();
+    store.get.mockResolvedValueOnce({ modelId: 'smarter-slower', status: 'failed', pauseState: null } as never);
+    const api = createModelHubApi(store as never);
+    await api.deleteOrphanedModelFiles('fast-light');
+    expect(deleteOrphanedCuratedModelFiles).toHaveBeenCalledWith({
+      keepModelId: 'fast-light',
+      alsoKeepModelId: null,
+      currentModelPath: null,
+    });
+  });
+
+  it('deleteOrphanedModelFiles skips the sweep when the row cannot be read', async () => {
+    jest.mocked(deleteOrphanedCuratedModelFiles).mockClear();
+    const store = makeStore();
+    store.get.mockRejectedValueOnce(new Error('db'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const api = createModelHubApi(store as never);
+    await api.deleteOrphanedModelFiles('fast-light');
+    expect(deleteOrphanedCuratedModelFiles).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('readDownloadModelId returns the row model, null for a cleared row, and rejects on a read failure', async () => {
+    const store = makeStore();
+    const api = createModelHubApi(store as never);
+    store.get.mockResolvedValueOnce({ modelId: 'fast-light', status: 'paused', pauseState: null } as never);
+    await expect(api.readDownloadModelId()).resolves.toBe('fast-light');
+    store.get.mockResolvedValueOnce({ modelId: null, status: 'idle', pauseState: null } as never);
+    await expect(api.readDownloadModelId()).resolves.toBeNull();
+    store.get.mockRejectedValueOnce(new Error('db'));
+    await expect(api.readDownloadModelId()).rejects.toThrow('db');
   });
 });
 
