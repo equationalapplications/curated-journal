@@ -59,7 +59,10 @@ export async function exportOkfFromDump(
     const zipFile = new File(Paths.cache, `export-${id}.zip`);
     try {
       await zip(exportDir.uri, zipFile.uri);
-      if (options.share !== false && (await Sharing.isAvailableAsync())) {
+      if (options.share !== false) {
+        if (!(await Sharing.isAvailableAsync())) {
+          throw new Error('Sharing is not available on this device.');
+        }
         await Sharing.shareAsync(zipFile.uri, { mimeType: 'application/zip' });
       }
     } catch (e) {
@@ -71,6 +74,9 @@ export async function exportOkfFromDump(
       }
       throw e;
     }
+    // A SAF hand-off (share:false) is saved after this returns: protect the
+    // zip before the id is released so no sweep can slip in between.
+    if (options.share === false) protectStagedZip(zipFile.uri.split('/').pop()!);
     return zipFile.uri;
   } finally {
     // The temp dir is cleaned up even when zip/share throws (CodeRabbit
@@ -108,10 +114,8 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
   // hands the zip to the share sheet, which may still be reading it after
   // shareAsync resolves, so only that path leaves it for the next sweep.
   let handedToShareSheet = false;
-  // The exporter released its id when it returned; keep the zip safe from
-  // another export's sweep until this save ends.
+  // exportOkfFromDump({ share: false }) protected the zip name; this save releases it.
   const zipName = zipUri.split('/').pop()!;
-  protectStagedZip(zipName);
 
   async function save(): Promise<void> {
     const downloadsRoot = StorageAccessFramework.getUriForDirectoryInRoot('Download');
@@ -123,19 +127,29 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
         'application/zip',
       );
       const file = new File(zipUri);
-      // encoding MUST be Base64: the default is UTF-8, which would write the
-      // base64 TEXT literally and produce a corrupt zip that import cannot
-      // open ("Could not open ZIP file" — device repro, Sep 26).
-      await StorageAccessFramework.writeAsStringAsync(
-        destUri,
-        await file.base64(),
-        { encoding: EncodingType.Base64 },
-      );
+      try {
+        // encoding MUST be Base64: the default is UTF-8, which would write the
+        // base64 TEXT literally and produce a corrupt zip that import cannot
+        // open ("Could not open ZIP file" — device repro, Sep 26).
+        await StorageAccessFramework.writeAsStringAsync(
+          destUri,
+          await file.base64(),
+          { encoding: EncodingType.Base64 },
+        );
+      } catch (e) {
+        // Do not leave a truncated/empty journal file in Downloads.
+        try {
+          await StorageAccessFramework.deleteAsync(destUri);
+        } catch {
+          /* best-effort */
+        }
+        throw e;
+      }
       return;
     }
     if (await Sharing.isAvailableAsync()) {
-      handedToShareSheet = true;
       await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
+      handedToShareSheet = true;
     }
   }
 

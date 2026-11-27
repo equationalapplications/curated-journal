@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Crypto from 'expo-crypto';
@@ -15,7 +15,7 @@ import { ProgressBar } from '@/components/ui/progress';
 import { ErrorBanner } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { MAX_ZIP_UNCOMPRESSED_BYTES } from '@/lib/constants';
-import { deletePickerCopy } from '@/lib/stagingSweep';
+import { deleteIosInboxCopy, deletePickerCopy } from '@/lib/stagingSweep';
 import { chunkedImportDump } from '@/lib/chunkedImportDump';
 import { walkMarkdownFiles } from '@/lib/walkDirectory';
 import { useJournal } from '@/contexts/JournalContext';
@@ -38,10 +38,14 @@ export default function ImportScreen() {
   // the screen's lifetime — true today (entityId is fixed per provider,
   // useWiki's instance is a context singleton) — and a dependency change
   // here would silently keep using the stale values.
+  // The picked file's original name, for deleting iOS's Inbox copy.
+  const pickedName = useRef<string | undefined>(undefined);
   const api: ImportApi = {
     pick: async () => {
       const picked = await DocumentPicker.getDocumentAsync({ type: 'application/zip' });
-      return picked.canceled || !picked.assets[0] ? null : { uri: picked.assets[0].uri };
+      if (picked.canceled || !picked.assets[0]) return null;
+      pickedName.current = picked.assets[0].name;
+      return { uri: picked.assets[0].uri };
     },
     prepare: async (uri, onPhase) => {
       const id = Crypto.randomUUID();
@@ -65,6 +69,7 @@ export default function ImportScreen() {
         await new File(uri).copy(zipDest, { overwrite: true });
         // The picker's own cache copy of the journal is no longer needed.
         deletePickerCopy(uri);
+        deleteIosInboxCopy(pickedName.current);
         extractDir.create({ idempotent: true });
         onPhase('extracting');
         const result = await getUnzip().extract(zipDest.uri, extractDir.uri).await();
@@ -88,6 +93,7 @@ export default function ImportScreen() {
         // Idempotent: a failure before the post-copy delete leaves the
         // picker's copy behind.
         deletePickerCopy(uri);
+        deleteIosInboxCopy(pickedName.current);
         throw error;
       }
     },

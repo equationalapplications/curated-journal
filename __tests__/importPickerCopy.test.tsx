@@ -8,11 +8,12 @@ jest.mock('expo-router', () => ({
 
 const PICKED = 'file:///cache/DocumentPicker/abc.zip';
 jest.mock('expo-document-picker', () => ({
-  getDocumentAsync: jest.fn(async () => ({ canceled: false, assets: [{ uri: 'file:///cache/DocumentPicker/abc.zip' }] })),
+  getDocumentAsync: jest.fn(async () => ({ canceled: false, assets: [{ uri: 'file:///cache/DocumentPicker/abc.zip', name: 'journal.zip' }] })),
 }));
 jest.mock('expo-crypto', () => ({ randomUUID: () => 'id' }));
 
 let mockCopyFails = false;
+const mockLog: string[] = [];
 jest.mock('expo-file-system', () => {
   class File {
     uri: string;
@@ -22,6 +23,7 @@ jest.mock('expo-file-system', () => {
       this.uri = name ? `${base}/${name}` : base;
     }
     async copy() {
+      mockLog.push('copy');
       if (mockCopyFails) throw new Error('copy failed');
     }
     delete() {}
@@ -51,15 +53,23 @@ jest.mock('@equationalapplications/expo-llm-wiki', () => ({
 }));
 jest.mock('@/contexts/JournalContext', () => ({ useJournal: () => ({ entityId: 'e' }) }));
 jest.mock('@/lib/chunkedImportDump', () => ({ chunkedImportDump: jest.fn(async () => ({ completed: true })) }));
-const mockDeletePickerCopy = jest.fn();
+const mockDeletePickerCopy = jest.fn((u: string) => {
+  mockLog.push(`deletePicker:${u}`);
+});
+const mockDeleteInbox = jest.fn((n?: string) => {
+  mockLog.push(`inbox:${n}`);
+});
 jest.mock('@/lib/stagingSweep', () => ({
   deletePickerCopy: (u: string) => mockDeletePickerCopy(u),
+  deleteIosInboxCopy: (n?: string) => mockDeleteInbox(n),
 }));
 
 import ImportScreen from '@/app/import';
 
 beforeEach(() => {
   mockDeletePickerCopy.mockClear();
+  mockDeleteInbox.mockClear();
+  mockLog.length = 0;
   mockCopyFails = false;
 });
 
@@ -68,6 +78,12 @@ describe('import prepare and the picker copy', () => {
     const { getByText } = await render(<ImportScreen />);
     await fireEvent.press(getByText('Pick OKF zip'));
     await waitFor(() => expect(mockDeletePickerCopy).toHaveBeenCalledWith(PICKED));
+    // Copy first, delete after: deleting first would lose the journal.
+    expect(mockLog.indexOf('copy')).toBeGreaterThanOrEqual(0);
+    expect(mockLog.indexOf('copy')).toBeLessThan(mockLog.indexOf(`deletePicker:${PICKED}`));
+    // The iOS Inbox copy goes by the picked file's name, also after the copy.
+    expect(mockDeleteInbox).toHaveBeenCalledWith('journal.zip');
+    expect(mockLog.indexOf('copy')).toBeLessThan(mockLog.indexOf('inbox:journal.zip'));
   });
 
   it('also deletes the picker copy when prepare fails', async () => {
@@ -76,5 +92,6 @@ describe('import prepare and the picker copy', () => {
     await fireEvent.press(getByText('Pick OKF zip'));
     await waitFor(() => expect(getByText(/Import failed: copy failed/)).toBeTruthy());
     expect(mockDeletePickerCopy).toHaveBeenCalledWith(PICKED);
+    expect(mockDeleteInbox).toHaveBeenCalledWith('journal.zip');
   });
 });

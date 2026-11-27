@@ -1,8 +1,10 @@
 import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
-import { deletePickerCopy, sweepStaging, useLaunchStagingSweep } from '@/lib/stagingSweep';
+import { deleteIosInboxCopy, deletePickerCopy, sweepStaging, useLaunchStagingSweep } from '@/lib/stagingSweep';
 import { act, renderHook } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
-const CACHE = 'file:///data/user/0/app/cache';
+const CACHE = 'file:///var/mobile/app/Library/Caches';
+const TMP = 'file:///var/mobile/app/tmp';
 // mock* names are allowed inside jest.mock factories.
 const mockCacheNames: string[] = [];
 const mockCallLog: string[] = [];
@@ -11,6 +13,11 @@ const mockDeleted: string[] = [];
 let mockDeleteThrows = false;
 let mockListThrows = false;
 let mockCreateThrows = false;
+let mockSafDeleteThrows = false;
+// Paths.cache.uri carries a trailing slash on device; both forms are tested.
+let mockCacheSlash = true;
+// Paths relative to the app tmp dir, e.g. 'app.bundle-Inbox/journal.zip'.
+const mockTmp: string[] = [];
 
 jest.mock('react-native-zip-archive', () => ({
   zip: jest.fn(async (_d: string, dest: string) => {
@@ -28,9 +35,23 @@ jest.mock('@equationalapplications/expo-llm-wiki', () => ({
   formatOkfBundle: () => ({ files: [] }),
 }));
 jest.mock('expo-file-system', () => {
-  const cache = 'file:///data/user/0/app/cache';
+  const cache = 'file:///var/mobile/app/Library/Caches';
+  const tmp = 'file:///var/mobile/app/tmp';
+  // Mirrors the real join: resolves '..' and drops trailing slashes.
+  const joinUri = (base: string, ...parts: string[]) => {
+    const segs: string[] = [];
+    for (const seg of `${base.replace('file://', '')}/${parts.join('/')}`.split('/')) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') segs.pop();
+      else segs.push(seg);
+    }
+    return `file:///${segs.join('/')}`;
+  };
+  const tmpRel = (uri: string) => (uri.startsWith(`${tmp}/`) ? uri.slice(tmp.length + 1) : null);
   // Mirrors the real API: a cache-level entry exists only while tracked.
   const existsFor = (uri: string) => {
+    const tr = tmpRel(uri);
+    if (tr !== null) return mockTmp.includes(tr);
     if (uri.startsWith(`${cache}/DocumentPicker/`)) return mockPickerChildren.includes(uri.split('/').pop()!);
     const rest = uri.slice(cache.length + 1);
     if (uri.startsWith(`${cache}/`) && !rest.includes('/')) return mockCacheNames.includes(rest);
@@ -41,6 +62,12 @@ jest.mock('expo-file-system', () => {
     if (!existsFor(uri)) throw new Error(`does not exist: ${uri}`);
     const pi = uri.startsWith(`${cache}/DocumentPicker/`) ? mockPickerChildren.indexOf(uri.split('/').pop()!) : -1;
     if (pi >= 0) mockPickerChildren.splice(pi, 1);
+    const tr = tmpRel(uri);
+    if (tr !== null) {
+      for (let k = mockTmp.length - 1; k >= 0; k--) {
+        if (mockTmp[k] === tr || mockTmp[k].startsWith(`${tr}/`)) mockTmp.splice(k, 1);
+      }
+    }
     mockDeleted.push(uri);
     mockCallLog.push(`delete:${uri.split('/').pop()}`);
     const i = mockCacheNames.indexOf(uri.split('/').pop()!);
@@ -49,9 +76,9 @@ jest.mock('expo-file-system', () => {
   class Directory {
     uri: string;
     name: string;
-    constructor(parent: { uri: string } | string, name?: string) {
+    constructor(parent: { uri: string } | string, ...names: string[]) {
       const base = typeof parent === 'string' ? parent : parent.uri;
-      this.uri = name ? `${base}/${name}` : base;
+      this.uri = joinUri(base, ...names);
       this.name = this.uri.split('/').pop()!;
     }
     get exists() {
@@ -66,21 +93,33 @@ jest.mock('expo-file-system', () => {
     }
     list() {
       if (mockListThrows) throw new Error('no cache');
+      const tr = tmpRel(this.uri) ?? (this.uri === tmp ? '' : null);
+      if (tr !== null) {
+        const prefix = tr === '' ? '' : `${tr}/`;
+        const kids = mockTmp.filter((n) => n.startsWith(prefix) && !n.slice(prefix.length).includes('/'));
+        return kids.map((n) => {
+          const isDir = n.endsWith('-Inbox') || mockTmp.some((m) => m.startsWith(`${n}/`));
+          return isDir ? new Directory(`${tmp}/${n}`) : new File(`${tmp}/${n}`);
+        });
+      }
       if (this.name === 'DocumentPicker') return mockPickerChildren.map((n) => new File(`${cache}/DocumentPicker/${n}`));
       return mockCacheNames.map((n) => new Directory(`${cache}/${n}`));
     }
   }
   class File {
     uri: string;
-    constructor(parent: { uri: string } | string, name?: string) {
+    constructor(parent: { uri: string } | string, ...names: string[]) {
       const base = typeof parent === 'string' ? parent : parent.uri;
-      this.uri = name ? `${base}/${name}` : base;
+      this.uri = joinUri(base, ...names);
     }
     get exists() {
       return existsFor(this.uri);
     }
     create() {}
     async write() {}
+    async copy() {
+      mockCallLog.push('copy');
+    }
     async base64() {
       return 'UEsDBA==';
     }
@@ -88,7 +127,7 @@ jest.mock('expo-file-system', () => {
       remove(this.uri);
     }
   }
-  return { Directory, File, Paths: { cache: { uri: cache } } };
+  return { Directory, File, Paths: { cache: { get uri() { return mockCacheSlash ? `${cache}/` : cache; } } } };
 });
 jest.mock('expo-file-system/legacy', () => ({
   EncodingType: { Base64: 'base64' },
@@ -97,6 +136,9 @@ jest.mock('expo-file-system/legacy', () => ({
     getUriForDirectoryInRoot: jest.fn(() => 'content://root'),
     createFileAsync: jest.fn(async () => 'content://saf/created'),
     writeAsStringAsync: jest.fn(async () => {}),
+    deleteAsync: jest.fn(async () => {
+      if (mockSafDeleteThrows) throw new Error('saf delete failed');
+    }),
   },
 }));
 
@@ -115,6 +157,9 @@ beforeEach(() => {
   mockDeleteThrows = false;
   mockListThrows = false;
   mockCreateThrows = false;
+  mockCacheSlash = true;
+  mockTmp.length = 0;
+  mockSafDeleteThrows = false;
   jest.clearAllMocks();
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -134,6 +179,25 @@ describe('direct SAF save', () => {
     saf.requestDirectoryPermissionsAsync.mockResolvedValueOnce({ granted: true, directoryUri: 'content://tree' });
     saf.writeAsStringAsync.mockRejectedValueOnce(new Error('disk full'));
     await expect(saveOkfToDevice(ZIP, 'x.zip')).rejects.toThrow('disk full');
+    expect(mockDeleted).toContain(ZIP);
+  });
+
+  it('removes the half-written SAF file when the write fails, best-effort', async () => {
+    saf.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree' });
+    saf.writeAsStringAsync.mockRejectedValueOnce(new Error('disk full'));
+    await expect(saveOkfToDevice(ZIP, 'x.zip')).rejects.toThrow('disk full');
+    expect(saf.deleteAsync).toHaveBeenCalledWith('content://saf/created');
+    mockCacheNames.push('export-old.zip');
+    saf.writeAsStringAsync.mockRejectedValueOnce(new Error('disk full'));
+    mockSafDeleteThrows = true;
+    await expect(saveOkfToDevice(ZIP, 'x.zip')).rejects.toThrow('disk full');
+    saf.requestDirectoryPermissionsAsync.mockReset();
+  });
+
+  it('deletes the zip when the cancel-fallback shareAsync throws (not handed over)', async () => {
+    saf.requestDirectoryPermissionsAsync.mockResolvedValueOnce({ granted: false });
+    (Sharing.shareAsync as jest.Mock).mockRejectedValueOnce(new Error('share failed'));
+    await expect(saveOkfToDevice(ZIP, 'x.zip')).rejects.toThrow('share failed');
     expect(mockDeleted).toContain(ZIP);
   });
 
@@ -164,6 +228,8 @@ describe('share sheet export', () => {
     await exportOkfFromDump({ entities: [] } as never);
     expect(Sharing.shareAsync).toHaveBeenCalledTimes(1);
     expect(mockDeleted).not.toContain(`${CACHE}/export-new-id.zip`);
+    // The export dir is always removed.
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id`);
   });
 
   it('sweeps only export-* leftovers at the start of the next export', async () => {
@@ -245,12 +311,27 @@ describe('share sheet export', () => {
     });
     await expect(exportOkfFromDump({ entities: [] } as never)).rejects.toThrow('zip boom');
     expect(mockDeleted).toContain(`${CACHE}/export-new-id.zip`);
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id`);
   });
 
   it('deletes the zip when shareAsync throws', async () => {
     (Sharing.shareAsync as jest.Mock).mockRejectedValueOnce(new Error('share boom'));
     await expect(exportOkfFromDump({ entities: [] } as never)).rejects.toThrow('share boom');
     expect(mockDeleted).toContain(`${CACHE}/export-new-id.zip`);
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id`);
+  });
+
+  it('deletes the zip and throws a clear error when sharing is unavailable', async () => {
+    (Sharing.isAvailableAsync as jest.Mock).mockResolvedValueOnce(false);
+    await expect(exportOkfFromDump({ entities: [] } as never)).rejects.toThrow(/not available/);
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id.zip`);
+  });
+
+  it('share:false protects the zip until a save releases it (atomic hand-off)', async () => {
+    const uri = await exportOkfFromDump({ entities: [] } as never, { share: false });
+    // No save has started yet: a second export's sweep must still skip the zip.
+    await exportOkfFromDump({ entities: [] } as never, { share: false });
+    expect(mockDeleted).not.toContain(uri);
   });
 });
 
@@ -299,12 +380,78 @@ describe('document picker copy', () => {
     expect(mockDeleted).toEqual([]);
   });
 
+  it('deletePickerCopy works with and without a trailing slash on Paths.cache.uri', () => {
+    for (const slash of [true, false]) {
+      mockCacheSlash = slash;
+      mockDeleted.length = 0;
+      mockPickerChildren = ['s.zip'];
+      deletePickerCopy(`${CACHE}/DocumentPicker/s.zip`);
+      expect(mockDeleted).toEqual([`${CACHE}/DocumentPicker/s.zip`]);
+    }
+  });
+
   it('deletePickerCopy deletes a cache copy but never a user original', () => {
     mockPickerChildren = ['u.zip'];
     deletePickerCopy(`${CACHE}/DocumentPicker/u.zip`);
     deletePickerCopy('file:///var/mobile/Documents/journal.zip');
     deletePickerCopy('content://com.android.providers/doc/1');
     expect(mockDeleted).toEqual([`${CACHE}/DocumentPicker/u.zip`]);
+  });
+});
+
+describe('iOS Inbox copy', () => {
+  let replaced: { restore(): void } | undefined;
+  afterEach(() => {
+    replaced?.restore();
+    replaced = undefined;
+  });
+
+  it('deleteIosInboxCopy removes <tmp>/*-Inbox/<name> and nothing else', () => {
+    mockTmp.push('app.bundle-Inbox', 'app.bundle-Inbox/journal.zip', 'app.bundle-Inbox/other.zip', 'keep.tmp');
+    deleteIosInboxCopy('journal.zip');
+    expect(mockDeleted).toEqual([`${TMP}/app.bundle-Inbox/journal.zip`]);
+  });
+
+  it('deleteIosInboxCopy is exists-guarded and never throws', () => {
+    mockTmp.push('app.bundle-Inbox');
+    expect(() => deleteIosInboxCopy('gone.zip')).not.toThrow();
+    expect(mockDeleted).toEqual([]);
+    mockTmp.push('app.bundle-Inbox/j.zip');
+    mockDeleteThrows = true;
+    expect(() => deleteIosInboxCopy('j.zip')).not.toThrow();
+    expect(() => deleteIosInboxCopy(undefined)).not.toThrow();
+  });
+
+  it('is a no-op on Android', () => {
+    replaced = jest.replaceProperty(Platform, 'OS', 'android');
+    mockTmp.push('app.bundle-Inbox', 'app.bundle-Inbox/journal.zip');
+    deleteIosInboxCopy('journal.zip');
+    sweepStaging();
+    expect(mockDeleted).toEqual([]);
+  });
+
+  it('launch sweep empties every *-Inbox dir in tmp, not other tmp entries', () => {
+    mockTmp.push('a-Inbox', 'a-Inbox/1.zip', 'a-Inbox/2.zip', 'b-Inbox', 'b-Inbox/3.zip', 'keep.tmp');
+    sweepStaging();
+    expect([...mockDeleted].sort()).toEqual(
+      ['a-Inbox/1.zip', 'a-Inbox/2.zip', 'b-Inbox/3.zip'].map((n) => `${TMP}/${n}`),
+    );
+  });
+
+  it('the export-start sweep leaves the Inbox alone', () => {
+    mockTmp.push('a-Inbox', 'a-Inbox/1.zip');
+    sweepStaging(['export']);
+    expect(mockDeleted).toEqual([]);
+  });
+});
+
+describe('web', () => {
+  it('the sweep is a no-op', () => {
+    const r = jest.replaceProperty(Platform, 'OS', 'web');
+    mockCacheNames.push('export-a.zip');
+    sweepStaging();
+    expect(mockDeleted).toEqual([]);
+    r.restore();
   });
 });
 
@@ -331,6 +478,7 @@ describe('wiring', () => {
     // and navigation stacks; the hook's behaviour is covered above.
     const src = require('fs').readFileSync(require('path').join(__dirname, '../src/app/_layout.tsx'), 'utf8');
     expect(src).toMatch(/import \{ useLaunchStagingSweep \} from '@\/lib\/stagingSweep'/);
-    expect(src).toMatch(/useLaunchStagingSweep\(\);/);
+    // Anchored to the component body: a commented-out or nested call fails.
+    expect(src).toMatch(/export default function RootLayout\(\) \{\s*useLaunchStagingSweep\(\);/);
   });
 });

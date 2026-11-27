@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { Directory, File, Paths } from 'expo-file-system';
 
 /** expo-document-picker copies the picked file here (Android and iOS). */
@@ -55,6 +56,49 @@ export function deletePickerCopy(uri: string): void {
   }
 }
 
+/**
+ * iOS: the document picker opens files `asCopy: true`, so iOS first places a
+ * copy in `<container>/tmp/<bundle-id>-Inbox/<name>` and the module then
+ * copies that into Caches/DocumentPicker/. The tmp dir is a sibling of the
+ * caches dir (expo-file-system permits paths outside caches/documents; the OS
+ * enforces access, and the app owns its own container tmp).
+ */
+function iosTmpDir(): Directory {
+  return new Directory(Paths.cache, '..', '..', 'tmp');
+}
+
+/** Delete the iOS picker's `-Inbox` copy of the picked file. Best-effort. */
+export function deleteIosInboxCopy(name: string | undefined): void {
+  if (Platform.OS !== 'ios' || !name) return;
+  try {
+    for (const entry of iosTmpDir().list()) {
+      if (!(entry instanceof Directory) || !entry.name.endsWith('-Inbox')) continue;
+      const f = new File(entry, name);
+      if (f.exists) f.delete();
+    }
+  } catch (e) {
+    console.warn('[staging] could not delete the iOS Inbox copy; it is swept at launch.', e);
+  }
+}
+
+function sweepIosInbox(): void {
+  if (Platform.OS !== 'ios') return;
+  try {
+    for (const entry of iosTmpDir().list()) {
+      if (!(entry instanceof Directory) || !entry.name.endsWith('-Inbox')) continue;
+      for (const child of entry.list()) {
+        try {
+          child.delete();
+        } catch (e) {
+          console.warn('[staging] could not delete an Inbox copy.', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[staging] could not sweep the iOS Inbox.', e);
+  }
+}
+
 /** Launch sweep, deferred so it never blocks startup. */
 export function useLaunchStagingSweep(): void {
   useEffect(() => {
@@ -75,13 +119,16 @@ export function useLaunchStagingSweep(): void {
  * Import staging is deleted when the import ends; this catches crash leftovers.
  *
  * The 'import' kind also empties the document picker's cache directory
- * (copies of the picked journal zip). Active exports are skipped.
+ * (copies of the picked journal zip) and, on iOS, the children of the
+ * `*-Inbox` dirs in the app's tmp dir. Active exports are skipped.
  *
  * Callers pass only the kinds that cannot be in progress: at launch nothing
  * is running (both kinds); at export start an import may be open, so only
  * `export`.
  */
 export function sweepStaging(kinds: StagingKind[] = ['export', 'import']): void {
+  if (Platform.OS === 'web') return;
+  if (kinds.includes('import')) sweepIosInbox();
   let entries: (Directory | File)[];
   try {
     entries = new Directory(Paths.cache).list();
