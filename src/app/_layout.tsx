@@ -10,6 +10,7 @@ import { WikiProvider } from '@equationalapplications/expo-llm-wiki';
 import type { LLMProvider, WikiMemory } from '@equationalapplications/core-llm-wiki';
 import { bootstrapWiki } from '@/services/wikiBootstrap';
 import { File } from 'expo-file-system';
+import { sweepStaging } from '@/lib/stagingSweep';
 import { getModelPath, getModelId, clearModelPath } from '@/lib/entityStorage';
 import { createLlamaProvider } from '@/lib/llamaProvider';
 import { createMockLlmProvider } from '@/lib/mockLlmProvider';
@@ -95,6 +96,9 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Launch: no import or export can be running, so sweep both kinds of
+    // leftover staging (never throws, does not gate startup).
+    sweepStaging();
     void bootstrap();
   }, [bootstrap]);
 

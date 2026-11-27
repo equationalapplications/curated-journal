@@ -9,6 +9,7 @@ import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { formatOkfBundle, type MemoryDump } from '@equationalapplications/expo-llm-wiki';
 import { zip } from 'react-native-zip-archive';
+import { sweepStaging } from '@/lib/stagingSweep';
 
 function ensureDirectory(root: Directory, relativePath: string): Directory {
   const parts = relativePath.split('/').filter(Boolean);
@@ -23,6 +24,9 @@ export async function exportOkfFromDump(
   dump: MemoryDump,
   options: { share?: boolean } = {},
 ): Promise<string> {
+  // Leftover share-sheet zips from earlier exports. Only export-* here: an
+  // import may be open and its staging must not be touched.
+  sweepStaging(['export']);
   const id = Crypto.randomUUID();
   const exportDir = new Directory(Paths.cache, `export-${id}`);
   exportDir.create({ idempotent: true });
@@ -73,6 +77,12 @@ export async function exportOkfFromDump(
  * Falls back to the OS share sheet when the user cancels the picker.
  */
 export async function saveOkfToDevice(zipUri: string, fileName: string): Promise<void> {
+  // The SAF write completes before this returns, so the cache zip is deleted
+  // as soon as the save succeeds, fails or is cancelled. The cancel fallback
+  // hands the zip to the share sheet, which may still be reading it after
+  // shareAsync resolves, so that path leaves it for the next sweep.
+  let handedToShareSheet = false;
+  try {
   const downloadsRoot = StorageAccessFramework.getUriForDirectoryInRoot('Download');
   const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync(downloadsRoot);
   if (perms.granted) {
@@ -92,7 +102,18 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
     );
     return;
   }
+  handedToShareSheet = true;
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
+  }
+  } finally {
+    if (!handedToShareSheet) {
+      try {
+        const staged = new File(zipUri);
+        if (staged.exists) staged.delete();
+      } catch (e) {
+        console.warn('[export] could not delete the staged zip; it is swept later.', e);
+      }
+    }
   }
 }
