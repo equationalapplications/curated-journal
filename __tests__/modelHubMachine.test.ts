@@ -1056,7 +1056,19 @@ describe('modelHubMachine', () => {
       actor.stop();
     });
 
-    it('fail, RETRY, re-select on cellular: Cancel returns to selecting (stale continuation reset by downloading)', async () => {
+    it('APP_BACKGROUND on the cellular prompt of a fresh pick stays in cellularConfirm and persists nothing', async () => {
+      const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(actor.getSnapshot().matches('cellularConfirm')).toBe(true);
+      expect(api.persistDownloadState).not.toHaveBeenCalled();
+      actor.stop();
+    });
+
+    it('fail, RETRY, re-select on cellular: Cancel returns to selecting (stale continuation reset on RETRY to selecting; downloading.entry reset overlaps)', async () => {
       let net: 'wifi' | 'cellular' = 'wifi';
       const api = makeApi({
         checkNetwork: jest.fn(async () => net),

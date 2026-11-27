@@ -432,7 +432,7 @@ export const modelHubMachine = setup({
       on: {
         // Nothing is downloading yet: re-pause so the next foreground re-checks
         // (fresh starts too: a late wifi result must not start a download while
-        // backgrounded; a fresh pause persists with a null pause state).
+        // backgrounded; a fresh pause persists nothing, see pauseTask).
         APP_BACKGROUND: {
           target: 'paused',
           actions: assign({ pausedReason: 'background' as const, idlePause: true }),
