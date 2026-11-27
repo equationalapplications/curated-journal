@@ -325,7 +325,7 @@ export const modelHubMachine = setup({
                   event.modelId === context.modelId ? context.pauseState : null,
                 pausedReason: null,
                 continuation: ({ context, event }) =>
-                  event.modelId === context.modelId && context.pauseState !== null,
+                  event.modelId === context.modelId && (context.pauseState !== null || context.continuation),
               }),
             ],
           },
@@ -427,9 +427,10 @@ export const modelHubMachine = setup({
     },
     confirmingNetwork: {
       on: {
-        // Nothing is downloading yet: re-pause so the next foreground re-checks.
+        // Nothing is downloading yet: re-pause so the next foreground re-checks
+        // (fresh starts too: a late wifi result must not start a download while
+        // backgrounded; a fresh pause persists with a null pause state).
         APP_BACKGROUND: {
-          guard: ({ context }) => context.continuation,
           target: 'paused',
           actions: assign({ pausedReason: 'background' as const, idlePause: true }),
         },

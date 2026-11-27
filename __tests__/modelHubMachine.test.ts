@@ -940,6 +940,38 @@ describe('modelHubMachine', () => {
       actor.stop();
     });
 
+    it('APP_BACKGROUND during a fresh start network check does not start the download', async () => {
+      let release: (v: 'wifi') => void = () => undefined;
+      const checkNetwork = jest.fn(() => new Promise<'wifi'>((r) => { release = r; }));
+      const api = makeApi({ checkNetwork });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      release('wifi');
+      await tick();
+      expect(api.startDownload).not.toHaveBeenCalled();
+      expect(api.resumeDownload).not.toHaveBeenCalled();
+      expect(actor.getSnapshot().matches('paused')).toBe(true);
+      actor.stop();
+    });
+
+    it('LEAVE_WAITING then re-selecting a held row without pause state stays a continuation', async () => {
+      let net: 'offline' | 'cellular' = 'offline';
+      const api = makeApi({ checkNetwork: jest.fn(async () => net), verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('awaitingWifi'), { timeout: 3000 });
+      actor.send({ type: 'LEAVE_WAITING' });
+      net = 'cellular';
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      actor.stop();
+    });
+
     it('APP_BACKGROUND on the cellular prompt of a continuation re-pauses', async () => {
       const api = makeApi({ checkNetwork: jest.fn(async () => 'cellular' as const), verifyDownload: jest.fn(() => false) });
       const actor = createActor(modelHubMachine, { input: { api } }).start();
