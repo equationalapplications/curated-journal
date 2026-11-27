@@ -5,6 +5,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AwaitingWifi } from '@/components/model-hub/awaiting-wifi';
 import { Note } from '@/components/ui/states';
 import { ProgressBar } from '@/components/ui/progress';
 import { Screen } from '@/components/screen';
@@ -85,24 +86,25 @@ export default function ModelHubDownloadScreen() {
     }
   }, [stateValue, completeOnboarding, router]);
 
-  // RETRY from `failed` with nothing to resume goes back to the list: follow
-  // it, or this screen is left showing no actions. Keyed on the transition,
-  // not on `selecting` alone — a restore mounts this screen before the
-  // RESTORE_DOWNLOAD event has left `selecting`.
+  // Any move back to `selecting` (RETRY from `failed` with nothing to resume,
+  // a declined cellular prompt, a network-check error) lands on the list,
+  // which shows the error banner: follow it, or this screen is left showing
+  // no actions. Keyed on the transition INTO `selecting`, not on `selecting`
+  // alone — a restore mounts this screen before the RESTORE_DOWNLOAD event
+  // has left `selecting`.
   const previousState = useRef(stateValue);
   useEffect(() => {
     const previous = previousState.current;
     previousState.current = stateValue;
-    if (previous === 'failed' && stateValue === 'selecting') {
+    if (previous !== 'selecting' && stateValue === 'selecting') {
       router.dismissTo('/model-hub' as Href);
     }
   }, [stateValue, router]);
 
   const chooseAnother = () => {
+    // CHOOSE_ANOTHER always lands in `selecting`; the transition effect above
+    // then dismisses to the list (or onto it when a restore replaced it).
     send({ type: 'CHOOSE_ANOTHER' });
-    // Back to the list, or onto it when a restore replaced it: a plain back()
-    // there would leave the hub for whatever screen opened it.
-    router.dismissTo('/model-hub' as Href);
   };
 
   const oldest = samples.current[0];
@@ -114,8 +116,17 @@ export default function ModelHubDownloadScreen() {
   const etaSeconds = speedBps > 0 ? remainingBytes / speedBps : -1;
   const pct = progress.totalBytes > 0 ? Math.min(100, (progress.bytesWritten / progress.totalBytes) * 100) : null;
   const model = modelId ? getCuratedModel(modelId) : null;
-  // Restored or post-download states carry no live progress to show.
-  const downloadPhase = stateValue === 'downloading' || stateValue === 'paused' || stateValue === 'failed';
+  // Restored or post-download states carry no live progress to show. The
+  // network checks keep the download framing: a continued download is only
+  // being re-checked, not set up from scratch.
+  const downloadPhase =
+    stateValue === 'downloading' ||
+    stateValue === 'pausing' ||
+    stateValue === 'paused' ||
+    stateValue === 'failed' ||
+    stateValue === 'confirmingNetwork' ||
+    stateValue === 'cellularConfirm' ||
+    stateValue === 'awaitingWifi';
 
   return (
     <Screen>
@@ -134,9 +145,11 @@ export default function ModelHubDownloadScreen() {
         </View>
 
         {!downloadPhase ? null : pct === null ? (
+          stateValue === 'downloading' ? (
           <ThemedText type="small" themeColor="onSurfaceVar">
             Starting download…
           </ThemedText>
+          ) : null
         ) : (
           <ProgressBar value={pct / 100} />
         )}
@@ -151,6 +164,13 @@ export default function ModelHubDownloadScreen() {
           </ThemedText>
         ) : null}
 
+        {stateValue === 'confirmingNetwork' ? (
+          <ThemedText type="small" themeColor="onSurfaceVar">
+            Checking your connection…
+          </ThemedText>
+        ) : null}
+        {stateValue === 'awaitingWifi' ? <AwaitingWifi /> : null}
+
         {stateValue === 'downloading' ? (
           <Button
             label="Pause"
@@ -158,6 +178,11 @@ export default function ModelHubDownloadScreen() {
             style={styles.compact}
             onPress={() => send({ type: 'PAUSE' })}
           />
+        ) : null}
+        {stateValue === 'pausing' ? (
+          <ThemedText type="small" themeColor="onSurfaceVar" testID="download-pausing">
+            Pausing…
+          </ThemedText>
         ) : null}
         {stateValue === 'paused' ? (
           <View style={styles.row}>

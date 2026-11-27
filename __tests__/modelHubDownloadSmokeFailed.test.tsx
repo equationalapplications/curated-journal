@@ -46,7 +46,11 @@ describe('download screen smoke states', () => {
     expect(mockSend).toHaveBeenCalledWith({ type: 'RETRY' });
     await fireEvent.press(screen.getByRole('button', { name: 'Choose another model' }));
     expect(mockSend).toHaveBeenCalledWith({ type: 'CHOOSE_ANOTHER' });
-    // dismissTo pops to the list, or replaces onto it after a restore.
+    // The machine lands in `selecting`; the screen's transition effect then
+    // dismisses to the list (or onto it after a restore).
+    expect(mockDismissTo).not.toHaveBeenCalled();
+    mockState = 'selecting';
+    await screen.rerender(<ModelHubDownloadScreen />);
     expect(mockDismissTo).toHaveBeenCalledWith('/model-hub');
     expect(mockBack).not.toHaveBeenCalled();
   });
