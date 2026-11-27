@@ -472,6 +472,9 @@ export const modelHubMachine = setup({
           },
           { target: 'selecting' },
         ],
+        // Only continuations re-pause here: a fresh pick's prompt just stays up
+        // (nothing downloads until the user taps), unlike confirmingNetwork,
+        // where a late wifi result could start a download while backgrounded.
         APP_BACKGROUND: {
           guard: ({ context }) => context.continuation,
           target: 'paused',
@@ -481,7 +484,9 @@ export const modelHubMachine = setup({
     },
     downloading: {
       entry: [
-        assign({ pausedReason: null, idlePause: false }),
+        // The network check is over once a download starts; nothing reads the
+        // flag later, and a stale true would send a later fresh pick's Cancel to paused.
+        assign({ pausedReason: null, idlePause: false, continuation: false }),
         ({ context }) => {
           void context.api.persistDownloadState({
             modelId: context.modelId,
@@ -547,7 +552,9 @@ export const modelHubMachine = setup({
         APP_FOREGROUND: {
           guard: ({ context }) => context.pausedReason === 'background',
           target: 'confirmingNetwork',
-          actions: assign({ continuation: true }),
+          // A fresh pick paused during its network check keeps continuation
+          // false; restored/held rows already carry true (set at restore/re-pick).
+          actions: assign({ continuation: ({ context }) => context.pauseState !== null || context.continuation }),
         },
       },
     },

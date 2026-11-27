@@ -983,6 +983,48 @@ describe('modelHubMachine', () => {
       actor.stop();
     });
 
+    it('fail, RETRY, re-select on cellular: Cancel returns to selecting (stale continuation reset by downloading)', async () => {
+      let net: 'wifi' | 'cellular' = 'wifi';
+      const api = makeApi({
+        checkNetwork: jest.fn(async () => net),
+        verifyDownload: jest.fn(() => false),
+        startDownload: jest.fn().mockRejectedValue(new Error('boom')),
+      });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'RESTORE_DOWNLOAD', modelId: 'fast-light', status: 'downloading', pauseState: null });
+      await waitFor(actor, (s) => s.matches('failed'), { timeout: 3000 });
+      actor.send({ type: 'RETRY' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      net = 'cellular';
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      actor.stop();
+    });
+
+    it('fresh pick backgrounded during the check, foregrounded on cellular: Cancel returns to selecting', async () => {
+      let release: (v: 'wifi') => void = () => undefined;
+      let calls = 0;
+      const checkNetwork = jest.fn(() => {
+        calls += 1;
+        return calls === 1 ? new Promise<'wifi'>((r) => { release = r; }) : Promise.resolve('cellular' as const);
+      });
+      const api = makeApi({ checkNetwork, verifyDownload: jest.fn(() => false) });
+      const actor = createActor(modelHubMachine, { input: { api } }).start();
+      actor.send({ type: 'SELECT_MODEL', modelId: 'fast-light' });
+      await waitFor(actor, (s) => s.matches('confirmingNetwork'), { timeout: 3000 });
+      actor.send({ type: 'APP_BACKGROUND' });
+      await waitFor(actor, (s) => s.matches('paused'), { timeout: 3000 });
+      await tick();
+      release('wifi');
+      actor.send({ type: 'APP_FOREGROUND' });
+      await waitFor(actor, (s) => s.matches('cellularConfirm'), { timeout: 3000 });
+      actor.send({ type: 'CELLULAR_CANCEL' });
+      await waitFor(actor, (s) => s.matches('selecting'), { timeout: 3000 });
+      actor.stop();
+    });
+
     it('restore offline: awaitingWifi has an exit to the list, and custom import is reachable', async () => {
       const api = makeApi({ checkNetwork: jest.fn(async () => 'offline' as const), verifyDownload: jest.fn(() => false) });
       const actor = createActor(modelHubMachine, { input: { api } }).start();
