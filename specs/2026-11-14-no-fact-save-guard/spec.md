@@ -6,7 +6,7 @@ Amended 2026-11-16 (review round 4): the O10 row and helper description were rew
 Amended 2026-11-16 (review round 3): the first readback counts the duplicate holder's facts (a re-save could wipe an earlier note); the guard is restated as invariants I1–I4 checked against every engine outcome; m4 and the readback cost corrected; error message covers an empty note; merged with main (engine 9.2.0), version 9.2.2.
 Spec approved by the owner 2026-11-16.
 Date: 2026-11-14
-Version cost: PATCH (9.2.0 → 9.2.2) per `docs/VERSIONING.md`. PRs #117 and #120 also take 9.2.2; whichever merges later re-bumps.
+Version cost: PATCH (9.2.1 → 9.2.2, after #120 merged at 9.2.1) per `docs/VERSIONING.md`.
 Closes: #112
 
 ## Problem
@@ -119,7 +119,7 @@ The failed-entry sheet offers Try again and Discard, and a failed entry cannot b
 - `__tests__/journalNoFactSave.test.ts`: real-engine tests, one per outcome row, plus two queue tests on the real engine and guard.
 - `__tests__/helpers/nodeSqliteAdapter.ts`: `withExpoSqliteErrors`, which reports failures in expo-sqlite's shape: "Error code N" with the primary code (`errcode & 0xff`), because expo-sqlite 58.0.14 never enables extended result codes (ios/SQLiteResult.swift, android SQLiteError.h). An `extendedCodes` option emits 2067 for the engine-level O10 tests.
 - `__tests__/journalSaveWarning.test.tsx`, `__tests__/journalBackgroundSave.test.tsx`, `__tests__/journalPaneToggle.test.tsx`, `__tests__/journalSaveSourceHash.test.tsx`: the queue/screen stubs answer the readback with one fact stamped with the save's hash, so they always pass the guard. The guard's reject path is exercised only on the real engine.
-- `package.json`, `app.json`, `package-lock.json`: version 9.2.0 → 9.2.2.
+- `package.json`, `app.json`, `package-lock.json`: version 9.2.1 → 9.2.2.
 - `specs/2026-11-14-no-fact-save-guard/`: this folder.
 
 ## Test plan
