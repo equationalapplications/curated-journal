@@ -54,10 +54,11 @@ export function JournalWikiProvider({
             runLibrarian: (entityId: string) => maintenanceRef.current.runLibrarian(entityId),
             runHeal: (entityId: string) => maintenanceRef.current.runHeal(entityId),
             runPrune: async (id: string) => {
-              // Events are the librarian's raw source material (they arrive
-              // inside OKF bundles), so this app never lets prune touch
-              // them — only rows the user deleted, past the engine's
-              // soft-delete grace window.
+              // retainEventsFor: null keeps every live event (they are the
+              // librarian's raw source material). The engine's prune still
+              // hard-deletes events marked forgotten, so the "event log is
+              // never pruned" invariant also relies on this app never calling
+              // forget({ eventId }) / erase() (guarded by eventLogGuard.test).
               await maintenanceRef.current.runPrune(id, { retainEventsFor: null });
             },
           },
