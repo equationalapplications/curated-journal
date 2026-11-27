@@ -71,7 +71,7 @@ export type MaintenanceApi = {
   runLibrarian: (entityId: string) => Promise<void>;
   /** One library heal batch. The machine loops batches via runHealToCompletion. */
   runHeal: HealBatchRunner;
-  runPrune: (entityId: string) => Promise<void>;
+  pruneKeepingEvents: (entityId: string) => Promise<void>;
 };
 
 export type JournalWikiMachineInput = {
@@ -116,7 +116,7 @@ async function runQueueStep(
       // soft-deleted entries past their retention window (the injected wrapper
       // keeps the event log: retainEventsFor: null).
       // No model involvement, so it cannot trip the rule-5 second-model ban.
-      await maintenance.runPrune(item.entityId);
+      await maintenance.pruneKeepingEvents(item.entityId);
       return;
   }
 }

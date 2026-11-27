@@ -53,7 +53,7 @@ export function JournalWikiProvider({
           maintenance: {
             runLibrarian: (entityId: string) => maintenanceRef.current.runLibrarian(entityId),
             runHeal: (entityId: string) => maintenanceRef.current.runHeal(entityId),
-            runPrune: async (id: string) => {
+            pruneKeepingEvents: async (id: string) => {
               // retainEventsFor: null keeps every live event (they are the
               // librarian's raw source material). The engine's prune still
               // hard-deletes events marked forgotten; only forget({ eventId })

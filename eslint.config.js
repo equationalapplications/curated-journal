@@ -50,10 +50,14 @@ const HERMES_SYNTAX = {
 const EVENT_LOG_MSG =
   "INTENT: the event log is never pruned — the engine's prune hard-deletes forgotten events; the app must never forget/erase (rename non-engine members named forget/erase).";
 const RUN_PRUNE_MSG =
-  "INTENT: prune must go through useJournalWiki's wrapper, which passes retainEventsFor: null; the engine default deletes events older than 30 days.";
+  "INTENT: call the engine's runPrune only with { retainEventsFor: null } literally in the call (the engine default deletes events older than 30 days); use the app's pruneKeepingEvents wrapper elsewhere. Aliased destructuring of runPrune is banned.";
+// A runPrune call is allowed only if its arguments contain the property
+// retainEventsFor with the literal value null.
+const KEEPS_EVENTS = ":not(:has(Property[key.name='retainEventsFor'][value.raw='null']))";
 const RUN_PRUNE_SYNTAX = [
-  { selector: "CallExpression[callee.property.name='runPrune']", message: RUN_PRUNE_MSG },
-  { selector: "CallExpression[callee.name='runPrune']", message: RUN_PRUNE_MSG },
+  { selector: "CallExpression[callee.property.name='runPrune']" + KEEPS_EVENTS, message: RUN_PRUNE_MSG },
+  { selector: "CallExpression[callee.name='runPrune']" + KEEPS_EVENTS, message: RUN_PRUNE_MSG },
+  { selector: "ObjectPattern > Property[key.name='runPrune'][shorthand=false]", message: RUN_PRUNE_MSG },
 ];
 const SRC_SYNTAX = [
   HERMES_SYNTAX,
@@ -114,14 +118,6 @@ module.exports = defineConfig([
         { property: 'erase', message: EVENT_LOG_MSG },
       ],
       'no-restricted-syntax': ['error', ...SRC_SYNTAX, ...RUN_PRUNE_SYNTAX],
-    },
-  },
-  {
-    // Sanctioned prune sites: the wrapper (passes retainEventsFor: null) and
-    // the machine, which only calls that wrapper via its input interface.
-    files: ['src/hooks/useJournalWiki.tsx', 'src/machines/journalWikiMachine.ts'],
-    rules: {
-      'no-restricted-syntax': ['error', ...SRC_SYNTAX],
     },
   },
   {

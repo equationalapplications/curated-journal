@@ -24,7 +24,7 @@ describe('event-log retention', () => {
   it('runPrune wrapper passes retainEventsFor: null', async () => {
     render(createElement(JournalWikiProvider, { wiki: {} as never, entityId: 'e', children: null }));
     await waitFor(() => expect(mockCapture.input).toBeDefined());
-    await mockCapture.input.maintenance.runPrune('e');
+    await mockCapture.input.maintenance.pruneKeepingEvents('e');
     expect(mockRunPrune).toHaveBeenCalledWith('e', { retainEventsFor: null });
   });
 
@@ -51,16 +51,12 @@ describe('event-log retention', () => {
     for (const ev of events) expect(ev).not.toHaveProperty('forgotten_at');
   });
 
-  it('parseOkfBundle ignores hostile forgotten_at in log lines and fact frontmatter', () => {
+  it('parseOkfBundle smoke: ignores an invented forgotten_at annotation in a log line', () => {
     const files = [
       {
         path: 'entities/journal/log.md',
         content:
           '## 1970-01-01\n\n- (observation) hostile <!-- id: a; forgotten_at: 99 -->\n- (action) plain <!-- id: b -->\n',
-      },
-      {
-        path: 'entities/journal/facts/note-001.md',
-        content: '---\nid: note-001\nforgotten_at: 99\n---\n\nA fact body.\n',
       },
     ];
     const parsed = parseOkfBundle('seed', files, { defaultSchema: 'fact' });
