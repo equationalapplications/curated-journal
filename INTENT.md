@@ -353,6 +353,10 @@ hardware enters the journal only through the engine, under the same mode
 rules as knowledge leaving. The user can stay in strict privacy forever
 and lose nothing the journal does today.
 
+Any out-of-file copy this app creates is named in this file with its
+retention. OKF exports the user takes are the user's own files; the app
+keeps no other copy of the journal outside its database.
+
 *Why:* the product's founding claim is that private notes do not belong
 in a data center unless their owner says so. Extending the product to a
 cloud service and to hardware must not quietly reverse that claim.
