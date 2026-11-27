@@ -221,6 +221,15 @@ describe('direct SAF save', () => {
     expect(Sharing.shareAsync).toHaveBeenCalled();
     expect(mockDeleted).not.toContain(ZIP);
   });
+
+  it('releases the zip when the save ends, so the next export sweeps it', async () => {
+    const uri = await exportOkfFromDump({ entities: [] } as never, { share: false });
+    saf.requestDirectoryPermissionsAsync.mockResolvedValueOnce({ granted: false });
+    await saveOkfToDevice(uri, 'x.zip');
+    expect(mockDeleted).not.toContain(uri);
+    await exportOkfFromDump({ entities: [] } as never);
+    expect(mockDeleted).toContain(uri);
+  });
 });
 
 describe('share sheet export', () => {
@@ -465,6 +474,13 @@ describe('useLaunchStagingSweep', () => {
     // Effects are flushed by renderHook: the timer is armed but not fired.
     expect(jest.getTimerCount()).toBeGreaterThan(0);
     expect(mockDeleted).toEqual([]);
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    expect(mockDeleted).toEqual([`${CACHE}/export-a.zip`]);
+    // A remount in the same process is not a launch: no second sweep.
+    mockCacheNames.push('export-b.zip');
+    await renderHook(() => useLaunchStagingSweep());
     await act(async () => {
       jest.runAllTimers();
     });

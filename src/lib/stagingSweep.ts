@@ -99,12 +99,20 @@ function sweepIosInbox(): void {
   }
 }
 
-/** Launch sweep, deferred so it never blocks startup. */
+let launchSweepDone = false;
+
+/** Launch sweep, deferred so it never blocks startup. Once per process. */
 export function useLaunchStagingSweep(): void {
   useEffect(() => {
-    // Nothing can be running at launch; the timeout runs it before any
-    // user-started import or export without delaying first render.
-    const t = setTimeout(() => sweepStaging(), 0);
+    // Once per process: a RootLayout remount (Activity recreation, Fast
+    // Refresh) is not a launch. At launch nothing can be running; the
+    // timeout runs it before any user-started import or export without
+    // delaying first render.
+    if (launchSweepDone) return;
+    const t = setTimeout(() => {
+      launchSweepDone = true;
+      sweepStaging();
+    }, 0);
     return () => clearTimeout(t);
   }, []);
 }

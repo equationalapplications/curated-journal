@@ -48,6 +48,8 @@ export default function ImportScreen() {
       return { uri: picked.assets[0].uri };
     },
     prepare: async (uri, onPhase) => {
+      // Captured now: a cancel-and-repick during the copy overwrites the ref.
+      const pickedFileName = pickedName.current;
       const id = Crypto.randomUUID();
       const zipDest = new File(Paths.cache, `import-${id}.zip`);
       const extractDir = new Directory(Paths.cache, `import-${id}`);
@@ -69,7 +71,7 @@ export default function ImportScreen() {
         await new File(uri).copy(zipDest, { overwrite: true });
         // The picker's own cache copy of the journal is no longer needed.
         deletePickerCopy(uri);
-        deleteIosInboxCopy(pickedName.current);
+        deleteIosInboxCopy(pickedFileName);
         extractDir.create({ idempotent: true });
         onPhase('extracting');
         const result = await getUnzip().extract(zipDest.uri, extractDir.uri).await();
@@ -93,7 +95,7 @@ export default function ImportScreen() {
         // Idempotent: a failure before the post-copy delete leaves the
         // picker's copy behind.
         deletePickerCopy(uri);
-        deleteIosInboxCopy(pickedName.current);
+        deleteIosInboxCopy(pickedFileName);
         throw error;
       }
     },
