@@ -22,10 +22,23 @@ const MUST_FLAG = [
   "import { useWikiForget } from '@equationalapplications/expo-llm-wiki'",
   'w.forget(1)',
   "w['erase']()",
+  'function f(){ const { runPrune } = w; return runPrune }',
+  'const f = () => runPrune',
+  'const f = c ? runPrune : g',
+  'const f = g ?? runPrune',
+  "m['runPrune'](id)",
+  "const { 'runPrune': p } = w; p(id)",
+  'xs.toSorted()',
   'const d = { forgotten_at: 1 }',
   'const q = `UPDATE events SET forgotten_at = ?`',
 ];
-const MUST_NOT_FLAG = ['m.runPrune(id, { retainEventsFor: null })', 'wiki.pruneKeepingEvents(id)'];
+const MUST_NOT_FLAG = [
+  'm.runPrune(id, { retainEventsFor: null })',
+  'wiki.pruneKeepingEvents(id)',
+  'const { runLibrarian, runHeal, runPrune } = useWikiMaintenance(); const r = useRef({ runLibrarian, runHeal, runPrune }); r.current.runPrune(id, { retainEventsFor: null })',
+  'type T = { runPrune: (id: string) => void }',
+  'interface I { runPrune(): void }',
+];
 
 describe('event-log lint rules', () => {
   const root = path.resolve(__dirname, '..');

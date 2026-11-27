@@ -54,14 +54,18 @@ const RUN_PRUNE_MSG =
 // A runPrune call is allowed only as a direct call whose second argument is an
 // object literal with a top-level retainEventsFor: null not followed by a spread.
 // (esquery 1.7: only one-level :has(> ...) works.)
-const PRUNE_CALL = ":matches(CallExpression[callee.property.name='runPrune'], CallExpression[callee.name='runPrune'])";
+const PRUNE_CALL = ":matches(CallExpression[callee.property.name='runPrune'], CallExpression[callee.name='runPrune'], CallExpression[callee.property.value='runPrune'])";
+// `m.runPrune!(...)` and `retainEventsFor: null as null` are deliberately flagged
+// (fail closed) -- don't loosen the rule to allow them.
 const RUN_PRUNE_SYNTAX = [
   { selector: PRUNE_CALL + ":not([arguments.1.type='ObjectExpression'])", message: RUN_PRUNE_MSG },
   { selector: PRUNE_CALL + " > ObjectExpression.arguments:not(:has(> Property[key.name='retainEventsFor'][value.raw='null']))", message: RUN_PRUNE_MSG },
   { selector: PRUNE_CALL + " > ObjectExpression.arguments > Property[key.name='retainEventsFor'] ~ SpreadElement", message: RUN_PRUNE_MSG },
   { selector: "ObjectPattern > Property[key.name='runPrune'][shorthand=false]", message: RUN_PRUNE_MSG },
   { selector: "MemberExpression[property.name='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
-  { selector: ":matches(CallExpression > .arguments, VariableDeclarator > .init, AssignmentExpression > .right, ArrayExpression > .elements, Property[shorthand=false] > .value)[name='runPrune']", message: RUN_PRUNE_MSG },
+  { selector: "MemberExpression[property.value='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
+  { selector: "ObjectPattern > Property[key.value='runPrune']", message: RUN_PRUNE_MSG },
+  { selector: "Identifier[name='runPrune']:not(CallExpression > .callee, MemberExpression > .property, Property > .key, Property[shorthand=true] > .value, TSPropertySignature > .key, TSMethodSignature > .key, MethodDefinition > .key, PropertyDefinition > .key, TSQualifiedName > .right)", message: RUN_PRUNE_MSG },
 ];
 const SRC_SYNTAX = [
   HERMES_SYNTAX,
