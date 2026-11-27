@@ -27,7 +27,7 @@ const makeHealResult = (overrides: Partial<HealResult> = {}): HealResult => ({
 const maintenance = {
   runLibrarian: jest.fn(async () => undefined),
   runHeal: jest.fn(async (): Promise<HealResult> => makeHealResult()),
-  runPrune: jest.fn(async () => undefined),
+  pruneKeepingEvents: jest.fn(async () => undefined),
 };
 
 describe('startNightShift', () => {
@@ -129,7 +129,7 @@ describe('journalWikiMachine', () => {
       order.push('heal');
       return makeHealResult();
     });
-    maintenance.runPrune.mockImplementation(async () => {
+    maintenance.pruneKeepingEvents.mockImplementation(async () => {
       order.push('prune');
     });
     const actor = createActor(journalWikiMachine, {
@@ -144,7 +144,7 @@ describe('journalWikiMachine', () => {
     });
     await waitFor(actor, (s) => s.matches('idle'), { timeout: 5000 });
     expect(order).toEqual(['heal', 'prune']);
-    expect(maintenance.runPrune).toHaveBeenCalledWith('e1');
+    expect(maintenance.pruneKeepingEvents).toHaveBeenCalledWith('e1');
     expect(actor.getSnapshot().context.nightShiftOutcome).toBe('completed');
     actor.stop();
   });

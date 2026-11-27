@@ -41,6 +41,65 @@ function stripEslint10IncompatiblePlugins(configs) {
   });
 }
 
+const HERMES_SYNTAX = {
+  selector:
+    'CallExpression[callee.property.name=/^(toSorted|toReversed|toSpliced|with|findLast|findLastIndex)$/]',
+  message:
+    "This ES2023 Array method is not implemented by Hermes (React Native on Android) and will crash on device, even though Jest on Node passes. Use the ES2019 equivalent — e.g. [...xs].sort() instead of xs.toSorted().",
+};
+const EVENT_LOG_MSG =
+  "INTENT: the event log is never pruned — the engine's prune hard-deletes forgotten events; the app must never forget/erase (rename non-engine members named forget/erase).";
+const RUN_PRUNE_MSG =
+  "INTENT: call the engine's runPrune only with { retainEventsFor: null } literally in the call (the engine default deletes events older than 30 days); use the app's pruneKeepingEvents wrapper elsewhere. Aliased destructuring of runPrune is banned.";
+// A runPrune call is allowed only as a direct call whose second argument is an
+// object literal with a top-level retainEventsFor: null not followed by a spread.
+// (esquery 1.7: only one-level :has(> ...) works.)
+const PRUNE_CALL = ":matches(CallExpression[callee.property.name='runPrune'], CallExpression[callee.name='runPrune'], CallExpression[callee.property.value='runPrune'])";
+// `m.runPrune!(...)` and `retainEventsFor: null as null` are deliberately flagged
+// (fail closed) -- don't loosen the rule to allow them.
+const RUN_PRUNE_SYNTAX = [
+  { selector: PRUNE_CALL + ":not([arguments.1.type='ObjectExpression'])", message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + " > ObjectExpression.arguments:not(:has(> Property[computed=false][key.name='retainEventsFor'][value.raw='null']))", message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + " > ObjectExpression.arguments > Property[computed=false][key.name='retainEventsFor'] ~ SpreadElement", message: RUN_PRUNE_MSG },
+  { selector: "ObjectPattern > Property[key.name='runPrune'][shorthand=false]", message: RUN_PRUNE_MSG },
+  { selector: "MemberExpression[property.name='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
+  { selector: "MemberExpression[property.value='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
+  { selector: "ObjectPattern > Property[key.value='runPrune']", message: RUN_PRUNE_MSG },
+  { selector: "Identifier[name='runPrune']:not(CallExpression > .callee, MemberExpression > .property, Property > .key, Property[shorthand=true] > .value, TSPropertySignature > .key, TSMethodSignature > .key, MethodDefinition > .key, PropertyDefinition > .key, TSQualifiedName > .right)", message: RUN_PRUNE_MSG },
+];
+const ENGINE_PKGS = [
+  '@equationalapplications/expo-llm-wiki',
+  '@equationalapplications/react-llm-wiki',
+  '@equationalapplications/core-llm-wiki',
+];
+const ENGINE_PATHS = ENGINE_PKGS.map((name) => ({
+  name,
+  importNames: ['useWikiForget', 'EraseReport', 'EraseStepError', 'ForgetParams', 'ForgetResult'],
+  message: EVENT_LOG_MSG,
+}));
+const MD_MSG = 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.';
+const MD_PATHS = [{ name: 'react-native-markdown-display', allowTypeImports: true, message: MD_MSG }];
+const MD_PATTERNS = [{ group: ['react-native-markdown-display/*'], allowTypeImports: true, message: MD_MSG }];
+// Dynamic import / require of the markdown library bypass no-restricted-imports;
+// NoteMarkdown is the only sanctioned entry.
+const MD_SYNTAX = [
+  { selector: 'ImportExpression[source.value=/^react-native-markdown-display/]', message: MD_MSG },
+  { selector: "CallExpression[callee.name='require'][arguments.0.value=/^react-native-markdown-display/]", message: MD_MSG },
+];
+const ENGINE_RE = '^@equationalapplications\\/(expo|react|core)-llm-wiki';
+const SRC_SYNTAX = [
+  HERMES_SYNTAX,
+  { selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]', message: EVENT_LOG_MSG },
+  ...MD_SYNTAX,
+  // Dynamic import()/require() of the engine bypasses the import ban on useWikiForget.
+  { selector: `ImportExpression[source.value=/${ENGINE_RE}/]`, message: EVENT_LOG_MSG },
+  { selector: `CallExpression[callee.name='require'][arguments.0.value=/${ENGINE_RE}/]`, message: EVENT_LOG_MSG },
+  { selector: "Identifier[name='useWikiForget']", message: EVENT_LOG_MSG },
+  { selector: "Identifier[name='forgotten_at']", message: EVENT_LOG_MSG },
+  { selector: 'Literal[value=/forgotten_at/]', message: EVENT_LOG_MSG },
+  { selector: 'TemplateElement[value.raw=/forgotten_at/]', message: EVENT_LOG_MSG },
+];
+
 module.exports = defineConfig([
   ...stripEslint10IncompatiblePlugins(Array.isArray(expoConfig) ? expoConfig : [expoConfig]),
   {
@@ -65,52 +124,36 @@ module.exports = defineConfig([
     // via a spread and work on every engine: [...xs].sort() for toSorted,
     // [...xs].reverse() for toReversed, xs.filter for with/toSpliced.
     rules: {
-      'no-restricted-syntax': [
+      'no-restricted-syntax': ['error', HERMES_SYNTAX, ...MD_SYNTAX],
+    },
+  },
+  {
+    // Event-log rule (INTENT): the app never forgets/erases. Scoped to src/**;
+    // no-restricted-syntax is restated with the Hermes entry because a later
+    // flat-config entry for the same rule replaces the earlier one.
+    files: ['src/**'],
+    rules: {
+      'no-restricted-imports': [
         'error',
-        {
-          selector:
-            'CallExpression[callee.property.name=/^(toSorted|toReversed|toSpliced|with|findLast|findLastIndex)$/]',
-          message:
-            "This ES2023 Array method is not implemented by Hermes (React Native on Android) and will crash on device, even though Jest on Node passes. Use the ES2019 equivalent — e.g. [...xs].sort() instead of xs.toSorted().",
-        },
-        // Dynamic import / require of the markdown library bypass
-        // no-restricted-imports; NoteMarkdown is the only sanctioned entry.
-        {
-          selector: 'ImportExpression[source.value=/^react-native-markdown-display/]',
-          message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
-        },
-        {
-          selector: "CallExpression[callee.name='require'][arguments.0.value=/^react-native-markdown-display/]",
-          message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
-        },
+        { paths: [...MD_PATHS, ...ENGINE_PATHS], patterns: MD_PATTERNS },
       ],
+      'no-restricted-properties': [
+        'error',
+        { property: 'forget', message: EVENT_LOG_MSG },
+        { property: 'erase', message: EVENT_LOG_MSG },
+      ],
+      'no-restricted-syntax': ['error', ...SRC_SYNTAX, ...RUN_PRUNE_SYNTAX],
     },
   },
   {
     // Notes must render through NoteMarkdown, which forces markdownRules (no
     // remote image fetch, INTENT rule 9). Importing the library directly
-    // would silently bring back the default image rule.
+    // would silently bring back the default image rule. The src/** block above
+    // restates this option set (flat config replaces a rule's options) with
+    // the engine bans added.
     files: ['**/*.{js,jsx,ts,tsx,mjs,cjs}'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: [
-            {
-              name: 'react-native-markdown-display',
-              allowTypeImports: true,
-              message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
-            },
-          ],
-          patterns: [
-            {
-              group: ['react-native-markdown-display/*'],
-              allowTypeImports: true,
-              message: 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', { paths: MD_PATHS, patterns: MD_PATTERNS }],
     },
   },
   {

@@ -51,8 +51,9 @@ export function createNodeSqliteAdapter(): SQLiteAdapter {
  * ios/SQLiteResult.swift and android SQLiteError.h in expo-sqlite 58.0.14),
  * so the message carries `sqlite3_errcode() & 0xff`. node:sqlite puts the
  * extended code in `errcode` instead. `extendedCodes: true` emits the
- * extended code, only for a test of what the engine would do if expo-sqlite
- * ever enabled them.
+ * extended code (as if expo-sqlite enabled them). Since engine 9.4.3 the
+ * engine maps primary code 19 to SQLITE_CONSTRAINT_UNIQUE, so both shapes
+ * behave the same; the option keeps both paths covered.
  */
 export function withExpoSqliteErrors(
   inner: SQLiteAdapter,

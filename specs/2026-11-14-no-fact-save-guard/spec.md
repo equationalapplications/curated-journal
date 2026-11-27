@@ -2,7 +2,7 @@
 
 Status: Implemented
 Amended 2026-11-16 after review: partial-ingest path.
-Amended 2026-11-16 (review round 4): the O10 row and helper description were rewritten to expo-sqlite's primary error code 19 (device behavior; refs engine issue #403), with two device O10 tests plus two extended-code engine tests.
+Amended 2026-11-27 (merge of main into #131, engine 9.18.0): from engine 9.4.3 the engine maps expo-sqlite's primary SQLite code 19 to `SQLITE_CONSTRAINT_UNIQUE`, so the O10 race resolves as a duplicate of the winner on device too. The earlier 2026-11-16 amendment (O10 rejects on device, refs engine issue #403) is superseded; the four O10 tests collapse into two parameterised over the error code (19 and 2067).
 Amended 2026-11-16 (review round 3): the first readback counts the duplicate holder's facts (a re-save could wipe an earlier note); the guard is restated as invariants I1–I4 checked against every engine outcome; m4 and the readback cost corrected; error message covers an empty note; merged with main (engine 9.2.0), version 9.2.2.
 Spec approved by the owner 2026-11-16.
 Date: 2026-11-14
@@ -73,7 +73,7 @@ One `ingestDocument(X, H, { onDuplicateHash: 'skip' })` call ends in one of thes
 | O7 | Duplicate skip; R has none (left by O2 or O9); re-ingest under R succeeds in full | facts under R stamped H | resolve | 1 | O7 |
 | O8 | Same, re-ingest partial | NULL-hash facts under R | resolve (warning) | 1 | O8 |
 | O9 | Same, re-ingest stores nothing (all empty, partial with empty survivors, or every chunk failed) | index H→R rewritten, or nothing | reject (`WikiIngestEmptyError` propagates for every chunk failed) | 1 | O9 (three tests) |
-| O10 | Race: another writer claims H during this save's model pass; the write hits the unique hash index, rolls back, and the result names the winner W in `duplicateOf` | nothing under X | **On device** (expo-sqlite reports primary code 19, which the engine does not translate; engine issue: extractSqliteCode ignores primary code 19): the save rejects with `WikiTransactionError`, W's facts intact, nothing lost or duplicated; a RETRY is a duplicate of W (one copy). If expo-sqlite ever enables extended codes (2067), the engine translates it: as O6 if W has facts, else as O7–O9 under W | 1 (2 if W has none and extended codes) | O10 (two device tests, two engine-level tests) |
+| O10 | Race: another writer claims H during this save's model pass; the write hits the unique hash index, rolls back, and the result names the winner W in `duplicateOf` | nothing under X | **On engine ≥9.4.3** primary code 19 (what expo-sqlite reports on device) is translated like extended code 2067: the save resolves as a duplicate of W (as O6 when W has facts; as O7–O9 under W, with 2 passes, when W is factless). W's facts are intact, nothing lost or duplicated | 1 (2 if W has none) | O10 (two tests, each run for code 19 and code 2067) |
 | O11 | `truncated: true`: a hard split with no boundary; no text is dropped | as O1–O4 | flag ignored; O1–O4 decide | as O1–O4 | O11 |
 | O12 | No chunks (whitespace-only document) | nothing; no `duplicateOf` | reject | 0 | none: unreachable, the journal's document always starts with `# ` |
 | O13 | Content imported from an OKF bundle: facts stamped H under its own ref, no index row; this save is then O1–O4 | as O1–O4 | the hash match counts the imported facts: resolve even if this save stored none | 1 | O13 (uppercase hash) |
@@ -90,7 +90,7 @@ One `ingestDocument(X, H, { onDuplicateHash: 'skip' })` call ends in one of thes
 
 ### Model passes (m4, corrected)
 
-A save costs one model pass. A duplicate of stored content costs none. A RETRY of a factless save also costs one: its first ingest is a duplicate skip with no model call, and the re-ingest is the pass. Two passes inside the single 120 s `saveTimeoutMs` happen only on the race path when the winner stored nothing (O10). That path needs another writer to claim the same hash during this save's model pass, outside this engine instance's per-hash ingest lock; nothing in the app does that today. After a timeout, the cancelled generation scope makes a second pass fail fast. Accepted.
+A save costs one model pass. A duplicate of stored content costs none. A RETRY of a factless save also costs one: its first ingest is a duplicate skip with no model call, and the re-ingest is the pass. Two passes inside the single 120 s `saveTimeoutMs` happen only on the race path when the winner stored nothing (O10, both on device and with extended codes). That path needs another writer to claim the same hash during this save's model pass, outside this engine instance's per-hash ingest lock; nothing in the app does that today. After a timeout, the cancelled generation scope makes a second pass fail fast. Accepted.
 
 ### Readback cost
 
@@ -117,9 +117,9 @@ The failed-entry sheet offers Try again and Discard, and a failed entry cannot b
 
 - `src/lib/journalIngest.ts`: the guard, `NO_FACTS_SAVE_ERROR`, `normalizeJournalSourceRef`.
 - `__tests__/journalNoFactSave.test.ts`: real-engine tests, one per outcome row, plus two queue tests on the real engine and guard.
-- `__tests__/helpers/nodeSqliteAdapter.ts`: `withExpoSqliteErrors`, which reports failures in expo-sqlite's shape: "Error code N" with the primary code (`errcode & 0xff`), because expo-sqlite 58.0.14 never enables extended result codes (ios/SQLiteResult.swift, android SQLiteError.h). An `extendedCodes` option emits 2067 for the engine-level O10 tests.
+- `__tests__/helpers/nodeSqliteAdapter.ts`: `withExpoSqliteErrors`, which reports failures in expo-sqlite's shape: "Error code N" with the primary code (`errcode & 0xff`), because expo-sqlite 58.0.14 never enables extended result codes (ios/SQLiteResult.swift, android SQLiteError.h). An `extendedCodes` option emits 2067; the O10 tests run for both shapes, which behave the same since engine 9.4.3.
 - `__tests__/journalSaveWarning.test.tsx`, `__tests__/journalBackgroundSave.test.tsx`, `__tests__/journalPaneToggle.test.tsx`, `__tests__/journalSaveSourceHash.test.tsx`: the queue/screen stubs answer the readback with one fact stamped with the save's hash, so they always pass the guard. The guard's reject path is exercised only on the real engine.
-- `package.json`, `app.json`, `package-lock.json`: version 9.2.1 → 9.2.2.
+- `package.json`, `app.json`, `package-lock.json`: version 9.2.1 → 9.2.2 on main, then 9.3.0 on #131 (engine 9.18.0).
 - `specs/2026-11-14-no-fact-save-guard/`: this folder.
 
 ## Test plan
@@ -129,7 +129,7 @@ The failed-entry sheet offers Try again and Discard, and a failed entry cannot b
 - O1–O5, O7, O8, O11, O13: one test each.
 - O6: three tests. The first is a duplicate of a hash-stamped save: no model call, one copy. The other two are the round-3 MAJOR, factless save, then a partial RETRY, then the same text saved again with an empty model, for lowercase and uppercase hashes. Each resolves with no model call and leaves R1's facts untouched.
 - O9: three tests (empty, partial with empty survivors, every chunk failed). Each rejects, stores nothing, and a later RETRY stores one copy.
-- O10: four tests. A second engine instance on the same database claims the hash during the model pass. Two assert device behavior (primary code 19): the save rejects, the winner's facts are intact, a RETRY is a duplicate with one copy (winner with facts, factless winner). Two assert the engine's translation under extended code 2067 (one pass; two passes with a factless winner).
+- O10: two tests, each run for primary code 19 (device) and extended code 2067. A second engine instance on the same database claims the hash during the model pass. With a winner that stored facts, the save resolves as a duplicate of the winner after one pass (journal://1 has 0 facts, journal://900 has 1). With a factless winner it re-ingests under the winner in two passes: `failedChunks` 0, one copy under journal://900, no duplicates.
 - A pin that `normalizeJournalSourceRef` equals the engine's stored ref.
 - Queue tests on the real engine and guard:
   - A factless save ends `failed` with its title and body kept and the message shown; RETRY then stores it once.
@@ -140,16 +140,16 @@ Mutation check: each mutation of `journalIngest.ts`, run against the file.
 | Mutation | Tests that fail |
 |---|---|
 | M1: first readback ignores `duplicateOf` (the round-3 code) | O6 round-3 MAJOR, both hashes (2) |
-| M2: no re-ingest branch | O6 MAJOR ×2, O7, O8, O9 ×3, O10 factless winner, queue RETRY (9) |
-| M3: re-ingest a duplicate without the readback precondition (I1) | O6 ×3, O10 winner with facts (4) |
+| M2: no re-ingest branch | O6 MAJOR ×2, O7, O8, O9 ×3, O10 factless winner ×2, queue RETRY (10) |
+| M3: re-ingest a duplicate without the readback precondition (I1) | O6 ×3, O10 winner with facts ×2 (5) |
 | M4: never throw | O2, O4, O6 MAJOR ×2, O7, O8, O9 ×3, O11, both queue tests (12) |
 | M5: hash compared case-sensitively | O13 (1) |
 | M6: no hash match | O13 (1) |
 | M7: holder ref not normalized | O3 (1) |
 | M8: second readback reads X instead of R | O6 MAJOR ×2, O8 (3) |
-| M9: re-ingest under X instead of R | O6 MAJOR ×2, O7, O8, O9 ×3, O10 factless winner, queue RETRY (9) |
+| M9: re-ingest under X instead of R | O6 MAJOR ×2, O7, O8, O9 ×3, O10 factless winner ×2, queue RETRY (10) |
 
-(Counts from the round-3 pass of 20 tests; the two round-4 O10 device tests add failures — e.g. a never-throw mutation now fails 14, re-verified in review round 5.)
+(Counts adjusted by hand for the 2026-11-27 O10 rewrite (four O10 tests, two per row-shape); the mutations were not re-run after the rewrite. M4 (never throw) is unchanged at 12: no O10 test depends on a throw any more.)
 
 Some tests pin engine behavior and have no guard code of their own: O1 (control), O5 (the engine error propagates), O11 (the flag is ignored; it also fails under M4), and the normalization pin.
 
