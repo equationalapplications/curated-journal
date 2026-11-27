@@ -37,7 +37,7 @@ New `src/lib/stagingSweep.ts` `sweepStaging(kinds)` deletes `export-*` / `import
 ## Out of scope
 
 - Deleting a share-sheet zip earlier than the next export/launch.
-- `src/app/model-hub/import.tsx` (model files, not journal content).
+- Changing `src/app/model-hub/import.tsx` (model files, not journal content). Its picker copies (`DocumentPicker/`, iOS `*-Inbox`) are not deleted right after its copy; they are cleared only by the launch sweep.
 - Retention of copies outside the cache (user-chosen SAF/share destinations are the user's).
 - Editing INTENT.md (rule 13 is PR #129).
 
