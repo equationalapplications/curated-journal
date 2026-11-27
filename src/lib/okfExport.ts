@@ -147,10 +147,12 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
       }
       return;
     }
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
-      handedToShareSheet = true;
+    if (!(await Sharing.isAvailableAsync())) {
+      // Nothing was saved: say so instead of returning silently.
+      throw new Error('Sharing is not available on this device.');
     }
+    await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
+    handedToShareSheet = true;
   }
 
   try {

@@ -211,7 +211,7 @@ describe('direct SAF save', () => {
   it('deletes the zip when the cancel fallback finds sharing unavailable', async () => {
     saf.requestDirectoryPermissionsAsync.mockResolvedValueOnce({ granted: false });
     (Sharing.isAvailableAsync as jest.Mock).mockResolvedValueOnce(false);
-    await saveOkfToDevice(ZIP, 'x.zip');
+    await expect(saveOkfToDevice(ZIP, 'x.zip')).rejects.toThrow(/not available/);
     expect(mockDeleted).toContain(ZIP);
   });
 
