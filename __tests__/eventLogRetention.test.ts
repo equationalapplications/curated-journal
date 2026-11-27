@@ -28,7 +28,7 @@ describe('event-log retention', () => {
     expect(mockRunPrune).toHaveBeenCalledWith('e', { retainEventsFor: null });
   });
 
-  it('parseOkfBundle never yields forgotten_at on events (export round-trip)', () => {
+  it('pins the export filter: forgotten events are dropped on export and never yield forgotten_at on re-import', () => {
     const dump = {
       generatedAt: 1,
       entities: {
@@ -47,11 +47,11 @@ describe('event-log retention', () => {
     expect(files.some((f) => f.path === 'entities/e/log.md')).toBe(true);
     const parsed = parseOkfBundle('seed', files, { defaultSchema: 'fact' });
     const events = Object.values(parsed.entities).flatMap((e: any) => e.events ?? []);
-    expect(events.length).toBeGreaterThan(0);
+    expect(events.map((e: any) => e.id)).toEqual(['a']);
     for (const ev of events) expect(ev).not.toHaveProperty('forgotten_at');
   });
 
-  it('parseOkfBundle smoke: ignores an invented forgotten_at annotation in a log line', () => {
+  it('parseOkfBundle smoke: treats a forgotten_at comment in a log line as plain text', () => {
     const files = [
       {
         path: 'entities/journal/log.md',
@@ -62,6 +62,9 @@ describe('event-log retention', () => {
     const parsed = parseOkfBundle('seed', files, { defaultSchema: 'fact' });
     const events = Object.values(parsed.entities).flatMap((e: any) => e.events ?? []);
     expect(events.length).toBeGreaterThan(0);
+    const hostile = events.find((e: any) => e.event_type === 'observation');
+    expect(hostile.id).not.toBe('a');
+    expect(hostile.summary).toContain('forgotten_at: 99');
     for (const ev of events) expect(ev).not.toHaveProperty('forgotten_at');
   });
 });

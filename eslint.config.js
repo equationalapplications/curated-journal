@@ -51,19 +51,24 @@ const EVENT_LOG_MSG =
   "INTENT: the event log is never pruned — the engine's prune hard-deletes forgotten events; the app must never forget/erase (rename non-engine members named forget/erase).";
 const RUN_PRUNE_MSG =
   "INTENT: call the engine's runPrune only with { retainEventsFor: null } literally in the call (the engine default deletes events older than 30 days); use the app's pruneKeepingEvents wrapper elsewhere. Aliased destructuring of runPrune is banned.";
-// A runPrune call is allowed only if its arguments contain the property
-// retainEventsFor with the literal value null.
-const KEEPS_EVENTS = ":not(:has(Property[key.name='retainEventsFor'][value.raw='null']))";
+// A runPrune call is allowed only as a direct call whose second argument is an
+// object literal with a top-level retainEventsFor: null not followed by a spread.
+// (esquery 1.7: only one-level :has(> ...) works.)
+const PRUNE_CALL = ":matches(CallExpression[callee.property.name='runPrune'], CallExpression[callee.name='runPrune'])";
 const RUN_PRUNE_SYNTAX = [
-  { selector: "CallExpression[callee.property.name='runPrune']" + KEEPS_EVENTS, message: RUN_PRUNE_MSG },
-  { selector: "CallExpression[callee.name='runPrune']" + KEEPS_EVENTS, message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + ":not([arguments.1.type='ObjectExpression'])", message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + " > ObjectExpression.arguments:not(:has(> Property[key.name='retainEventsFor'][value.raw='null']))", message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + " > ObjectExpression.arguments > Property[key.name='retainEventsFor'] ~ SpreadElement", message: RUN_PRUNE_MSG },
   { selector: "ObjectPattern > Property[key.name='runPrune'][shorthand=false]", message: RUN_PRUNE_MSG },
+  { selector: "MemberExpression[property.name='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
+  { selector: ":matches(CallExpression > .arguments, VariableDeclarator > .init, AssignmentExpression > .right, ArrayExpression > .elements, Property[shorthand=false] > .value)[name='runPrune']", message: RUN_PRUNE_MSG },
 ];
 const SRC_SYNTAX = [
   HERMES_SYNTAX,
   { selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]', message: EVENT_LOG_MSG },
   { selector: "Identifier[name='forgotten_at']", message: EVENT_LOG_MSG },
-  { selector: "Literal[value='forgotten_at']", message: EVENT_LOG_MSG },
+  { selector: 'Literal[value=/forgotten_at/]', message: EVENT_LOG_MSG },
+  { selector: 'TemplateElement[value.raw=/forgotten_at/]', message: EVENT_LOG_MSG },
 ];
 const ENGINE_PKGS = [
   '@equationalapplications/expo-llm-wiki',
@@ -102,7 +107,7 @@ module.exports = defineConfig([
     // Event-log rule (INTENT): the app never forgets/erases. Scoped to src/**;
     // no-restricted-syntax is restated with the Hermes entry because a later
     // flat-config entry for the same rule replaces the earlier one.
-    files: ['src/**/*.{ts,tsx,js,jsx,mjs}'],
+    files: ['src/**'],
     rules: {
       'no-restricted-imports': [
         'error',
