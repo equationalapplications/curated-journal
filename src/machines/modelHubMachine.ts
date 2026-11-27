@@ -224,12 +224,15 @@ export const modelHubMachine = setup({
           pausedReason: Context['pausedReason'];
           pauseState: DownloadPauseStateRecord | null;
           idlePause: boolean;
+          continuation: boolean;
         };
       }) => {
         // No live download to pause. A pause from the network check persists
         // the row as paused with the kept pause state; a restored pause's row
         // is already persisted.
         if (input.idlePause) {
+          // A fresh pick has no row to hold: persisting one would trap the user in paused.
+          if (!input.continuation) return input.pauseState;
           await input.api.persistDownloadState({
             modelId: input.modelId,
             status: 'paused',
@@ -537,6 +540,7 @@ export const modelHubMachine = setup({
           pausedReason: context.pausedReason,
           pauseState: context.pauseState,
           idlePause: context.idlePause,
+          continuation: context.continuation,
         }),
         onDone: { actions: assign({ pauseState: ({ event }) => event.output }) },
         onError: {
@@ -552,9 +556,10 @@ export const modelHubMachine = setup({
         APP_FOREGROUND: {
           guard: ({ context }) => context.pausedReason === 'background',
           target: 'confirmingNetwork',
-          // A fresh pick paused during its network check keeps continuation
-          // false; restored/held rows already carry true (set at restore/re-pick).
-          actions: assign({ continuation: ({ context }) => context.pauseState !== null || context.continuation }),
+          // A pause from a live download (idlePause false) is a continuation; a fresh
+          // pick paused during its network check keeps continuation false; restored/held
+          // rows already carry true (set at restore/re-pick).
+          actions: assign({ continuation: ({ context }) => context.continuation || !context.idlePause }),
         },
       },
     },
@@ -688,14 +693,14 @@ export const modelHubMachine = setup({
           {
             guard: ({ context }) => context.error?.code === 'disk-full',
             target: 'selecting',
-            actions: assign({ modelId: null, pauseState: null, error: null }),
+            actions: assign({ modelId: null, pauseState: null, error: null, continuation: false }),
           },
           {
             guard: ({ context }) => context.pauseState !== null,
             target: 'confirmingNetwork',
             actions: assign({ continuation: true }),
           },
-          { target: 'selecting' },
+          { target: 'selecting', actions: assign({ continuation: false }) },
         ],
       },
     },
