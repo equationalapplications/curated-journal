@@ -56,7 +56,7 @@ The guard, in `createJournalIngest`:
 - **I1**: the guard never causes a destructive re-ingest of a ref that has live facts.
 - **I2**: the guard never resolves when nothing is stored for the note's content.
 - **I3**: the guard never rejects when the note's content has stored facts.
-- **I4**: a RETRY never duplicates facts.
+- **I4**: a RETRY never duplicates facts it can see. Facts left by an earlier NULL-hash partial save of the same text are invisible to it (I3 blind spot (a)); a RETRY may then store a second copy.
 
 ### Engine outcomes
 
@@ -86,7 +86,7 @@ One `ingestDocument(X, H, { onDuplicateHash: 'skip' })` call ends in one of thes
 - **I3.** The guard rejects only right after a readback that counted none. The note's content can be stored under R (O6), under X (O1, O3), or stamped H under any ref (O13), and the readback covers all three. Two blind spots, both of which reject with the text kept (the safe direction):
   (a) NULL-hash rows under an unrelated earlier ref. A previous partial save of the same text (O3) never claimed H, so neither its ref nor a hash ties it to this note.
   (b) Engine errors (O5) propagate unchanged.
-- **I4.** A RETRY follows a rejection, and a guard rejection means nothing is stored for the content. If an earlier attempt left H indexed (O2, O9), the RETRY is a duplicate skip followed by a re-ingest under R, which supersedes nothing and stores the only copy (O7). Otherwise it is a fresh ingest of content with nothing stored. A later identical save is O6 and adds no copy. Not covered: owner decision 1, a queue rule rather than the guard.
+- **I4.** A RETRY follows a rejection, and a guard rejection means nothing is stored for the content. If an earlier attempt left H indexed (O2, O9), the RETRY is a duplicate skip followed by a re-ingest under R, which supersedes nothing and stores the only copy (O7). Otherwise it is a fresh ingest of content with nothing stored. A later identical save is O6 and adds no copy. Not covered: owner decision 1, a queue rule rather than the guard; and NULL-hash facts from an earlier partial save of the same text (I3 blind spot (a), Accepted limitations), which a RETRY that stores facts can duplicate because neither attempt indexed the hash.
 
 ### Model passes (m4, corrected)
 
