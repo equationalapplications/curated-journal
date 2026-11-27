@@ -15,6 +15,7 @@ import { ProgressBar } from '@/components/ui/progress';
 import { ErrorBanner } from '@/components/ui/states';
 import { Space } from '@/constants/theme';
 import { MAX_ZIP_UNCOMPRESSED_BYTES } from '@/lib/constants';
+import { deletePickerCopy } from '@/lib/stagingSweep';
 import { chunkedImportDump } from '@/lib/chunkedImportDump';
 import { walkMarkdownFiles } from '@/lib/walkDirectory';
 import { useJournal } from '@/contexts/JournalContext';
@@ -62,6 +63,8 @@ export default function ImportScreen() {
         // MUST await: unzip raced this copy and opened a nonexistent file
         // ("Could not open ZIP file", nitro-unzip IOException on device).
         await new File(uri).copy(zipDest, { overwrite: true });
+        // The picker's own cache copy of the journal is no longer needed.
+        deletePickerCopy(uri);
         extractDir.create({ idempotent: true });
         onPhase('extracting');
         const result = await getUnzip().extract(zipDest.uri, extractDir.uri).await();

@@ -9,7 +9,7 @@ import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { formatOkfBundle, type MemoryDump } from '@equationalapplications/expo-llm-wiki';
 import { zip } from 'react-native-zip-archive';
-import { sweepStaging } from '@/lib/stagingSweep';
+import { markExportActive, markExportDone, sweepStaging } from '@/lib/stagingSweep';
 
 function ensureDirectory(root: Directory, relativePath: string): Directory {
   const parts = relativePath.split('/').filter(Boolean);
@@ -28,9 +28,11 @@ export async function exportOkfFromDump(
   // import may be open and its staging must not be touched.
   sweepStaging(['export']);
   const id = Crypto.randomUUID();
+  // Registered before any write so an overlapping export's sweep skips ours.
+  markExportActive(id);
   const exportDir = new Directory(Paths.cache, `export-${id}`);
-  exportDir.create({ idempotent: true });
   try {
+    exportDir.create({ idempotent: true });
     // Deliberate profile pin (spec §5.3): the library default is already
     // llm-wiki/2, but pinning it here means a future default flip cannot
     // silently change our export format.
@@ -58,6 +60,7 @@ export async function exportOkfFromDump(
     // The temp dir is cleaned up even when zip/share throws (CodeRabbit
     // resource-leak finding on PR #27).
     exportDir.delete();
+    markExportDone(id);
   }
 }
 
@@ -80,32 +83,37 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
   // The SAF write completes before this returns, so the cache zip is deleted
   // as soon as the save succeeds, fails or is cancelled. The cancel fallback
   // hands the zip to the share sheet, which may still be reading it after
-  // shareAsync resolves, so that path leaves it for the next sweep.
+  // shareAsync resolves, so only that path leaves it for the next sweep.
   let handedToShareSheet = false;
+
+  async function save(): Promise<void> {
+    const downloadsRoot = StorageAccessFramework.getUriForDirectoryInRoot('Download');
+    const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync(downloadsRoot);
+    if (perms.granted) {
+      const destUri = await StorageAccessFramework.createFileAsync(
+        perms.directoryUri,
+        fileName,
+        'application/zip',
+      );
+      const file = new File(zipUri);
+      // encoding MUST be Base64: the default is UTF-8, which would write the
+      // base64 TEXT literally and produce a corrupt zip that import cannot
+      // open ("Could not open ZIP file" — device repro, Sep 26).
+      await StorageAccessFramework.writeAsStringAsync(
+        destUri,
+        await file.base64(),
+        { encoding: EncodingType.Base64 },
+      );
+      return;
+    }
+    if (await Sharing.isAvailableAsync()) {
+      handedToShareSheet = true;
+      await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
+    }
+  }
+
   try {
-  const downloadsRoot = StorageAccessFramework.getUriForDirectoryInRoot('Download');
-  const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync(downloadsRoot);
-  if (perms.granted) {
-    const destUri = await StorageAccessFramework.createFileAsync(
-      perms.directoryUri,
-      fileName,
-      'application/zip',
-    );
-    const file = new File(zipUri);
-    // encoding MUST be Base64: the default is UTF-8, which would write the
-    // base64 TEXT literally and produce a corrupt zip that import cannot
-    // open ("Could not open ZIP file" — device repro, Sep 26).
-    await StorageAccessFramework.writeAsStringAsync(
-      destUri,
-      await file.base64(),
-      { encoding: EncodingType.Base64 },
-    );
-    return;
-  }
-  handedToShareSheet = true;
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(zipUri, { mimeType: 'application/zip' });
-  }
+    await save();
   } finally {
     if (!handedToShareSheet) {
       try {
