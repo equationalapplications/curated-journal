@@ -1,6 +1,6 @@
 import { exportOkfFromDump, saveOkfToDevice } from '@/lib/okfExport';
 import { deletePickerCopy, sweepStaging, useLaunchStagingSweep } from '@/lib/stagingSweep';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook } from '@testing-library/react-native';
 
 const CACHE = 'file:///data/user/0/app/cache';
 // mock* names are allowed inside jest.mock factories.
@@ -10,6 +10,7 @@ let mockPickerChildren: string[] = [];
 const mockDeleted: string[] = [];
 let mockDeleteThrows = false;
 let mockListThrows = false;
+let mockCreateThrows = false;
 
 jest.mock('react-native-zip-archive', () => ({
   zip: jest.fn(async (_d: string, dest: string) => {
@@ -28,8 +29,18 @@ jest.mock('@equationalapplications/expo-llm-wiki', () => ({
 }));
 jest.mock('expo-file-system', () => {
   const cache = 'file:///data/user/0/app/cache';
+  // Mirrors the real API: a cache-level entry exists only while tracked.
+  const existsFor = (uri: string) => {
+    if (uri.startsWith(`${cache}/DocumentPicker/`)) return mockPickerChildren.includes(uri.split('/').pop()!);
+    const rest = uri.slice(cache.length + 1);
+    if (uri.startsWith(`${cache}/`) && !rest.includes('/')) return mockCacheNames.includes(rest);
+    return true;
+  };
   const remove = (uri: string) => {
     if (mockDeleteThrows) throw new Error('locked');
+    if (!existsFor(uri)) throw new Error(`does not exist: ${uri}`);
+    const pi = uri.startsWith(`${cache}/DocumentPicker/`) ? mockPickerChildren.indexOf(uri.split('/').pop()!) : -1;
+    if (pi >= 0) mockPickerChildren.splice(pi, 1);
     mockDeleted.push(uri);
     mockCallLog.push(`delete:${uri.split('/').pop()}`);
     const i = mockCacheNames.indexOf(uri.split('/').pop()!);
@@ -43,7 +54,13 @@ jest.mock('expo-file-system', () => {
       this.uri = name ? `${base}/${name}` : base;
       this.name = this.uri.split('/').pop()!;
     }
-    create() {}
+    get exists() {
+      return existsFor(this.uri);
+    }
+    create() {
+      if (mockCreateThrows) throw new Error('create failed');
+      if (!mockCacheNames.includes(this.name)) mockCacheNames.push(this.name);
+    }
     delete() {
       remove(this.uri);
     }
@@ -55,10 +72,12 @@ jest.mock('expo-file-system', () => {
   }
   class File {
     uri: string;
-    exists = true;
     constructor(parent: { uri: string } | string, name?: string) {
       const base = typeof parent === 'string' ? parent : parent.uri;
       this.uri = name ? `${base}/${name}` : base;
+    }
+    get exists() {
+      return existsFor(this.uri);
     }
     create() {}
     async write() {}
@@ -95,11 +114,16 @@ beforeEach(() => {
   mockUuid = 0;
   mockDeleteThrows = false;
   mockListThrows = false;
+  mockCreateThrows = false;
   jest.clearAllMocks();
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 describe('direct SAF save', () => {
+  beforeEach(() => {
+    mockCacheNames.push('export-old.zip');
+  });
+
   it('deletes the cache zip after a successful save', async () => {
     saf.requestDirectoryPermissionsAsync.mockResolvedValueOnce({ granted: true, directoryUri: 'content://tree' });
     await saveOkfToDevice(ZIP, 'x.zip');
@@ -142,12 +166,22 @@ describe('share sheet export', () => {
     expect(mockDeleted).not.toContain(`${CACHE}/export-new-id.zip`);
   });
 
-  it('sweeps an old export zip (and only export-*) at the start of the next export', async () => {
+  it('sweeps only export-* leftovers at the start of the next export', async () => {
     mockCacheNames.push('export-old.zip', 'import-live.zip', 'other.bin');
     await exportOkfFromDump({ entities: [] } as never);
     expect(mockDeleted).toContain(ZIP);
     expect(mockDeleted).not.toContain(`${CACHE}/import-live.zip`);
     expect(mockDeleted).not.toContain(`${CACHE}/other.bin`);
+  });
+
+  it('a finished export zip is released and swept by the next real export', async () => {
+    // Real A then B (no hard-coded seed): A's id must be released on finish.
+    const a = await exportOkfFromDump({ entities: [] } as never);
+    expect(mockCacheNames).toContain('export-new-id.zip');
+    await exportOkfFromDump({ entities: [] } as never);
+    expect(mockDeleted).toContain(a);
+    expect(mockCacheNames).not.toContain('export-new-id.zip');
+    expect(mockCacheNames).toContain('export-id-2.zip');
   });
 
   it('deletes the old zip before zipping, and the new zip survives', async () => {
@@ -159,24 +193,64 @@ describe('share sheet export', () => {
     expect(mockCacheNames).not.toContain('export-old.zip');
   });
 
-  it('two overlapping exports both succeed and neither is swept by the other', async () => {
-    const zipMock = jest.requireMock('react-native-zip-archive').zip as jest.Mock;
+  it('overlapping exports: the second sweep deletes neither the first zip nor its dir', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    zipMock.mockImplementationOnce(async (_d: string, dest: string) => {
+    (Sharing.shareAsync as jest.Mock).mockImplementationOnce(async () => {
       await gate;
-      mockCacheNames.push(dest.split('/').pop()!);
     });
-    const first = exportOkfFromDump({ entities: [] } as never, { share: false });
-    await Promise.resolve();
-    // First export's dir exists in the cache while the second starts.
-    mockCacheNames.push('export-new-id');
-    const second = exportOkfFromDump({ entities: [] } as never, { share: false });
-    await second;
+    const first = exportOkfFromDump({ entities: [] } as never);
+    // Let the first export reach its gated share: zip written, id still active.
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(mockCacheNames).toContain('export-new-id.zip');
+    const second = exportOkfFromDump({ entities: [] } as never);
+    const secondUri = await second;
     release();
-    await first;
-    expect(mockDeleted).not.toContain(`${CACHE}/export-new-id`.replace('new-id', 'new-id') + '.zip');
-    expect(mockDeleted.filter((u) => u.endsWith('/export-new-id'))).toHaveLength(1); // only its own finally
+    const firstUri = await first;
+    expect(mockCacheNames).toContain('export-new-id.zip');
+    expect(mockCacheNames).toContain('export-id-2.zip');
+    expect(mockDeleted).not.toContain(firstUri);
+    expect(mockDeleted).not.toContain(secondUri);
+  });
+
+  it('a SAF save in flight keeps its zip from a second export sweep', async () => {
+    const uri = await exportOkfFromDump({ entities: [] } as never, { share: false });
+    expect(mockCacheNames).toContain('export-new-id.zip');
+    let grant!: (v: unknown) => void;
+    saf.requestDirectoryPermissionsAsync.mockReturnValueOnce(new Promise((r) => (grant = r)));
+    const saving = saveOkfToDevice(uri, 'x.zip');
+    await exportOkfFromDump({ entities: [] } as never, { share: false });
+    expect(mockDeleted).not.toContain(uri);
+    grant({ granted: true, directoryUri: 'content://tree' });
+    await saving;
+    expect(mockDeleted).toContain(uri); // deleted by the save's own finally
+  });
+
+  it('a failed create() surfaces the real error and still releases the id', async () => {
+    mockCreateThrows = true;
+    await expect(exportOkfFromDump({ entities: [] } as never)).rejects.toThrow('create failed');
+    // The missing dir is skipped, not deleted-and-caught.
+    expect(console.warn).not.toHaveBeenCalled();
+    mockCreateThrows = false;
+    mockCacheNames.push('export-new-id.zip');
+    sweepStaging();
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id.zip`);
+  });
+
+  it('deletes the partial zip when zip() throws', async () => {
+    const zipMock = jest.requireMock('react-native-zip-archive').zip as jest.Mock;
+    zipMock.mockImplementationOnce(async (_d: string, dest: string) => {
+      mockCacheNames.push(dest.split('/').pop()!);
+      throw new Error('zip boom');
+    });
+    await expect(exportOkfFromDump({ entities: [] } as never)).rejects.toThrow('zip boom');
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id.zip`);
+  });
+
+  it('deletes the zip when shareAsync throws', async () => {
+    (Sharing.shareAsync as jest.Mock).mockRejectedValueOnce(new Error('share boom'));
+    await expect(exportOkfFromDump({ entities: [] } as never)).rejects.toThrow('share boom');
+    expect(mockDeleted).toContain(`${CACHE}/export-new-id.zip`);
   });
 });
 
@@ -220,7 +294,13 @@ describe('document picker copy', () => {
     expect(mockDeleted).toEqual([]);
   });
 
+  it('deletePickerCopy needs the trailing slash: a sibling directory is not touched', () => {
+    deletePickerCopy(`${CACHE}/DocumentPickerX/f.zip`);
+    expect(mockDeleted).toEqual([]);
+  });
+
   it('deletePickerCopy deletes a cache copy but never a user original', () => {
+    mockPickerChildren = ['u.zip'];
     deletePickerCopy(`${CACHE}/DocumentPicker/u.zip`);
     deletePickerCopy('file:///var/mobile/Documents/journal.zip');
     deletePickerCopy('content://com.android.providers/doc/1');
@@ -229,10 +309,28 @@ describe('document picker copy', () => {
 });
 
 describe('useLaunchStagingSweep', () => {
+  afterEach(() => jest.useRealTimers());
+
   it('sweeps once, deferred, after mount', async () => {
+    jest.useFakeTimers();
     mockCacheNames.push('export-a.zip');
-    renderHook(() => useLaunchStagingSweep());
+    await renderHook(() => useLaunchStagingSweep());
+    // Effects are flushed by renderHook: the timer is armed but not fired.
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
     expect(mockDeleted).toEqual([]);
-    await waitFor(() => expect(mockDeleted).toEqual([`${CACHE}/export-a.zip`]));
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    expect(mockDeleted).toEqual([`${CACHE}/export-a.zip`]);
+  });
+});
+
+describe('wiring', () => {
+  it('RootLayout runs the launch sweep', () => {
+    // Narrow source-level check: rendering RootLayout needs the wiki, model
+    // and navigation stacks; the hook's behaviour is covered above.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '../src/app/_layout.tsx'), 'utf8');
+    expect(src).toMatch(/import \{ useLaunchStagingSweep \} from '@\/lib\/stagingSweep'/);
+    expect(src).toMatch(/useLaunchStagingSweep\(\);/);
   });
 });

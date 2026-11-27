@@ -18,7 +18,21 @@ export function markExportDone(id: string): void {
   activeExportIds.delete(id);
 }
 
+/**
+ * Zip basenames protected after their export returned: a direct SAF save
+ * still reads the zip (picker, createFileAsync, base64) after
+ * `exportOkfFromDump` has released its id.
+ */
+const protectedZipNames = new Set<string>();
+export function protectStagedZip(name: string): void {
+  protectedZipNames.add(name);
+}
+export function releaseStagedZip(name: string): void {
+  protectedZipNames.delete(name);
+}
+
 function isActiveExport(name: string): boolean {
+  if (protectedZipNames.has(name)) return true;
   for (const id of activeExportIds) {
     if (name === `export-${id}` || name === `export-${id}.zip`) return true;
   }

@@ -85,6 +85,9 @@ export default function ImportScreen() {
         return { dump, noteCount, cleanup };
       } catch (error) {
         cleanup();
+        // Idempotent: a failure before the post-copy delete leaves the
+        // picker's copy behind.
+        deletePickerCopy(uri);
         throw error;
       }
     },

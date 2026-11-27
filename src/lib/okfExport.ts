@@ -9,7 +9,13 @@ import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import { formatOkfBundle, type MemoryDump } from '@equationalapplications/expo-llm-wiki';
 import { zip } from 'react-native-zip-archive';
-import { markExportActive, markExportDone, sweepStaging } from '@/lib/stagingSweep';
+import {
+  markExportActive,
+  markExportDone,
+  protectStagedZip,
+  releaseStagedZip,
+  sweepStaging,
+} from '@/lib/stagingSweep';
 
 function ensureDirectory(root: Directory, relativePath: string): Directory {
   const parts = relativePath.split('/').filter(Boolean);
@@ -51,16 +57,33 @@ export async function exportOkfFromDump(
     }
 
     const zipFile = new File(Paths.cache, `export-${id}.zip`);
-    await zip(exportDir.uri, zipFile.uri);
-    if (options.share !== false && (await Sharing.isAvailableAsync())) {
-      await Sharing.shareAsync(zipFile.uri, { mimeType: 'application/zip' });
+    try {
+      await zip(exportDir.uri, zipFile.uri);
+      if (options.share !== false && (await Sharing.isAvailableAsync())) {
+        await Sharing.shareAsync(zipFile.uri, { mimeType: 'application/zip' });
+      }
+    } catch (e) {
+      // A failed zip/share leaves no usable export: drop the partial zip.
+      try {
+        if (zipFile.exists) zipFile.delete();
+      } catch (cleanupError) {
+        console.warn('[export] could not delete the partial zip; it is swept later.', cleanupError);
+      }
+      throw e;
     }
     return zipFile.uri;
   } finally {
     // The temp dir is cleaned up even when zip/share throws (CodeRabbit
-    // resource-leak finding on PR #27).
-    exportDir.delete();
-    markExportDone(id);
+    // resource-leak finding on PR #27). delete() throws when the dir does
+    // not exist (create() failed), which must not mask the real error or
+    // skip markExportDone.
+    try {
+      if (exportDir.exists) exportDir.delete();
+    } catch (e) {
+      console.warn('[export] could not delete the export dir; it is swept later.', e);
+    } finally {
+      markExportDone(id);
+    }
   }
 }
 
@@ -85,6 +108,10 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
   // hands the zip to the share sheet, which may still be reading it after
   // shareAsync resolves, so only that path leaves it for the next sweep.
   let handedToShareSheet = false;
+  // The exporter released its id when it returned; keep the zip safe from
+  // another export's sweep until this save ends.
+  const zipName = zipUri.split('/').pop()!;
+  protectStagedZip(zipName);
 
   async function save(): Promise<void> {
     const downloadsRoot = StorageAccessFramework.getUriForDirectoryInRoot('Download');
@@ -115,6 +142,7 @@ export async function saveOkfToDevice(zipUri: string, fileName: string): Promise
   try {
     await save();
   } finally {
+    releaseStagedZip(zipName);
     if (!handedToShareSheet) {
       try {
         const staged = new File(zipUri);
