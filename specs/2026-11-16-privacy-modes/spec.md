@@ -5,7 +5,10 @@
 ruling 2026-11-21 applied (note links never open in either mode).
 The text as it stood before the shrink converged in Opus review on
 2026-11-21 (round 11). Shrunk onto the #133 download controller on
-2026-11-23 (Baseline; Step 2 machine changes; R4, R8, R9, R10). The
+2026-11-23 (Baseline; Step 2 machine changes; R4, R8, R9, R10). Owner
+rulings of 2026-11-27 then cut the switch to strict down: R8 has no
+pre-check, and Cancel on R10g's warning starts nothing (R8, R10g;
+Resolved questions). The
 shrunk text is in review and has not converged; it stays Draft until
 it has. ROADMAP Step 1 (BINDING).
 
@@ -22,17 +25,19 @@ literally — owner ruling 2026-11-16; AGENTS.md lifecycle):
   `Implemented`. A cleanup commit in this pull request then deletes
   `plan.md` and `LEDGER.md`, and only after that does the pull request
   leave draft. On-device checks never hold any of these steps.
-- Seven questions are open for the owner (Open questions for the owner,
-  at the end): five raised 2026-11-23 when this spec moved onto #133,
-  and two raised in the review of that change. Each carries a
-  recommended default. The two raised earlier in review were answered
-  (2026-11-21). Step 2 waits on the owner's approval of this spec.
+- Three questions are open for the owner (Open questions for the owner,
+  at the end): numbers 2, 5 and 7 of the eight raised since this spec
+  moved onto #133. Each carries a
+  recommended default. The other five were settled by the owner's
+  rulings of 2026-11-27, and the two raised earlier in review were
+  answered on 2026-11-21 (Resolved questions). Step 2 waits on the
+  owner's approval of this spec.
 
 How to read it: what PR #125 and PR #133 already do is described once,
 in **Baseline** (items BL1–BL11 for #125, DC1–DC8 for #133). Every
 hub-machine event, state and flag that Step 2 adds or changes is one
 row of **Step 2 machine changes** (rows M1–M15; the numbering has gaps
-where #133 retired a row). Requirements cite those two sections instead
+where a row was retired). Requirements cite those two sections instead
 of restating them.
 
 ## Why this cycle exists
@@ -92,8 +97,9 @@ overrule each):
   and its model file intact (R10i; BL7).
 - Importing, or picking a different model, while a download is kept
   asks first (R10i).
-- R10g's Cancel restarts at once only on Wi-Fi; on cellular or offline
-  it waits for the hub's network check (R10g).
+- Superseded 2026-11-27 (owner): R10g's Cancel was to restart at once
+  on Wi-Fi, and to wait for the hub's network check on cellular or
+  offline. It now waits for the hub on any network (R10g).
 - The hub's Turn on strict privacy control shows only at rest (R7), and
   `paused` (2026-11-16) and `failed` (2026-11-20) each get a "Choose
   another model" exit in any mode (R10e; M6, M11).
@@ -118,22 +124,41 @@ after R9 (R4, R8, R9, R10a). Reopening the hub on a running transfer
 attaches to it (#133 OQ-1), which replaces this spec's earlier "a
 restore stops a live transfer first" (R10b).
 
+Owner rulings, 2026-11-27, encoded below (Resolved questions has them
+in full):
+
+- **Cancel on the can't-keep warning starts nothing.** It calls the
+  controller's `park()`, on any network, and the download waits for
+  the model hub. No transfer begins outside the hub, which is what
+  INTENT's "Silent model installs" says (R10g; INTENT check item 8).
+- **No pre-check, and no warning for a download with nothing
+  running.** Turn on shows its confirmation at once. R10g's warning
+  shows only when a transfer that was live at Turn on could not be
+  kept (R8, R10g).
+- **Dead partial files go when strict privacy turns on.** A partial
+  model file that nothing can resume is deleted then, with no
+  warning. Never the installed model's file, and never the file of a
+  paused download that has resume data (R8, "The strict sweep";
+  R10i).
+
 (Sequencing: #125 and then #133 merge before this PR, and this PR's
 branch is based on #133. #133 carries 9.3.0. This PR carries 9.3.1
 while it holds the spec alone, and takes the next MINOR when the
 Step 2 implementation lands in it (Version cost). If `main` has moved
 past either number by then, the bump is redone against `main`.
-PR #120 (issue #118) must also be on `main`, and `main` merged into
-this branch (never a rebase), before the Step 2 implementation starts. R6's link handler
+PR #120 (issue #118) is on `main` now (`cffaf66`, 9.2.1). `main` must
+be merged into this branch (never a rebase) before the Step 2
+implementation starts. R6's link handler
 goes into #120's `src/components/NoteMarkdown.tsx`, and Verification
 relies on its `markdownRules` and its lint rules. None of the three is
-on this branch yet (checked at `f218048`). The spec alone does not
-need #120.)
+on this branch yet (checked 2026-11-27: the branch is #133 at
+`8f43359` plus this spec and the version stamps). The spec alone does
+not need #120.)
 
 ## INTENT check
 
 Checked against INTENT.md (static since 2026-11-04) and ROADMAP v1.2.
-No requirement here contradicts INTENT on intent. The check found seven
+No requirement here contradicts INTENT on intent. The check found eight
 tensions. INTENT wins each one, or the owner has ruled on it, or (item
 6) the reading waits on the owner:
 
@@ -203,6 +228,17 @@ tensions. INTENT wins each one, or the owner has ruled on it, or (item
    ruling of 2026-11-21 (the dialog, with Share…, shows in every mode,
    strict included). No
    amendment unless the owner wants the wording widened.
+8. **A download started from Settings.** INTENT's out-of-scope item
+   "Silent model installs" says: "Models enter the device only through
+   an explicit user action in the model hub (rule 2)." Until
+   2026-11-27 this spec had R10g's Cancel, tapped in Settings with no
+   hub open, start a download over when the phone was on Wi-Fi. That
+   was a transfer that began outside the hub. The owner ruled on
+   2026-11-27 that INTENT's words are followed. Cancel starts
+   nothing: it saves the row so that the download waits for the hub,
+   and the hub starts it over, through the network check, when the
+   user next opens it (R10g). Step 2 adds no transfer that begins
+   outside the hub.
 
 Rules each requirement rests on: rule 1 (the journal works with no
 network), rule 2 (bring-your-own inference: models installed only by the
@@ -227,7 +263,7 @@ survey is re-run on every engine bump (R17).
 
 | # | Path | Code | Who it reaches | Started by | Standard | Strict |
 |---|---|---|---|---|---|---|
-| 1 | Model download, fresh start | `startDownload` in `src/services/modelDownloadService.ts` (`expo-file-system` `DownloadTask`, User-Agent from `src/lib/buildUserAgent.ts`). It sets no `sessionType`, so on iOS the installed expo-file-system 58.0.13 runs it in a background `URLSession`, which can keep transferring after the app is suspended or killed (Android ignores the option; its transfer runs inside the app process). Reached only through the download controller's `start()` (`src/services/modelDownloadController.ts`, DC1), which the hub machine's `downloading` state calls when it holds no resume data (`runDownload` picks `start` or `resume` by `pauseState?.resumeData`). Every way into `downloading` that can start a transfer — `SELECT_MODEL`, the restore when the hub opens (`src/app/model-hub/_layout.tsx`), and the continuations of path 2 — passes the network check first (BL1). The one entry with no check is the restore of a transfer that is still running, which attaches and starts nothing (DC5). Step 2 adds one caller outside the hub: Cancel on R10g's warning, with no hub machine mounted (from Settings), calls `start()` only after asking the OS which network the phone is on, and only on Wi-Fi (#133 I7). | Hugging Face (`huggingface.co`, URLs in `src/catalog/modelManifest.ts`) and the file hosts it redirects to | The user. A download the app was killed during restarts by itself when the hub next opens, behind the network check (BL1). | Allowed | Blocked |
+| 1 | Model download, fresh start | `startDownload` in `src/services/modelDownloadService.ts` (`expo-file-system` `DownloadTask`, User-Agent from `src/lib/buildUserAgent.ts`). It sets no `sessionType`, so on iOS the installed expo-file-system 58.0.13 runs it in a background `URLSession`, which can keep transferring after the app is suspended or killed (Android ignores the option; its transfer runs inside the app process). Reached only through the download controller's `start()` (`src/services/modelDownloadController.ts`, DC1), which the hub machine's `downloading` state calls when it holds no resume data (`runDownload` picks `start` or `resume` by `pauseState?.resumeData`). Every way into `downloading` that can start a transfer — `SELECT_MODEL`, the restore when the hub opens (`src/app/model-hub/_layout.tsx`), and the continuations of path 2 — passes the network check first (BL1). The one entry with no check is the restore of a transfer that is still running, which attaches and starts nothing (DC5). Step 2 adds no caller of `start()` or `resume()`: Cancel on R10g's warning calls `park()`, which saves the row and starts nothing, so the download waits for the hub (owner, 2026-11-27; #133 I7). | Hugging Face (`huggingface.co`, URLs in `src/catalog/modelManifest.ts`) and the file hosts it redirects to | The user. A download the app was killed during restarts by itself when the hub next opens, behind the network check (BL1). | Allowed | Blocked |
 | 2 | Model download, resume | `resumeDownload` (`DownloadTask.fromSavable`), reached only through the download controller's `resume()` (DC1), which `downloading` calls when the machine holds resume data: after `RESUME` (`src/app/model-hub/download.tsx`), `APP_FOREGROUND` after a background pause (automatic), or `RETRY` from `failed` with a saved pause state, each behind the network check (BL1). On Android it first passes the sink guard (BL8). | Same as 1 | The user, or the app on return to the foreground (a download the user started), behind the network check (BL1) | Allowed | Blocked |
 | 3 | Update check | `checkForAppUpdates` in `src/lib/updateCheck.ts` (`expo-updates` `checkForUpdateAsync`, then `fetchUpdateAsync`). Reached only from the Check button in `src/components/settings/UpdateCheckRow.tsx`. | Expo's update service (`u.expo.dev`). It receives the platform, runtime version, channel, current and embedded update IDs, and a random ID for this install (the `EAS-Client-ID` header, set by `expo-updates`' native downloader). | The user | Allowed | Blocked |
 | 4 | Launch-time native update check | Off: `updates.checkAutomatically: 'NEVER'` in `app.config.ts`, asserted by `__tests__/appConfig.test.ts` and checked on every built artifact (VERSIONING.md train step 4). | — | Nothing | Never runs | Never runs |
@@ -291,13 +327,19 @@ survey them again:
 ## Baseline: what PR #125 already does
 
 PR #125 (issue #124; spec
-`specs/2026-11-16-download-cellular-continuation/spec.md`; final head
-`8f5f484`) ships before Step 2 as its own PATCH, and PR #133 then
+`specs/2026-11-16-download-cellular-continuation/spec.md`; head
+`38d30bf`) ships before Step 2 as its own PATCH, and PR #133 then
 moves it onto the download controller without changing what the user
 sees, except as DC3 and DC5 say. This section is the only place this
-spec describes that behavior, as the code has it after #133. Step 2
+spec describes that behavior, as the code has it after #133. #125's
+three fixes of 2026-11-27 (`0dcfb34`, `10abca7`, `38d30bf`) are not
+in #133's code yet. #133 ports them before it merges, and BL1, BL3,
+BL4 and BL7 describe them as ported. Step 2
 keeps all of it, and its tests, except where a row of Step 2 machine
-changes says otherwise: M6 (lifts BL11), M8 (BL1's not-verified
+changes says otherwise: M6 (lifts BL11), M7 (a `paused` row with no
+pause state is checked before it settles, so BL5's "a `paused` row
+waits for Resume" gains the complete-file case; BL3's declined
+restore saves such a row), M8 (BL1's not-verified
 exits, in strict only), and M14 and M15 (in strict only, the machine
 ignores a model pick, `RESUME`, and `RETRY` with a pause state).
 
@@ -305,7 +347,8 @@ ignores a model pick, `RESUME`, and `RETRY` with a pause state).
   after a kill (`RESTORE_DOWNLOAD` of a `downloading` row →
   `checkingExisting`, whose not-verified exits, `onDone` fallback and
   `onError`, both go to `confirmingNetwork`), the foreground resume
-  (`paused` + `APP_FOREGROUND`, reason `background`), a manual `RESUME`,
+  (`paused` + `APP_FOREGROUND`, reason `background`; BL4 has the one
+  that is not a continuation), a manual `RESUME`,
   and `RETRY` from `failed` with a pause state each set the
   `continuation` flag and go to `confirmingNetwork` (the state a fresh
   `SELECT_MODEL` also reaches): Wi-Fi → `downloading` with no prompt,
@@ -324,11 +367,25 @@ ignores a model pick, `RESUME`, and `RETRY` with a pause state).
   and saving the row `paused` with it (none, for a declined restore of
   a download killed in the foreground); Resume runs the check again. On
   a fresh download → `selecting`, and the download screen dismisses.
-- **BL4 — Backgrounding during the check or the prompt.** For a
-  continuation, `APP_BACKGROUND` in `confirmingNetwork` or
-`cellularConfirm` → `pausing`, then `paused` (reason `background`;
-  no live transfer; the pause state is kept and saved). The next
-  `APP_FOREGROUND` runs the check again.
+  A fresh start is still a fresh download here after a background
+  pause during its check (BL4).
+- **BL4 — Backgrounding during the check or the prompt.**
+  `APP_BACKGROUND` in `confirmingNetwork` pauses the hub (`paused`,
+  reason `background`), for a fresh start as for a continuation, so a
+  Wi-Fi answer that comes late never starts a download behind an app
+  in the background. In `cellularConfirm` only a continuation pauses.
+  A fresh start's prompt stays up, since nothing downloads until the
+  user taps. No transfer is live in either state.
+  - A continuation's pause goes through `pausing`, which keeps its
+    pause state and saves the row `paused` with it.
+  - A fresh start's pause saves nothing. It has no row, and a saved
+    one would come back later as a paused download the user never
+    had. How #133's machine reaches `paused` without that write is
+    its port's to say; this spec relies only on the outcome.
+  - The next `APP_FOREGROUND` runs the check again. It is a
+    continuation when the download had a row, or was running when it
+    paused, and a fresh start otherwise. So a fresh start's declined
+    prompt still goes to `selecting` (BL3).
 - **BL5 — Waiting for Wi-Fi.** `AwaitingWifi`
   (`src/components/model-hub/awaiting-wifi.tsx`) shows Try again
   (`CHECK_NETWORK`) and "Choose another model" (`LEAVE_WAITING` →
@@ -347,8 +404,11 @@ ignores a model pick, `RESUME`, and `RETRY` with a pause state).
   - Picking a different model (`SELECT_MODEL` for a model other than
     the context's `modelId`, when that `modelId` is set) clears the row
     silently. Picking the same
-    model keeps its pause state and sets `continuation`, so it resumes
-    behind the check.
+    model keeps its pause state. It is a continuation when it holds a
+    pause state, and also when the kept download already was one (a
+    restored row with no pause state, left through `LEAVE_WAITING`).
+    So it resumes, or starts over, behind the check, and a declined
+    prompt keeps it paused (BL3).
   - A custom import (`src/app/model-hub/import.tsx`) reads the row's
     model (`readDownloadRow()`, which returns the model and the status); its sweep
     before the copy keeps that model's file (an unreadable row skips
@@ -437,14 +497,12 @@ that spec's.
   is mounted. I2 names one more case and calls it unreachable: `failed`
   after a `start()` or `resume()` rejected with `TransferInFlightError`
   (a transfer for another model is live; picking a different model
-  abandons first). Step 2 adds no way into it: R10g's Cancel, the only
-  start outside the hub, runs after `stopForStrict()` has returned with
-  no transfer in flight. If it ever occurred, R8 step 1 would stop that
+  abandons first). Step 2 adds no way into it, because it starts no
+  transfer anywhere. If it ever occurred, R8 step 1 would stop that
   transfer like any other. I2's converse, that no transfer appears
-  behind a hub at rest, rests on I7. Step 2 keeps it: no hub is
-  mounted when that Cancel calls `start()`, and none can load until
-  the switch has ended, which is after that call has returned (R8,
-  "One switch at a time" and "While a switch runs").
+  behind a hub at rest, rests on I7. Step 2 keeps it the simple way:
+  nothing it adds calls `start()` or `resume()`. R10g's Cancel calls
+  `park()`, which starts nothing (owner, 2026-11-27).
 - **DC5 — Reopening the hub attaches** (owner, #133 OQ-1). When the
   hub opens and the controller holds a running transfer, the layout
   restores with `live: true`, and the hub goes to `downloading` and
@@ -509,7 +567,8 @@ restores a `paused` row with no pause state while `verifyDownload`
 returns true, and expects `paused`. Under M7 that restore goes on to
 the smoke test. Step 2 rewrites it as M7's two cases (M7's Test
 column). No other existing test sends the machine a `paused` restore
-with no pause state (checked at `f218048`).
+with no pause state (checked 2026-11-27, in #133's suites and in the
+tests #125 added that day).
 **#133's tests, kept green by Step 2, unchanged in what they assert:**
 `__tests__/modelDownloadController.test.ts` and
 `modelDownloadControllerHeld.test.ts` (T-C1 to T-C23 and their
@@ -548,10 +607,11 @@ through #133's subscription (DC6). From the hub at rest:
 - `paused`: the controller holds a paused record, so the event arrives
   and relabels the pause (M1);
 - `selecting`, `failed` or `smokeFailed`: these states do not handle
-  the event, so the state stays as it is;
-- after Turn on and remove (R10g), the hub sends the one event of its
-  own, M3. Its provider sends it when the switch flow says the
-  download was removed (M3's row).
+  the event, so the state stays as it is.
+
+Nothing else reaches the machine. From a hub at rest step 1 stops
+nothing, so R10g's warning never shows there, and no download is
+removed under a mounted hub (R10g).
 
 Step 2 leaves #133's T-H7 lists as they are. It adds no edge into
 `downloading`, none out of `downloading`, none out of `pausing`, and
@@ -565,15 +625,13 @@ the pause. What it does add to the graph:
   #117 shrinks"). M4a's own edge, `REFUSED`, is #133's;
 - M7's check state, entered from `selecting`, with exits to
   `smokeTest` and `paused`;
-- edges to `selecting` from `paused` (M3, M6) and from `failed` (M3,
-  M11), and M3 on `selecting` itself;
+- edges to `selecting` from `paused` (M6) and from `failed` (M11);
 - guarded branches with no target, on `selecting` (M14) and on
   `paused` and `failed` (M15).
 
 | Row | Event or signal | Source states | Target | Context effects | Row write | Copy shown | Test |
 |---|---|---|---|---|---|---|---|
 | M1 | `TRANSFER_STOPPED`, reason `strict`, emitted by R8 step 1's `stopForStrict()` on a held `paused` record. **Built by #133 (H5)**; Step 2 adds the caller and this test | `paused`, any reason | stays `paused` | `pausedReason: 'strict'`; `pauseState` ← the event's | none | the label from the mode (R10e) | From `paused` with reason `user`, and again with reason `restored` (the pauses a user can turn strict on from), Turn on from the hub: `stopForStrict()` returns `kept`, the reason becomes `strict`, and there is no `pauseAsync` and no `DownloadTask`. The same from reason `background`, where a later `APP_FOREGROUND` stays in `paused` and never reaches `confirmingNetwork`. That seed is synthetic: the machine holds a `background` pause only while the app is in the background, where nobody can tap Turn on. It is kept because it is the one case where a missed relabel would resume by itself |
-| M3 | Download removed (the plan names it, for example `DOWNLOAD_REMOVED`). The controller has no event for it: `abandon()` emits nothing, and Step 2 adds no controller event. So the switch flow gives the notice itself. The provider registers a listener with the switch flow for as long as its machine lives (R10g, "The hub's registration"). When R10g's cleanup has finished, the flow calls that listener, and the provider sends this event straight to its actor. It is not a screen event, so the hold on those does not stop it (R8, "While a switch runs"). With no hub mounted there is no listener, and nothing is sent | `selecting` (the merged warning on a saved `downloading` row, R8's pre-check: the one case that can occur); `paused` and `failed` (defensive: only if a `not-keepable` result ever reaches an open hub, R10g), so that neither is left holding the model and pause state of a row that was cleared | `selecting` | `modelId: null`; `pauseState: null`; `pausedReason: null`; `progress` reset; `continuation: false`; `error: null` | none (the cleanup's `abandon()` cleared the row, R10g) | the list, with the strict notice (R7); from `paused` or `failed` the download screen dismisses to it (BL6) | From `selecting` with a kept `modelId` (after `LEAVE_WAITING`): `selecting` with no `modelId`, `pauseState` or `progress`, and the controller's record is empty. From `paused`, and from `failed`, each holding a `modelId` and a pause state: the same end state, with no failure banner. Every other state ignores the event. The channel, in `useModelHub.test.ts`: with a provider mounted and a switch running, the flow's notice makes the actor take this event, while a `SELECT_MODEL` sent through the context's `send` is dropped; once the provider has unmounted, the flow has no listener, and a notice sends nothing and throws nothing |
 | M4a | `REFUSED`: `start()` or `resume()` returned `refused`, from the `gate` Step 2 supplies (R4) or from the latch. **Built by #133 (H1, H3; T-H11)**; Step 2 adds the gate and this test | `downloading` | `pausing`, then `paused` on the result of `pause()` | `pausedReason: 'strict'`; `pauseState` ← the pause result's | by `pause(modelId)`: none on a held `paused` record; `paused` with the held pause state (null is fine) when the record holds no transfer and is not paused. Never `downloading`: a refusal comes before any write | the label from the mode: "Paused — strict privacy is on" in strict, "Paused" in Standard; never "Check your connection" | With the exported gate adapter (R4) passed to the test's own controller (`makeHubApi({ gate })`, an override the helper already takes) and the mode strict: a refused start and a refused resume end `paused`, reason `strict`, with no `DownloadTask` and no `downloading` row write; after stepping out, an `APP_FOREGROUND` starts nothing, and Resume, through the network check, starts the download |
 | M6 | `LEAVE_PAUSED` ("Choose another model") | `paused` | `selecting` | none, like `LEAVE_WAITING`: `modelId` and `pauseState` kept | none: the row is kept ("not now"), and the controller's record stays paused | "Choose another model" on the download screen in `paused`; the screen dismisses to the list (BL6) | (a) In `pausing` the exit is not shown, and a `LEAVE_PAUSED` sent anyway is ignored (DC3); it shows and works in `paused`. (b) The focus-effect test (Verification) |
 | M7 | `RESTORE_DOWNLOAD` of a `paused` row with `pauseState: null` (R10j), guarded after #133's `finished` and `live` branches (DC5) and ahead of the existing `paused` restore branch | `selecting` | a new check state (the plan names it; R7 hides the control in it) running `verifyTask` and nothing else. It does not run `checkingExisting`'s orphan sweep: a `paused` restore runs none today (H10), and this check only reads the file's size. By the result: verified → `smokeTest`; not verified (`onDone`) or the check threw (`onError`) → `paused`. Never `confirmingNetwork` | `modelId` ← the event's; `pauseState: null`; `pausedReason: 'restored'`; `error: null` | none: the row stays `paused`, and the controller already holds a paused record from `load()` | While the check runs, what the download screen shows in `checkingExisting`: the "Setting up your AI" title, no progress bar and no buttons (the plan leaves the state out of `download.tsx`'s `downloadPhase` list, as `checkingExisting` is). Then, in `paused`, "This download will start over when you resume." (R10e) | Complete file: reaches `smokeTest`, no `DownloadTask`; incomplete, or the check throws: `paused`, no `checkNetwork`, no `DownloadTask` until Resume, which starts fresh. A `paused` row with resume data keeps today's restore. These cases replace the existing test "restored pause with no pause state stays paused until RESUME starts fresh" (Baseline, "One existing test does change"): the incomplete-file case keeps that test's assertions, with `verifyDownload` returning false for the restore check. In the download-screen tests: in the check state the screen shows the "Setting up your AI" title and no Resume button |
@@ -592,7 +650,10 @@ Notes on the table:
   strict branch (DC6). M5: `failed` never holds a transfer, so there
   is nothing to restart from the hub (DC4; R10g). M9: `paused` is
   always settled (DC3), so M6, M13 and the R7 control need no settle
-  flag.
+  flag. One more row is gone, for a different reason. M3 was a
+  "download removed" event that the hub sent itself after R10g's
+  cleanup. The owner's rulings of 2026-11-27 left it nothing to do:
+  no download is removed under a mounted hub (R10g).
 - **Why M4a and M8 go through `pausing`.** A pause that has to write
   the row goes through `pausing`: `pause()` is the call that saves the
   row `paused`, and `paused` follows only once it has settled (DC3).
@@ -780,9 +841,11 @@ is the only place that knows the mode. It provides:
   A save that succeeds sets `saved`. A save that fails leaves
   `read-failed` as it is, and R9's failed save leaves the status as it
   was. R3's two read-failure messages show while the status is
-  `read-failed`. R7's tap on the selected Strict privacy choice saves
+  `read-failed`, and R7's not-saved line shows while it is `unsaved`.
+  R7's tap on the selected Strict privacy choice saves
   again while it is `unsaved` or `read-failed`, and starts nothing
-  while it is `saved`.
+  while it is `saved`. The hub notice's Save strict privacy button
+  shows only in those two statuses (R7).
 - A load function, called once by the bootstrap and memoized for the
   life of the process: a second call returns the already-loaded mode
   instead of re-reading the store. The root layout's bootstrap can
@@ -801,8 +864,11 @@ is the only place that knows the mode. It provides:
   a time").
 - A subscription, so open sessions can react when the mode changes
   (R8). It also fires when the status changes and the mode does not
-  (`unsaved` or `read-failed` to `saved`), so a read-failure message
-  on screen clears.
+  (`unsaved` or `read-failed` to `saved`, and to `unsaved` when
+  step 3's save fails), so a read-failure message or a not-saved line
+  on screen shows and clears with it. A subscriber that throws is
+  caught and logged: the other subscribers still hear the change, and
+  the set function goes on (R8, "When a step throws").
 - One gate per kind of path: `canUseStorePurchases()` (path 5, exists),
   `canOpenSupportLink()` (path 6, exists), `canDownloadModels()` (paths
   1 and 2), and `canCheckForUpdates()` (path 3). Path 7 needs no gate: no mode
@@ -997,7 +1063,15 @@ description says.)*
   while strict privacy is on but not saved (after R3's read failure,
   or after a failed save in R8 step 3: R4's status is `read-failed`
   or `unsaved`), a tap on Strict privacy saves it again and does
-  nothing else (R8, "When a save fails").
+  nothing else (R8, "When a save fails"). While the status is
+  `unsaved`, the section shows a line under the Strict privacy
+  choice, for as long as that status lasts: "Strict privacy is on,
+  but Curated Journal couldn't save the setting, so it may be off the
+  next time the app starts. Tap Strict privacy to save it." Without
+  the line, step 3's message would be the only notice, shown once,
+  and a later launch would start in Standard with nothing on screen
+  having said so since. R3's message does the same job while the
+  status is `read-failed`.
 - In strict privacy, the model hub (`src/app/model-hub/index.tsx`)
   shows a "Strict privacy is on" notice with a **Step out of strict
   privacy** button. It is one notice, and its body is R11's with no
@@ -1005,7 +1079,17 @@ description says.)*
   confirmation as R9. This
   is required because with no model installed, Settings cannot be
   reached: `src/app/(tabs)/_layout.tsx` sends the user to the hub
-  instead.
+  instead. For the same reason the notice is where an unsaved setting
+  shows when no model is installed. While R4's status is `unsaved`
+  or `read-failed`, R11's body starts with a sentence that says so:
+  the not-saved sentence ("Strict privacy is on, but Curated Journal
+  couldn't save the setting, so it may be off the next time the app
+  starts.") or R3's read-failure sentence. The notice then also has
+  a **Save strict privacy** button. It does what a tap on the
+  selected choice does in Settings: it saves `'strict'` again and
+  does nothing else, as a switch like any other (R8, "When a save
+  fails"). When a save succeeds, the sentence and the button go.
+  With a model installed, Settings → Privacy is where both show.
 - In Standard, the model hub shows the symmetric control: a **Turn on
   strict privacy** button, which opens R8's confirmation. Without it, a
   Standard user with no model installed cannot reach strict privacy at
@@ -1014,7 +1098,11 @@ description says.)*
 hub machine is at rest: `selecting` (on the list), and `paused`
 (any reason; no pause is still running once the hub is in it, DC3),
 `failed` or `smokeFailed` (on the download screen). It is never
-shown while a restore is pending (M10). It is hidden in every
+shown while a restore is pending (M10). A tap on it asks the machine,
+not the screen: the provider reads its actor's state at the tap, and
+starts no switch unless that state is at rest and no restore is
+pending. A control on screen can be one render behind the machine.
+It is hidden in every
 other state: `checkingExisting`, M7's check state,
 `confirmingNetwork`, `awaitingWifi`, `cellularConfirm`,
 `downloading`, `pausing`, `verifying`, `smokeTest`,
@@ -1028,9 +1116,8 @@ Wi-Fi (BL5), or Cancel on the cellular prompt (BL3). At rest, R8's
 confirmation cannot race the machine, and no sheet can stack on
 the cellular prompt. The hub stays at rest for the whole switch:
 while one runs, its screens send the machine nothing (R8, "While a
-switch runs"). What Turn on then does is R8's pre-check and
-step 1; the machine hears of it only as Step 2 machine changes
-says.
+switch runs"). What Turn on then does is R8's step 1; the machine
+hears of it only as Step 2 machine changes says.
   - This control was the reviewer's recommendation (Opus review,
     2026-11-16). Limiting it to the states at rest is the lead's
     narrowing of that recommendation (2026-11-16). The owner can still
@@ -1052,128 +1139,93 @@ choice, so both directions need a control where the user is.)*
 > on this device.
 > [Cancel] [Turn on]
 
-**The pre-check, before the confirmation shows.** It runs whatever
-opened the confirmation: Settings, or the hub's control in any at-rest
-state (R7). It awaits the download controller's `load()`, a queued
-read, so it comes after any row write the hub has already asked for,
-and it reads the snapshot that returns. It looks only at a saved row
-whose status is `downloading`; a `paused` row is never warned about
-here (it is kept as it is, and R10e and R10j handle it). For a
-`downloading` row, a snapshot phase of `active` is a live transfer,
-which step 1 will pause. Any other phase is no live transfer, and the
-app runs the plain file check on the row's model file
-(`verifyDownload`, size only, BL10), because a download that
-**completed** while the hub was closed also leaves a `downloading` row
-with no live transfer. The check runs on its own: Settings mounts no
-hub machine, and the dialog never waits on a model load.
-
-The pre-check's wait is bounded. `load()` normally returns at once. At
-worst it sits behind a hub pause that is still settling after the hub
-closed: about 70 s of foreground time by #133's bounds ("Row writes
-and the failed-save rule"). The confirmation cannot show before it
-returns. Until then the switch's sheet shows its waiting state
-(below, "While a switch runs"), and no control starts a second switch
-("One switch at a time"). What the waiting state says is left to the
-plan, as for step 1's wait (Open questions).
-
-- If the file is complete, nothing is warned about: the smoke test runs
-  when the hub next opens and its normal restore runs (R10f, R10h).
-- If it is not, the download has **no live transfer**: it can't be
-  kept. R10g's warning is merged into the confirmation. It
-  **replaces** the download sentence ("A download in progress pauses
-  now and won't restart on its own; you can resume it after you step
-  out."), which would be untrue there, and the button reads "Turn on
-  and remove".
-- If `load()` rejects (the row can't be read), the plain confirmation
-  shows and nothing is removed. Step 1 then finds nothing running, and
-  a `downloading` row that is still there is R10f's at the next hub
-  open under strict.
-
-From `paused` the row is `paused`, so the pre-check finds nothing, and
-only the label changes (M1).
+**No pre-check** (owner, 2026-11-27). The confirmation shows at the
+tap, whatever opened it: Settings, or the hub's control in any
+at-rest state (R7). Nothing is read first. A download that is not
+running at Turn on is never warned about, whatever its saved row
+says. A `paused` row stays as it is (R10e, R10j). A `downloading` row
+with nothing running was already going to start over, or to be
+checked, the next time the hub opened, in Standard too. That row is
+left alone, and a hub opened under strict shows it paused (R10f), or
+takes a finished file on to the smoke test (R10h). What such a
+download left on disk and cannot use again goes in the strict sweep
+(below). Only a transfer that is live at Turn on can bring R10g's
+warning.
 
 **One switch at a time.** A switch starts at the tap that opens R8's
-or R9's confirmation (for R8, the pre-check runs first). It ends in
-one of two ways:
+or R9's confirmation. It ends in one of two ways:
 
-- R8's or R9's own confirmation is cancelled or dismissed, or the
-  pre-check's wait is cancelled where the plan gives it a Cancel
-  ("One sheet", below). Nothing but the pre-check's read has been
-  asked for by then, so the switch ends at that tap. The merged
-  warning is R8's confirmation, so its Cancel ends the switch the
-  same way.
+- R8's or R9's own confirmation is cancelled or dismissed. Nothing
+  has been asked for by then, so the switch ends at that tap.
 - The flow's last step has finished: R8's `finally`, R9's backstop,
   and the last tap on a save-failure message ("When a save fails")
-  included. Cancel on R10g's warning after step 1 is of this kind. It
-  does not end the switch at the tap: its calls run inside R8's
-  `try`, and the switch ends in the `finally`, after the last of them
-  has returned (R10g).
+  included. Cancel on R10g's warning is of this kind. It does not
+  end the switch at the tap: its `park()` runs inside R8's `try`,
+  and the switch ends in the `finally`, after that call has returned
+  (R10g).
 
 While one runs, a tap on any control that starts a switch starts
 nothing:
 the two choices in Settings → Privacy, the hub's Turn on strict
-privacy control, and every Step out of strict privacy button. A second
+privacy control, the hub notice's Save strict privacy button (R7),
+and every Step out of strict privacy button. A second
 call into the switch flow while one runs does nothing. Without this
 rule, a second Turn on tapped during step 1's wait would have its
 latch released by the first flow's `finally` (`releaseStrictStop()`
 clears the latch at once), and R9's save could overlap step 3's.
 
 **While a switch runs, the rest of the app waits.** This spec relies
-on two things that are not true by themselves. R10g's "From Settings"
-means that no hub machine is mounted, and R7's "at rest" means that
-the hub stays where it was until the switch ends. But
+on two things that are not true by themselves. No hub opens in the
+middle of a switch, and R7's "at rest" means that a mounted hub
+stays where it was until the switch ends. But
 `useConfirmSheet` closes its sheet before a button's handler runs
 (`run` in `confirm-sheet.tsx`), so the screen underneath would take
-taps during the pre-check's wait and during step 1's. From Settings,
+taps during step 1's wait. From Settings,
 the user could open the hub (Change AI model). Its `load()` would
 queue behind step 1 and restore the download as paused. R10g's Cancel
-would then start a transfer behind a hub at rest, and its Turn on and
-remove would clear the row under a machine that still holds the
-model. In the hub, a model picked before step 2 would retire the
+would then park the download, and its Turn on and remove would clear
+the row, under a machine that still shows that download paused. In
+the hub, a model picked before step 2 would retire the
 installed model (the mode is still Standard then) before the latch
 refused its download. So, for R8 and R9 alike:
 
 - **One sheet, from the tap to the end.** The switch flow owns one
   modal sheet. It is on screen from the tap that starts the switch
-  until the switch ends, with no gap between its contents: a waiting
-  state (the pre-check), the confirmation, a waiting state (step 1),
-  R10g's warning when there is one, a waiting state (after Turn on
-  and remove, the cleanup and steps 2 and 3; after the warning's
-  Cancel, Cancel's calls, R10g), and a save-failure message when
-  there is one. With no warning, step 1's waiting state runs on
-  through steps 2 and 3.
-  - A waiting state cannot be dismissed: no scrim tap, no back
-    button. From step 1 on, a waiting state has no buttons. While the
-    pre-check waits, the plan may give it a Cancel that ends the
-    switch, because only a read has been asked for by then.
+  until the switch ends, with no gap between its contents: the
+  confirmation, a waiting state (step 1), R10g's warning when there
+  is one, a waiting state, and a save-failure message when there is
+  one. The second waiting state covers Cancel's `park()` after the
+  warning's Cancel. After Turn on and remove it covers the row clear,
+  steps 2 and 3 and the strict sweep. With no warning, step 1's
+  waiting state runs on through steps 2 and 3 and the sweep.
+  - A waiting state cannot be dismissed: it has no buttons, and a
+    scrim tap or the back button does nothing.
   - The confirmation and the warning keep their Cancel, and
     dismissing either still counts as Cancel. Cancel on the
     confirmation ends the switch and closes the sheet. Cancel on
-    R10g's warning after step 1 does not: the sheet goes to a waiting
-    state, with no buttons, while the network check and `start()` or
-    `park()` run, and it closes when R8's `finally` has ended the
-    switch. If the switch ended at that tap, a hub opened in the gap
-    could put its `load()` into the controller's queue ahead of
-    Cancel's `start()`. The hub would restore the download as paused,
-    and the transfer would then start behind a hub at rest (DC4).
+    R10g's warning does not: the sheet goes to a waiting state while
+    `park()` runs, and it closes when R8's `finally` has ended the
+    switch.
   - The flow's buttons use `keepOpen` (R6), and the flow replaces the
     sheet's content instead of closing it. The hook as it stands
     remounts its sheet when the content changes, so the plan makes
     sure a content change leaves the sheet mounted.
   - The sheet is rendered in one place that no route change unmounts.
     The plan picks it; the root layout can hold it the way the hub
-    layout holds the one cellular prompt (BL2). A screen can go away
-    while a switch is still running (M3 from `paused` or `failed`
-    dismisses the download screen, and a link from outside the app
-    can change the route), and a sheet that the screen rendered would
-    go with it.
+    layout holds the one cellular prompt (BL2). In the root layout
+    that place is outside the subtree that depends on `isReady`:
+    `src/app/_layout.tsx` renders the stack inside the journal's
+    providers when the app is ready and bare when it is not, so the
+    whole stack remounts when that flips, as it does when a model
+    finishes installing. A screen can also go away while a switch is
+    still running (a link from outside the app can change the
+    route), and a sheet that the screen rendered would go with it.
   - When a switch starts from a button on another sheet (Step out of
     strict privacy on a hub alert), that sheet closes as this one
     opens. On iOS a modal presented while another closes is the
     failure R6 notes for the share sheet, so the plan orders the two,
     and an on-device check covers it.
-  - What a waiting state says is the plan's (Open questions, 5 and
-    6).
+  - What a waiting state says is the plan's (Open questions, 5).
 - **The sheet is a screen asking first (R4). Two rules in state are
   the guarantee.**
   - *No hub loads under a switch.* The hub layout
@@ -1184,9 +1236,11 @@ refused its download. So, for R8 and R9 alike:
     sequence they see today. A hub opened mid-switch (a tap that got
     past the sheet, or a `cur://` link from outside the app) shows the
     layout's spinner, mounts no machine, and then restores from the
-    row as the switch left it. This is what makes "From Settings"
-    mean "no hub machine is mounted" for the whole switch (R10g;
-    DC4). A hub that is already mounted never waits: its layout
+    row as the switch left it. So from Settings no hub machine is
+    mounted at any point of the switch, and step 1, Cancel's `park()`
+    and the row clear of Turn on and remove never run under a hub
+    that loaded in the middle (R10g; DC4). A hub that is already
+    mounted never waits: its layout
     loaded before the switch began.
   - *A mounted hub is held.* While a switch runs, no tap on a hub
     screen sends the machine an event that can move it, and none
@@ -1199,40 +1253,57 @@ refused its download. So, for R8 and R9 alike:
     opens (R12). The plan picks where. The provider's `send` is the
     one path every screen event takes. The Import row also pushes a
     route, and the back row and the card act without `send`, so each
-    of the three needs the hold itself. Three things still arrive,
-    because no screen sends them: the hub's own M3, `TRANSFER_STOPPED`
-    (M1), and the app-state events, which move no state at rest.
+    of the three needs the hold itself. The hold is asked again
+    after a wait. R10i's two confirmations read the saved row before
+    they show (`readDownloadRow()`, a queued read), and R7's control
+    stays active in `selecting` meanwhile, so a switch can start
+    between the tap and the read's answer. When the read answers, the
+    handler asks again whether a switch is running. If one is, it
+    does nothing more: no confirmation opens, no `IMPORT_CUSTOM` is
+    sent, and no route is pushed. If none is, a pick asks R12's
+    refusal again, because the mode may have changed (R12, "A pick
+    that outlasts a switch"). Two things still arrive, because no
+    screen sends them: `TRANSFER_STOPPED` (M1), and the app-state
+    events, which move no state at rest.
     A hub can still go away while a switch runs, when a link from
-    outside the app changes the route. Its machine stops with it, and
-    R10g's Cancel and cleanup then act as they do with no hub mounted
-    (R10g, "The hub's registration").
+    outside the app changes the route. Its machine stops with it. The
+    switch goes on the same: no step of it depends on whether a hub
+    is mounted.
 - **A switch always ends.** Every controller call the flow waits for
-  is bounded by #133's bounds: the pre-check's `load()`, step 1, the
-  cleanup's `abandon()`, and Cancel's `start()` or `park()`. Each of
-  the last three is at most one retry of a pending row write and one
-  write of its own, 10 s each. The flow bounds two more waits itself,
-  at 10 s each. Neither call has a time limit of its own, and a hang
-  would keep the sheet up, and the hub held, until the app is
-  restarted:
-  - Cancel's `checkNetworkGate()` (`expo-network`). No answer in that
-    time counts as offline, as a rejection does, and Cancel calls
-    `park(modelId)` (R10g). An answer that arrives later is ignored.
-  - The cleanup's `getModelPath()` (`expo-secure-store`). No answer in
-    that time counts as a path that cannot be read, and the cleanup
-    deletes no file (R10g).
+  is bounded by #133's bounds: step 1 (60 s of foreground time at
+  worst), the `abandon()` of Turn on and remove, Cancel's `park()`,
+  and the sweep's `load()`. Each of the last three is at most one
+  retry of a pending row write and one store call of its own, 10 s
+  each. The flow bounds one more wait itself, at 10 s: the sweep's
+  `getModelPath()` (`expo-secure-store`). That call has no time limit
+  of its own, and a hang would keep the sheet up, and the hub held,
+  until the app is restarted. No answer in that time counts as a path
+  that cannot be read, and the sweep deletes nothing ("The strict
+  sweep", below).
 
-  The file check and the file delete are synchronous. Two waits have
+  The size check and the file deletes are synchronous. The flow never
+  waits for `releaseStrictStop()`: the latch clears as the call
+  arrives, and only the call's result goes through the controller's
+  queue (#133, "Public API"). So the flow does not await it, in R8's
+  `finally` or in R9's backstop. A step that throws does not keep the
+  sheet up either ("When a step throws", below). Two waits have
   no bound: the user's own time on a confirmation, a warning or a
   message, and the mode save, which is one `expo-secure-store` call.
   The app already depends on that store answering to leave its
   loading phase (R3).
 
-On Turn on, in this order. Steps 1 to 3 run inside one `try`, and its
+On Turn on, in this order. Steps 1 to 3 and the strict sweep run
+inside one `try`, and its
 `finally` calls `releaseStrictStop()` on **every** exit: success, a
-warning the user cancels or dismisses, a failed save, a thrown error.
+warning the user cancels or dismisses, a failed save, a thrown error
+("When a step throws", below, says where each throw leaves the app).
 
-1. The app calls `stopForStrict()` (R10a), **whatever opened the
-   confirmation**. The call sets the controller's latch as it arrives,
+1. The app reads the controller's `snapshot()` and then calls
+   `stopForStrict()` (R10a), **whatever opened the
+   confirmation**. The snapshot is a synchronous read. A phase of
+   `active` means a transfer is live at that moment, and R10g's
+   warning can show in that case only. The call sets the controller's
+   latch as it arrives,
    so from that moment nothing can start, resume or restart a download
    (DC6). It never rejects. From the hub at rest it finds nothing to
    stop (Step 2 machine changes, "At rest"), so its pause matters from
@@ -1245,16 +1316,27 @@ warning the user cancels or dismisses, a failed save, a thrown error.
      to step 2. A kept download's row is saved `paused`.
    - `completed`: the transfer finished before the pause took effect,
      or it had finished earlier with the hub closed (a held record).
-     It is never warned about, and this result alone removes nothing.
-     Go on to step 2. The next hub open checks the file and runs the
+     It is never warned about, and nothing is removed. Go on to
+     step 2. The next hub open checks the file and runs the
      smoke test (DC5 in the same process; R10f or R10j after a
-     restart). One exception: when the merged warning was already
-     confirmed, the pre-check found that file to be the wrong size,
-     and R10g's cleanup runs whatever step 1 reports.
-   - `not-keepable` (no resume data, a failed pause, or a transfer
-     that failed while pausing): R10g's warning shows now, before
-     anything below, unless the merged warning was already confirmed.
-     The controller has already stopped the transfer.
+     restart).
+   - `not-keepable`, when the snapshot showed nothing live: the
+     controller holds the record of a transfer that had already
+     failed, or whose pause had failed, with no hub open, and step 1
+     reports that record as it is (it stops nothing and writes
+     nothing). Nothing was running, so nothing is warned about
+     (owner, 2026-11-27). Go on to step 2. The row is left as it was,
+     and the strict sweep deals with the file.
+   - `not-keepable`, when the snapshot showed a live transfer: the
+     pause gave no resume data, the pause failed, or the transfer
+     failed while pausing. No transfer is in flight by then. The flow
+     first runs the size check on that model's file (`verifyDownload`,
+     size only, BL10), because the file can be complete even so (a
+     transfer that failed after its last byte was written). A
+     complete file is treated as `completed`: no warning, nothing
+     removed, on to step 2. For a file that is not complete, or that
+     cannot be checked, R10g's warning shows now, before anything
+     below.
 
    Every result carries `rowSaved`. A `false` does not stop the
    switch: the controller writes the row again on its own (DC7), and a
@@ -1275,11 +1357,14 @@ warning the user cancels or dismisses, a failed save, a thrown error.
 5. An update check that is already running does not go on to its fetch
    step. A request already sent cannot be called back. The row then
    says "Strict privacy is on. The update check stopped."
+6. The strict sweep runs ("The strict sweep", below). It waits for
+   step 3's save to settle, runs whether that save succeeded or
+   failed, and comes before a save-failure message shows.
 
 **When a save fails** (step 3, and R9's save). The message is the
 sheet's last content, with two buttons, **Try again** and **OK**. The
 "Try again" that ends each message names that button. It runs the
-same save again, with no confirmation, no pre-check and no step 1:
+same save again, with no confirmation, no step 1 and no sweep:
 the user has already confirmed this switch, and for step 3 the mode
 in memory is already strict. A save that succeeds is followed by what
 follows it in the flow (for R9, the apply and the backstop). If the
@@ -1290,14 +1375,89 @@ then, and since step 2 the mode's own gate is what refuses.
 After OK on step 3's message, strict privacy is on but not saved
 (R4's status is `unsaved`, or still `read-failed` when the switch
 began from R3's read failure).
-Settings → Privacy still shows Strict privacy selected, and a tap on
+Settings → Privacy still shows Strict privacy selected, with R7's
+not-saved line under it for as long as the status is `unsaved`, and a
+tap on
 it saves `'strict'` again and does nothing else, as Try again does
-(R7). The same tap after R3's read failure is what "Choose a mode to
+(R7). With no model installed, the hub notice carries the same
+sentence and a Save strict privacy button (R7).
+The same tap after R3's read failure is what "Choose a mode to
 save it again" means for strict. That tap is a switch like any other:
 one at a time, behind the sheet, and a failed save shows step 3's
 message. After OK on R9's message the app is as it was before the
 tap, in strict privacy with the store unchanged. Choosing Standard,
 or a Step out button, runs R9 again from its confirmation.
+
+**The strict sweep** (owner, 2026-11-27). A partial model file can be
+1 to 3 GB, and a user who stays in strict privacy may never download
+again, so nothing else would free it. As step 6 of every switch to
+strict, the app deletes the model files that nothing can use again.
+It is best effort, and it asks and warns about nothing: each file
+belonged to a transfer that was already dead.
+
+- **It deletes** every catalog model's file in the documents folder
+  that the next item does not spare, through the hub's own
+  `deleteOrphanedCuratedModelFiles` (`src/services/modelFiles.ts`),
+  which catches and logs a delete that throws.
+- **It never deletes** three things. The installed model's file
+  (that function's path comparison). The file of a kept download: a
+  saved row that is `paused` with resume data, whose Android partial
+  a later Resume continues (R10c). And a complete file of the saved
+  row's model (the size check, BL10): a finished download waiting
+  for its smoke test (R10f, R10h, R10j). For the last two the flow
+  passes the row's model as the function's keep id. A row whose
+  model has left the catalog spares nothing; the flow looks the id
+  up before the size check.
+- **So what goes is** the partial of a `downloading` row with nothing
+  running, of a `paused` row with no resume data (it was already
+  going to start over, R10e), and of a `failed` row (no hub restores
+  one, BL9, and a later Retry starts over cleanly, BL8); the file
+  whose row Turn on and remove has just cleared (R10g); and a catalog
+  file with no row. No row is changed. A row whose partial went
+  still shows paused, with "This download will start over when you
+  resume."
+- **It reads** the saved row and its pause state from the
+  controller's `load()`, and the installed model's path from
+  `getModelPath()`, bounded at 10 s ("A switch always ends"). If
+  either cannot be read, it deletes nothing, as the hub's sweep does
+  (BL9).
+- **It runs only there.** Not on Cancel, at launch, when a hub
+  opens, when strict comes on because the setting could not be read
+  (R3), on a tap that only saves again (R7), or on stepping out. A
+  switch that dies before step 6 leaves the files.
+- **The hub's sweep does not cover this.** It runs only when
+  `checkingExisting` starts, and it spares the saved row's own model
+  (BL9). Under strict the only way into that state is the restore of
+  that same row, because a pick is refused (R12). On iOS a paused
+  download's bytes are in a temporary file that the app cannot
+  delete (R10), so the sweep matters on Android, and on either
+  platform for a finished file of the wrong size.
+
+**When a step throws.** Whatever is thrown, and wherever, the flow
+closes the sheet and ends the switch; for R8 that is after its
+`finally` has released the latch. Where the app is left is fixed
+too:
+
+- **Known throws are caught where the call is made**, each with its
+  own fallback: step 1's size check (a file that cannot be checked
+  counts as not complete); Cancel's `park()` (R10g); the sweep's two
+  reads and its deletes ("The strict sweep"); and a subscriber of the
+  mode module (R4).
+- **Anything else thrown after Turn on, or Turn on and remove, and
+  before step 2** is logged, and the flow goes on from step 2: strict
+  privacy turns on and is saved, with no warning. An `abandon()`
+  that rejects is of this kind, and a row it left shows as a paused
+  download (R10e, R10f). The user asked for strict privacy, and when
+  the app cannot tell what happened it runs strict, which is R3's
+  rule for a setting it cannot read. Staying in Standard would leave
+  the app able to go online after a confirmed Turn on, with nothing
+  on screen to say so.
+- **After Cancel on R10g's warning** the user chose Standard, so a
+  throw never turns strict privacy on. It is logged, and nothing
+  more is called.
+- **After step 2** the mode is already strict, and the flow goes on.
+  A save that throws is a save that failed ("When a save fails"). In
+  R9 too, where strict privacy then stays on.
 
 **Why the `finally`.** Only `releaseStrictStop()` clears the latch. It
 writes nothing, starts nothing and never rejects, and calling it twice
@@ -1305,9 +1465,10 @@ is harmless. After step 2 the mode's own gate refuses every download,
 so the latch has done its job: it covered the time between step 1 and
 step 2. On an exit before step 2 the mode is still Standard, and a
 latch left set would refuse every download there: the hub would show
-Paused with a Resume that does nothing. R10g's Cancel releases the
-latch itself, before its own `start()` or `park()`, and then passes
-through the `finally` as well. R9 releases once more, as a backstop.
+Paused with a Resume that does nothing. R10g's Cancel is such an
+exit. Its `park()` is not a start, so the latch does not refuse it,
+and the `finally` releases the latch after it. R9 releases once more,
+as a backstop.
 
 **The kill window between steps 1 and 3.** If the app dies after step
 1 starts and before step 3 has saved the mode, it relaunches in
@@ -1363,6 +1524,15 @@ released the controller's latch already, and a latch left set would
 refuse every download in Standard (R8, "Why the `finally`"). The call
 starts nothing. After stepping out, nothing starts by itself: no
 download resumes, no update check runs, no store connection opens.
+One kind of row is outside "no download resumes", and it is not a
+download that strict privacy paused (R10d): a row still saved
+`downloading` that no hub opened on while strict was on, so M8 never
+rewrote it. Turning strict on leaves such a row alone when nothing
+was running (R8, "No pre-check"), and a row write that did not land
+can leave one too (`rowSaved: false`). Stepping out does not start
+it. The next hub open restores it as R6's continuation, through the
+network check, as the confirmation above says a download you started
+can.
 *(Rule 12; rule 9 ¶2; owner ruling 2026-11-16.)*
 
 **R10 — A half-finished model download** (owner rulings, 2026-11-16;
@@ -1401,12 +1571,18 @@ pause owner is not the hub machine. It is the download controller of
   refused `start()` or `resume()` changes nothing: no task, no write.
   The hub maps the refusal to a pause (M4a), and `pause()` saves the
   row `paused`. So **a gate refusal never leaves a `downloading` row,
-  and is never a failure** (both modes, defensive): no restart by
-  itself after Step out (R9, R10d), and no "Check your connection".
+  and is never a failure of its own** (both modes, defensive): no
+  restart by itself after Step out (R9, R10d), and no "Check your
+  connection". One refusal does end in `failed`, and the failure is
+  not the refusal's: when the controller holds a transfer that had
+  already failed, the pause reports it and the hub shows that failure
+  (#133 H1; Step 2 machine changes, "Why M4a and M8 go through
+  `pausing`"). Under strict a restore is M8's and never reaches
+  `downloading`, so it meets no refusal.
 - **The latch.** `stopForStrict()` also sets the controller's latch,
   which refuses every start until `releaseStrictStop()`. This spec
-  releases it in three places and nowhere else: R8's `finally`, R9's
-  backstop, and R10g's Cancel before its own call.
+  releases it in two places and nowhere else: R8's `finally` and R9's
+  backstop.
 - With the hub open, the hub machine follows the controller through
   `TRANSFER_STOPPED` (M1; Step 2 machine changes). The `strict` reason
   lives in the machine's context only; the row stores none (R10e).
@@ -1515,162 +1691,112 @@ restored under strict as paused, not restarted, and the row is
 **rewritten** as `paused`, so that stepping out and relaunching doesn't
 restart it through the hub's restore (M8). Neither `checkNetwork` nor
 `getNetworkStateAsync` is called. Such a row has no resume data, so the
-screen shows R10e's strict label and its "will start over" line.
+screen shows R10e's strict label and its "will start over" line. The
+rewrite happens only when a hub opens under strict. A `downloading`
+row that no hub opened on before the user stepped out restores as a
+Standard continuation (R9). When the switch to strict itself found
+the row with nothing running, the strict sweep has already removed
+its partial file (R8).
 
 M8 replaces only the not-verified exits. The hub's normal restore
-still runs first (`checkingExisting` → `verifyDownload`): this is the
-hub-side counterpart of R8's pre-check. If the file on disk is already
+still runs first (`checkingExisting` → `verifyDownload`). If the file
+on disk is already
 complete — a download that finished while the hub was closed leaves a
 `downloading` row (or a `paused` row with no pause state, R10j), a
 complete file, and no live transfer — the row is not rewritten and no
 warning shows: the download continues through the smoke test to
 `complete` (R10h). In the same process the layout already knows it finished, and restores straight to this check (DC5).
 
-**g. A download that can't be kept: warn, then clean up** (owner,
-OQ-6). Switching to strict leaves a download that can't be resumed
-later when the pause gives no resume data, when the pause fails, when
-the transfer fails while it is pausing, or when it has no live
-transfer (defined in R8's pre-check). Then the app
-warns before the switch:
+**g. A live download that can't be kept: warn, then park or remove**
+(owner, OQ-6; narrowed 2026-11-27). A transfer that is running when
+the user taps Turn on is paused by R8 step 1. It can't be resumed
+later when the pause gives no resume data, when the pause fails, or
+when the transfer fails while it is pausing. Then, unless its file
+turns out to be complete (R8 step 1), the app warns before the
+switch:
 
 > **This download can't be kept**
 > Curated Journal can't keep this download so that it continues later.
 > If you turn on strict privacy now, Curated Journal throws away what it
 > downloaded so far, and the download starts over the next time you
-> get a model. If you cancel, strict privacy stays off and the download
-> starts over. On cellular data, or with no connection, it waits for you
-> in the model hub.
+> get a model. If you cancel, strict privacy stays off, and the
+> download starts over the next time you open the model hub.
 > [Cancel] [Turn on and remove]
 
-- No live transfer: merged into the confirmation, as R8's pre-check
-  says, without the sentence about cancelling.
-- `not-keepable` from R8 step 1 (no resume data, a failed pause, or a
-  transfer that failed while pausing): only the pause shows this, so
-  the warning shows after R8 step 1 and before step 2. The controller
+- **Only a transfer that was live at Turn on is warned about** (owner,
+  2026-11-27). Only the pause shows whether it can be kept, so the
+  warning shows after R8 step 1 and before step 2. The controller
   has already stopped the transfer; after a failed pause it cancelled
   it (DC3).
-- **A download that was already paused is never warned about**, with
-  or without resume data. The pre-check skips a `paused` row, and
-  `stopForStrict()` reports a held `paused` record as `kept`. Only a
-  transfer that step 1 itself stops can come back `not-keepable`.
-  Turning strict on changes nothing for such a download: one with no
-  resume data was already going to start over, and its screen says so
-  (R10e). It stays paused and labelled, and nothing is removed (R10i).
-- **Cancel** (owner, 2026-11-16): the app stays in Standard.
-  Dismissing the warning counts as Cancel. There are two Cancels. On
-  the merged warning, Cancel is the confirmation's own Cancel: it
-  comes before step 1, so no pause ran and nothing is called (the
-  last paragraph of this item). After a `not-keepable` result, the
-  download starts over: at once on Wi-Fi, and on cellular or offline
-  only through the hub. For that Cancel the app first calls
-  `releaseStrictStop()`, because the user chose Standard and the latch
-  would refuse the call that follows. The model is the one in the
-  controller's `snapshot()`; if the snapshot holds no model, Cancel
-  calls nothing more. That Cancel does not end the switch at the tap.
-  The sheet shows a waiting state, with no buttons, until the last
-  call below has returned, and the switch ends after it, in R8's
-  `finally` (R8, "One switch at a time"). So between the tap and the
-  end of `start()` or `park()` no hub can load, and none can put its
-  `load()` into the controller's queue.
+- **Nothing else is warned about.** Turning strict on changes nothing
+  for a download that was not running: its row stays as it is, and
+  the strict sweep removes a partial that nothing can resume (R8).
+  - A download that was already paused, with or without resume data.
+    `stopForStrict()` reports a held `paused` record as `kept`. One
+    with no resume data was already going to start over, and its
+    screen says so (R10e).
+  - A `downloading` row with nothing running. Step 1 reports
+    `nothing-running`, or `completed` for a transfer that finished
+    with no hub open.
+  - The record of a transfer that failed earlier with no hub open.
+    Step 1 reports it as `not-keepable`, but the flow's snapshot
+    showed nothing live, so no warning shows (R8 step 1).
 
-  **The hub's registration.** Which of the two cases below applies is
-  decided at the Cancel tap, by whether a hub machine is mounted
-  then, not by where the switch began. The switch flow has to know
-  that, so the hub's provider registers with the flow when its
-  machine starts and removes the registration when the machine stops.
-  The same registration carries M3's notice. A switch that began in
-  the hub can lose its hub before the tap: a link from outside the
-  app changes the route, and the machine stops when the hub unmounts.
-  The first case below then applies. The reverse cannot happen,
-  because no hub machine mounts while a switch runs.
-  - **From Settings**, and whenever no hub machine is mounted at the
-    Cancel tap (none can load until the switch ends: R8, "While a
-    switch runs"), the network check, which lives in the hub machine,
-    does not run. So the app asks the OS which network the phone is
-    on (`checkNetworkGate`, which sends nothing), and waits at most
-    10 s for the answer (R8, "A switch always ends").
-    On Wi-Fi, it calls `start(modelId)`, which saves the row
-    `downloading` with no pause state and starts the download over at
-    once. On cellular or offline, it calls `park(modelId)`, which
-    saves the same row and starts nothing: the row restores when the
-    hub next opens, through the network check (BL1). These are the
-    only calls that start or park a download outside the hub's
-    `downloading` state (#133 I7).
+  OQ-6's third cause, "no live handle", is retired. It meant a
+  transfer the app could not reach, and R10b leaves none (Resolved
+  questions).
+- **In practice the warning shows from Settings.** At rest nothing is
+  in flight behind a mounted hub (DC4), so from the hub's control
+  step 1 has nothing to stop. Mid-download, Settings is reachable
+  with the hub closed, mainly during a model change (R10a).
+- **Cancel** (owner, 2026-11-16 and 2026-11-27): the app stays in
+  Standard, and the download waits for the model hub. Dismissing the
+  warning counts as Cancel. Cancel starts nothing, on any network,
+  and asks the OS nothing about the network. It takes the model from
+  the controller's `snapshot()` and calls `park(modelId)`, which
+  saves the row `downloading` with no pause state and starts no
+  transfer. That replaces the `paused` row step 1 saved, so the row
+  matches what happens next: the hub restores it when the user next
+  opens it, through the network check (BL1: Wi-Fi starts it over,
+  cellular asks, offline waits). No transfer begins outside the hub
+  (INTENT check, item 8). If the snapshot holds no model, Cancel
+  calls nothing.
 
-    When one of these calls does something else, Cancel shows no
-    message, retries nothing, and still passes through R8's `finally`:
-    - `checkNetworkGate` rejects (it rethrows when `expo-network`
-      fails in a release build), or has not answered after 10 s: the
-      network counts as offline, and the app calls `park(modelId)`.
-    - `start()` returns `failed` (no transfer could be created): the
-      row already says `downloading` with no pause state, which is
-      what `park()` would have saved, so the hub's next restore starts
-      it over through the network check (BL1). A transfer that starts
-      and then fails with the hub closed ends the same way.
-    - `start()` returns `attached` or `completed`: nothing more is
-      called. The next hub open attaches, or checks the file (DC5).
-    - `start()` returns `refused`: nothing more is called, the row
-      stays as step 1 left it, and the next hub open handles that row
-      as it handles any other. (The latch was just released and the
-      mode is Standard, so a refusal needs a second strict stop, which
-      "One switch at a time" rules out.)
-    - `start()` or `park()` rejects (`TransferInFlightError`, which
-      needs a live transfer, and step 1 left none): the error is
-      caught and logged, and the row stays as step 1 left it.
-    - `park()` returns `rowSaved: false`: the controller writes the
-      row again (DC7).
-  - **From the hub**, with its machine still mounted at the Cancel
-    tap, step 1 finds nothing to stop at rest (DC4), so only the
-    merged warning can show there, and its Cancel changes nothing. If
-    a `not-keepable` result ever does reach an open hub, Cancel only
-    releases the latch: while a hub machine is mounted it calls none
-    of `checkNetworkGate`, `start()` and `park()`, and the switch
-    ends at once, in R8's `finally`. The row stays `paused`, the hub
-    shows it paused, and Resume starts it over through the network
-    check. One
-    exception: step 1 reports a held `failed` record without writing,
-    so after that result the row still says `downloading`, and the
-    next restore starts it over through the network check.
+  Cancel does not end the switch at the tap. The sheet shows a
+  waiting state until `park()` has returned, and the switch ends
+  after it, in R8's `finally`, which releases the latch (R8, "One
+  switch at a time"). Cancel shows no message and retries nothing:
+  - `park()` returns `rowSaved: false`: the controller writes the row
+    again (DC7). Until it has, the row is the `paused` one step 1
+    saved, and the hub shows the download paused, with "will start
+    over".
+  - `park()` rejects (`TransferInFlightError`, which needs a live
+    transfer, and step 1 left none): the error is caught and logged,
+    and the row stays as step 1 left it.
 
-  This split by network is a lead ruling (2026-11-16), consistent with
-  the #124 owner ruling; the owner may overrule it. Both calls save
-  the row `downloading` with no pause state. That replaces the
-  `paused` row step 1 saved (after a held `failed` record, step 1
-  saved nothing and the row already says `downloading`), so the row
-  matches what happens next: a transfer running again, or a restore
-  that asks first. If the
-  warning was merged (no live transfer), no pause ran, nothing is
-  called, and the row is left as it was.
-- **Turn on and remove:** the app cleans up, then carries on from R8
-  step 2. Cleanup first takes the download's model from the
-  controller's `snapshot()`, because `abandon()` forgets it. It then
-  calls `abandon()`, which cancels a transfer if the
+  Cancel does the same wherever it is tapped. DC4 rules out a hub
+  mounted over a live transfer, so no hub is there to see it. If one
+  ever were, it would have heard `TRANSFER_STOPPED` and would show
+  the download paused, and its Resume would start it over through
+  the network check.
+- **Turn on and remove:** the app clears the download, then carries
+  on from R8 step 2. It calls `abandon()`, which cancels a transfer
+  if the
   controller still holds one, forgets the resume data and with it the
   reference to the OS's temporary file (on iOS that file stays in the
   OS's tmp folder until the OS purges it; the app cannot delete it),
   and clears the download row, so the hub has nothing to restore.
-  `abandon()` deletes no file, so the app then deletes that model's
-  file from the documents folder if one is there: the partial on
-  Android, and on either platform a finished file of the wrong size.
-  It never deletes the installed model's file. It compares the file's
-  path with the installed model's (`getModelPath()`), as the hub's
-  sweep does (BL9), and it deletes nothing when the two match, when
-  that path cannot be read (the read rejects, or has not answered
-  after 10 s: R8, "A switch always ends"), or when the snapshot held
-  no model. A file left that way is freed by the next sweep. After the
-  merged warning, step 1 still runs first, and its result changes
-  nothing, `completed` included (R8 step 1). Every cleanup step is
-  awaited before R8 step 2. If the row
+  `abandon()` deletes no file. The strict sweep does, as step 6 of
+  this same switch: with the row cleared, nothing spares that model's
+  file (R8, "The strict sweep"). So the partial on Android goes, and
+  the installed model's file never does. `abandon()` is awaited
+  before R8 step 2. If the row
   clear did not land (`rowSaved: false`), the switch goes on: the
   controller clears it again (DC7), and until then a leftover row
   shows as a paused download (R10e, R10f). `abandon()` does not
-  release the latch; R8's `finally` does. When the cleanup has
-  finished, the switch flow calls the listener that a mounted hub
-  registered ("The hub's registration", above). That hub's provider
-  then sends M3 to its machine, which goes back to the list from
-  whichever state at rest it was in (`selecting`, `paused` or
-  `failed`). With no hub mounted there is no listener and nothing is
-  sent, and the next hub open finds no row. A later download starts
+  release the latch; R8's `finally` does. Nothing is sent to a hub
+  machine: none is mounted over a live transfer (DC4), and the next
+  hub open finds no row. A later download starts
   fresh.
   With R10b, a transfer the app cannot reach can only be one left by a
   version from before Step 2.
@@ -1680,12 +1806,13 @@ happen on the device, so a download that has already finished
 continues through them in strict privacy. Neither is an integrity check
 (BL10).
 
-**i. No deletion unless the user says so.** Switching modes, starting
-the app and opening the hub never delete a kept download (the Android
-partial file, or the iOS resume data). Only a choice the user makes
-deletes one:
+**i. No deletion unless the user says so.** A kept download is one a
+later Resume can continue: a `paused` row with resume data, and with
+it the Android partial file or the iOS resume data. Switching modes,
+starting the app and opening the hub never delete one. Only a choice
+the user makes deletes one:
 
-- the cleanup the user confirms in g;
+- Turn on and remove, which the user confirms in g;
 - picking a different model, which replaces the old download and clears
   its row (BL7). Picking the same model keeps its progress;
 - **a successful custom import, in both modes** (lead ruling,
@@ -1698,14 +1825,19 @@ deletes one:
   model's file; #115 covers that guarantee. Apart from the
   confirmations below, Step 2 does not change the import path.
 
-The hub's orphan sweep keeps a kept download's file (BL9).
+The hub's orphan sweep keeps a kept download's file (BL9), and so
+does the strict sweep. What the strict sweep deletes is not a kept
+download: it is a partial file that nothing can resume (R8, "The
+strict sweep"; owner, 2026-11-27).
 
 **Import and a different-model pick both ask first** (lead rulings,
 2026-11-16; the owner may overrule). Their basis is this item's own
 principle (only a choice the user makes deletes a kept download) and
 rule 2 (the user decides what happens to their data). Both look at the
 saved row's model **and status**, which #133's `readDownloadRow()`
-returns (DC8), so Step 2 adds no read.
+returns (DC8), so Step 2 adds no read. The read is awaited, so each
+handler asks again, when it answers, whether a switch has started
+(R8, "A mounted hub is held").
 
 - **Import.** When a saved row is `paused` or `downloading`, in either
   mode, the list's "Import custom .gguf" row shows a confirmation
@@ -1789,6 +1921,9 @@ privacy the hub shows:
 > [Step out of strict privacy]
 
 After a read failure (R3), the notice starts with that sentence.
+After a failed save (R8 step 3), it starts with the not-saved sentence
+instead. In both cases it also has the **Save strict privacy** button
+(R7).
 
 - The model list stays visible, and tapping a model shows the
   downloads-off alert (R5).
@@ -1811,8 +1946,9 @@ replaces R11's body: "Models download from the internet, which strict
 privacy keeps Curated Journal away from. Your current model stays in
 place. To change it, import a model file that's already on this
 device, or step out of strict privacy first." R3's read-failure
-sentence starts R11's body only; with a model installed, Settings →
-Privacy is where it shows. Picking a catalog model is refused (R5)
+sentence, the not-saved sentence and the Save strict privacy button
+(R7) go with R11's body only; with a model installed, Settings →
+Privacy is where they show. Picking a catalog model is refused (R5)
 **before** anything
 else: before the low-memory warning card that `selectModel` shows
 (`modelRamWarning`), before R10i's different-model confirmation,
@@ -1824,8 +1960,9 @@ would leave the user with no model and no way to download one.
 
 **A pick that outlasts a switch.** The refusal is asked at every step
 of a pick, not only at the first tap: at the tap on the model, at
-Continue on the low-memory card, at Choose anyway (R10i) and at
-Replace. The card is part of the list, not a sheet, and R7's control
+Continue on the low-memory card, when R10i's read of the saved row
+answers (before its confirmation opens), at Choose anyway (R10i) and
+at Replace. The card is part of the list, not a sheet, and R7's control
 stays active beside it in `selecting`. So a pick begun in Standard
 can still be waiting on its card when strict privacy turns on. If the
 mode is strict at any step, that tap shows the downloads-off alert
@@ -1920,14 +2057,15 @@ version when un-drafting. Step 2 is JS/TS only:
 - the gates in the update check and the tip jar, the `gate` the
   singleton download controller is built with, and the strict guard
   injected into the hub (R4, R12);
-- the switch flow that calls `stopForStrict()`, `abandon()`,
-  `start()`, `park()` and `releaseStrictStop()` (R8, R9, R10g), its
-  one sheet, the hub layout's wait for a running switch (R8,
-  "While a switch runs"), the hub provider's registration with the
-  flow (R10g; M3), and the flow's two 10 s bounds (R8, "A switch
+- the switch flow that calls `snapshot()`, `stopForStrict()`,
+  `abandon()`, `park()`, `load()` and `releaseStrictStop()` (R8, R9,
+  R10g), its one sheet, the strict sweep, which calls the existing
+  `deleteOrphanedCuratedModelFiles` (R8), the hub layout's wait for a
+  running switch and the hold on a mounted hub's screens (R8, "While
+  a switch runs"), and the flow's one 10 s bound (R8, "A switch
   always ends"); the controller's own code changes only in the getter
   that passes the `gate`, and it gains no event;
-- the hub-machine changes in Step 2 machine changes (rows M3, M6, M7,
+- the hub-machine changes in Step 2 machine changes (rows M6, M7,
   M8, M10, M11, M13, M14 and M15; M1 and M4a are #133's code);
 - the JS-only `selectable` and `keepOpen` options on
   `useConfirmSheet` (R6);
@@ -1983,7 +2121,10 @@ plugins or permissions.
   keeps it in place.
 - **#133**: the download controller (Baseline). It ships first, on its
   own. Step 2 calls it and changes neither its queue, its pause
-  procedure nor its tests. The one edit to its module is the `gate`
+  procedure nor what its tests assert (the suites that mount the real
+  hub layout or render the hub's screens gain the mode seeding and
+  nothing else: Verification, "Seeding"). The one edit to its module
+  is the `gate`
   the singleton getter passes, which #133's spec leaves for this one
   ("nothing supplies one until #117 does"; R4). On the hub machine,
   Step 2 adds only the rows of Step 2 machine changes. Four of them
@@ -1991,11 +2132,11 @@ plugins or permissions.
   about that row otherwise: M7 (H10, for a `paused` row with no pause
   state), M8 (the not-verified exits of `checkingExisting`, H9b's
   included, in strict), M14 (`SELECT_MODEL`, H8, in strict) and M15
-  (`RESUME`, H5, in strict). The hub layout gains one wait before its
-  `load()` (R8, "While a switch runs"), and the hub provider gains one
-  registration with the switch flow (R10g). The controller gains no
-  event: M3's notice comes from the switch flow, because `abandon()`
-  emits none.
+  (`RESUME`, H5, in strict; it also narrows `failed`'s `RETRY` with a
+  pause state, which #133 gives no row and leaves as #125 has it,
+  BL1). The hub layout gains one wait before its
+  `load()` (R8, "While a switch runs"). The controller gains no
+  event, and Step 2 starts no transfer outside the hub (R10g).
 - **#128**: hash verification of a downloaded model file (BL10).
 - **#126**: the pre-existing gap found in PR #125's review (Baseline).
   #127 and #132 are closed by #133.
@@ -2189,7 +2330,10 @@ must pass):
     value; `read-failed` after a read that rejects and after an
     unknown stored value; and `unsaved` after a failed R8 step 3 save
     from Standard. A save that succeeds sets `saved`, and subscribers
-    hear that change even when the mode stays strict. A save that
+    hear that change even when the mode stays strict; they also hear
+    the change to `unsaved` when a step 3 save fails. A subscriber
+    that throws stops neither the other subscribers from hearing a
+    change nor the set function from saving. A save that
     fails leaves `read-failed` as it is, and a failed R9 save leaves
     the status as it was;
   - the exported download-gate adapter (R4) refuses, with its fixed
@@ -2227,8 +2371,12 @@ must pass):
   - **The latch is always released (R8, R9).** One test per exit of
     R8: success; a failed mode save; `not-keepable` then Cancel;
     `not-keepable` then a dismissed warning; `not-keepable` then Turn
-    on and remove; a thrown step. After each, the controller's
-    snapshot has `stoppedForStrict: false`. After the exits that end
+    on and remove; and a thrown step, one test per kind ("When a step
+    throws"): `abandon()` rejects, which ends in strict, and `park()`
+    rejects after Cancel, which ends in Standard. After each, the
+    controller's
+    snapshot has `stoppedForStrict: false`, the sheet is gone, and a
+    new switch can start. After the exits that end
     in Standard, a `start()` creates a task. After the others the
     gate, not the latch, is what refuses. **Required by #133:** strict
     on with nothing running, step out (R9), then a `start()` in the
@@ -2242,33 +2390,30 @@ must pass):
     that first flow then ends in Standard (`not-keepable`, then
     Cancel), the snapshot has `stoppedForStrict: false` and no second
     flow is left running. A Step out tapped while R8 step 3's save is
-    pending starts nothing. A second tap while the pre-check's `load()`
-    is pending runs no second `load()` and shows one confirmation.
+    pending starts nothing. A second tap on a control while a
+    confirmation is open opens no second one.
   - **While a switch runs (R8).** These tests press the controls
     directly. A test renderer does not model a sheet that covers the
     screen, so what they exercise is the two rules in state.
     - The sheet: from the tap to the end of the switch, the flow's
-      sheet is rendered at every step (the pre-check held, the
-      confirmation, step 1 held, the warning, the cleanup held, the
-      save held, a save-failure message). After Cancel on the warning
-      it is still rendered, in a waiting state, while
-      `checkNetworkGate` is held and again while `start()` is held
-      (on cellular, while `park()` is held), and it is gone only
-      after that call has returned. In each waiting state it
-      has no dismiss handler, and from step 1 on it has no buttons.
-      The assertions are structural, by testID.
+      sheet is rendered at every step (the confirmation, step 1 held,
+      the warning, `abandon()` held, the save held, the sweep's
+      `getModelPath()` held, a save-failure message). After Cancel on
+      the warning it is still rendered, in a waiting state, while
+      `park()` is held, and it is gone only after that call has
+      returned. In each waiting state it has no dismiss handler and
+      no buttons. The assertions are structural, by testID.
     - No hub loads under a switch: with step 1 held pending after
       Turn on from Settings, mounting the real
       `src/app/model-hub/_layout.tsx` (what Change AI model pushes)
       shows its spinner, mounts no provider and sends no
-      `RESTORE_DOWNLOAD`. After `not-keepable` and Cancel on Wi-Fi,
-      with Cancel's `checkNetworkGate` held and then its `start()`
-      held, the layout still shows its spinner and has not called
-      `load()`, because the switch has not ended. When `start()`
-      returns, the layout loads, restores with `live: true` and
-      attaches to the transfer Cancel started: the hub creates no
-      `DownloadTask` of its own, and it is never in `paused` while
-      that transfer runs. When the switch
+      `RESTORE_DOWNLOAD`. After `not-keepable` and Cancel, with
+      Cancel's `park()` held, the layout still shows its spinner and
+      has not called `load()`, because the switch has not ended. When
+      `park()` returns, the layout loads and restores the
+      `downloading` row through `confirmingNetwork`: on Wi-Fi the hub
+      then starts the download over, and on cellular it asks. When
+      the switch
       ends through Turn on and remove instead, the layout restores
       nothing.
     - A mounted hub is held: with step 1 held pending after Turn on
@@ -2277,19 +2422,20 @@ must pass):
       event and push no route, pressing "← Settings" does not go
       back, and `retireCurrentModel` is never called. With a
       low-memory card already on screen, pressing its Continue opens
-      no confirmation. From `paused`, Resume and Choose another model
+      no confirmation. With `readDownloadRow()` held pending after a
+      press on a model, and again after a press on "Import custom
+      .gguf", a switch is started from the hub's control. When the
+      read then resolves with a kept row, no confirmation opens, no
+      event is sent and no route is pushed.
+      From `paused`, Resume and Choose another model
       send nothing; from `failed`, Retry sends nothing. Positive
       control: after the switch ends by Cancel, the same presses
       work.
     - With no switch running the layout waits for nothing: the layout
       suites in the keep-green lists pass with no change.
-    - A switch always ends (fake timers). With `checkNetworkGate`
-      never answering after Cancel, 10 s later Cancel calls
-      `park(modelId)` and no `start()`, and the switch ends; a Wi-Fi
-      answer that arrives after that starts nothing. With
-      `getModelPath()` never answering in the cleanup, 10 s later the
-      cleanup has deleted no file, the mode becomes strict, and the
-      switch ends.
+    - A switch always ends (fake timers). With `getModelPath()` never
+      answering in the sweep, 10 s later the sweep has deleted no
+      file, and the switch ends with the mode strict and saved.
   - **One transfer (R10b).** Start and resume pass `sessionType:
     'foreground'`. Reopening the hub on a running transfer is #133's
     T-H6 (attach), kept green.
@@ -2302,69 +2448,80 @@ must pass):
     is hidden. Turn on from the hub in `failed`: `stopForStrict()`
     returns `nothing-running`, the machine stays in `failed` with its
     label, and `LEAVE_FAILED` reaches the list (M11).
+  - **No pre-check (R8).** A tap on the control shows the
+    confirmation at once. Before Turn on the flow calls none of
+    `load()`, `readRow()`, `verifyDownload` and `stopForStrict()`,
+    from Settings and from the hub. With a saved `downloading` row,
+    nothing running and an incomplete file, Turn on shows no warning:
+    step 1 reports `nothing-running`, the mode becomes strict, the
+    row is still `downloading`, and the sweep has deleted the
+    partial. The next hub open under strict shows the download paused
+    with "will start over" (M8).
   - **Completed while closed (R8, R10f, R10j).** A `downloading` row
-    whose file is complete, with no live transfer: turning strict on in
-    Settings runs only `load()` and `verifyDownload` (no hub machine is
-    created, the dialog does not wait on a model load), and no warning
-    shows. A `paused` row is never pre-checked. When the hub next opens
+    whose file is complete, with no live transfer: Turn on shows no
+    warning, and no hub machine is created. Step 1 reports
+    `nothing-running` in a new process and `completed` in the process
+    the transfer finished in (a held record). The sweep leaves the
+    file. When the hub next opens
     under strict, the restore runs the size check and then the smoke
     test, the row is not rewritten as `paused`, and the download
     reaches `complete`.
   - **Completed during the stop (R8 step 1).** When `stopForStrict()`
-    returns `completed` and no merged warning was confirmed, no
-    warning shows, nothing is removed, the mode becomes strict, and
+    returns `completed`, no
+    warning shows, nothing is removed (the sweep spares the complete
+    file), the mode becomes strict, and
     the next hub open reaches the smoke test.
-  - **Pre-check read failure (R8).** When `load()` rejects, the plain
-    confirmation shows, Turn on makes the mode strict, and nothing is
-    removed.
-  - **Can't keep (R10g).** Each `not-keepable` reason (no resume data,
-    a failed pause, a failed transfer) shows the warning after step 1
-    and before the mode changes; no live transfer shows it merged into
-    the confirmation. Turn on and remove reads the model from the
-    snapshot before it calls `abandon()`, deletes that model's file
-    (the Android partial, or a finished file of the wrong size) but
-    never the installed model's file, and leaves no row. When
-    `getModelPath()` rejects, it deletes nothing. After the merged
-    warning is confirmed over a held `completed` record whose file is
-    the wrong size, step 1 returns `completed` and the cleanup still
-    runs. With a hub mounted, the flow calls the provider's
-    registered listener once, after the cleanup's last step and
-    before the mode changes, and the machine takes M3 (its `paused`
-    and `failed` sources are M3's machine test, and the channel is
-    M3's `useModelHub.test.ts` case). With no hub mounted, nothing is
-    sent. The latch is released only after the mode is strict.
-  - **Cancel on the warning (R10g), one test per variant.** After a
-    pause with no resume data, Cancel keeps Standard, calls
-    `releaseStrictStop()` and then, on Wi-Fi, `start(modelId)`: the row
-    is `downloading` with no pause state and one new `DownloadTask`
-    exists; after a failed pause, the same, and the old transfer was
-    cancelled first; with no live transfer, Cancel calls nothing,
-    leaves the row exactly as it was and starts no transfer. In the two
-    variants that start a transfer, one that then completes with the
-    hub closed restores through the size check to the smoke test, not
-    to `paused`. From Settings with `checkNetworkGate` mocked to
-    cellular or offline, Cancel calls `park(modelId)` and starts no
-    transfer, and the next hub open restores the row through
-    `confirmingNetwork` (cellular asks; offline waits). Failure
-    branches, from Settings: when `checkNetworkGate` rejects, Cancel
-    calls `park(modelId)` and starts no transfer; when `start()`
-    returns `failed`, the row is `downloading` with no pause state, no
-    message shows, and the next hub open restores it through
-    `confirmingNetwork`; a `start()` or `park()` that rejects is
-    caught. After each, the snapshot has `stoppedForStrict: false`.
-    With a hub machine mounted (the defensive case: a provider is
-    mounted over a controller made to return `not-keepable` from
-    `stopForStrict()`, which the real one cannot do behind a hub at
-    rest, DC4), Cancel calls `releaseStrictStop()` and none of
-    `checkNetworkGate`, `start()` and `park()`, and the machine stays
-    in its state. When that hub is unmounted before the Cancel tap,
-    Cancel takes the other branch: `checkNetworkGate`, then
-    `start(modelId)` on Wi-Fi.
+  - **Failed with no hub open (R8 step 1).** With a held `failed`
+    record (a transfer that failed with no hub mounted, its row still
+    `downloading`), the snapshot shows nothing live, step 1 reports
+    `not-keepable`, and no warning shows. The mode becomes strict and
+    the row is unchanged. The sweep deletes an incomplete file and
+    leaves a complete one.
+  - **Can't keep (R10g).** With a transfer live at Turn on, each
+    `not-keepable` reason (no resume data, a failed pause, a transfer
+    that fails while pausing) shows the warning after step 1 and
+    before the mode changes. With that model's file complete, none
+    does: nothing is removed, the mode becomes strict, and the next
+    hub open reaches the smoke test. Turn on and remove calls
+    `abandon()` and leaves no row. The sweep then deletes that
+    model's file (the Android partial) and never the installed
+    model's. No event is sent to a hub machine. The latch is released
+    only after the mode is strict.
+  - **Cancel on the warning (R10g).** After a pause with no resume
+    data, and again after a failed pause (the old transfer was
+    cancelled first), Cancel keeps Standard and calls
+    `park(modelId)`. The row is `downloading` with no pause state,
+    and no file is deleted. With `checkNetworkGate` mocked to Wi-Fi,
+    no `DownloadTask` is created, and none of `checkNetworkGate`,
+    `getNetworkStateAsync` and `start()` is called. The next hub open
+    restores the row through `confirmingNetwork`: Wi-Fi starts it
+    over, cellular asks, offline waits. When `park()` returns
+    `rowSaved: false`, nothing shows. When it rejects, the error is
+    caught, and the row is the `paused` one step 1 saved. A dismissed
+    warning does what Cancel does. After each, the snapshot has
+    `stoppedForStrict: false`.
+  - **The strict sweep (R8).** One test per case, with the files made
+    through the suite's file-system mock. Deleted: the partial of a
+    `downloading` row with nothing running, of a `paused` row with no
+    resume data and of a `failed` row, and a catalog file with no
+    row. Kept: the installed model's file, the partial of a `paused`
+    row with resume data, and a complete file of the row's model (for
+    a `downloading` row and for a `paused` row with no resume data).
+    The sweep writes and clears no row. When `load()` rejects, and
+    when `getModelPath()` rejects, nothing is deleted and the mode is
+    still strict and saved. It runs once, after the save has settled,
+    also when the save failed (before the message shows), and Try
+    again does not run it again. It does not run after Cancel on the
+    confirmation or on the warning, at launch in strict, when a hub
+    opens, on a tap that only saves again, or on stepping out.
   - **R10h.** In strict, a finished download on disk goes through
     `verifying` and `smokeTest` to `complete`, and no network spy
     fires.
-  - **R10i.** Switching modes, launching and opening the hub delete no
-    model file. A successful custom import in strict clears a
+  - **R10i.** Launching and opening the hub delete no model file.
+    Switching modes never deletes the installed model's file or a
+    kept download's (a `paused` row with resume data); what a switch
+    to strict does delete is the strict sweep's test, above. A
+    successful custom import in strict clears a
     strict-paused download's row, so the next hub open restores
     nothing.
   - **Import confirmation (R10i).** With a `paused` or `downloading`
@@ -2396,7 +2553,10 @@ must pass):
     sent. With the mode made strict while R10i's confirmation, and
     then "Replace model", is open (through the mode module's set
     function, since no control can be reached behind a sheet), Choose
-    anyway and Replace each show the alert and send nothing.
+    anyway and Replace each show the alert and send nothing. The same
+    when the mode is made strict while `readDownloadRow()` is still
+    pending after the press on B: when the read resolves, the alert
+    shows and no confirmation opens.
   - **Paused-for-strict screen (R10e).** The download screen for a
     strict-paused row shows "Paused — strict privacy is on", a Step out
     of strict privacy button that opens R9's confirmation, and the
@@ -2421,7 +2581,14 @@ must pass):
   Step out button in both of its forms: R11's body with no model
   installed, R12's body with one, and never both. After a read
   failure the read-failure sentence starts R11's body, and R12's body
-  never carries it. The Step out button opens R9's confirmation.
+  never carries it. After a failed step 3 save, R11's body starts
+  with the not-saved sentence instead. In both of those statuses,
+  with no model installed, the notice has the Save strict privacy
+  button: a press saves `'strict'` with no confirmation and no
+  `stopForStrict()`, and when the save succeeds the sentence and the
+  button go. The notice has no such button while the status is
+  `saved`, or with a model installed. The Step out button opens R9's
+  confirmation.
 - **Hub Turn on strict privacy control (R7)**, one test over the
   states: in Standard it is shown and active in `selecting` (on the
 list), and in `paused`, `failed` and `smokeFailed` (on
@@ -2429,15 +2596,18 @@ list), and in `paused`, `failed` and `smokeFailed` (on
   set, its `RESTORE_DOWNLOAD` not yet sent: hidden on the list's
   initial `selecting`), and in every other state listed in R7,
   including M7's check state. It is hidden in strict. It opens R8's
-  confirmation. Two more cases: from `paused` with reason
+  confirmation. A press that reaches the control's handler after the
+  machine has left rest, and before the screen has rendered again,
+  starts no switch (the handler reads the actor's state).
+  Two more cases: from `paused` with reason
   `user`, Turn on calls `stopForStrict()`, then the
   reason becomes `strict` and the label changes (M1; the `background`
   seed and its `APP_FOREGROUND` check are M1's machine test); from
   `selecting` with a saved
   `downloading` row (a restore after a kill that waited for Wi-Fi,
-  then "Choose another model") and an incomplete file, the pre-check
-  shows the merged can't-keep confirmation; with a complete file, no
-  warning.
+  then "Choose another model") and an incomplete file, Turn on shows
+  no warning. The machine stays in `selecting` with its `modelId`,
+  the row is unchanged, and the sweep deletes the partial.
 - **Settings → Privacy section (R7).** It renders as the first section;
   it offers exactly two choices, Standard and Strict privacy, each with
   the copy from "The two modes, as the user reads them"; the current
@@ -2447,10 +2617,15 @@ list), and in `paused`, `failed` and `smokeFailed` (on
   carry on by itself…"); on R8,
   Cancel keeps Standard on and changes nothing, and Turn on runs the R8
   order; on R9, Cancel keeps strict, and Step out saves first and
-  applies second. With the warning merged (no live transfer), "A
-  download in progress pauses now and won't restart on its own" is
-  absent, the warning's cancelling sentence is absent, and the button
-  reads "Turn on and remove".
+  applies second. R8's confirmation has one form: it always carries
+  "A download in progress pauses now and won't restart on its own",
+  and its button always reads "Turn on". After Step out, nothing
+  starts by itself (R9): with the spies of
+  `strictPrivacyJournal.test.tsx` in place, a paused download saved
+  and the Settings screen mounted, stepping out constructs no
+  `DownloadTask` and calls none of `checkForUpdateAsync`,
+  `initConnection` and `getNetworkStateAsync`. Each fires only when
+  the user then starts its path.
 - **Save-failure messages (R8 step 3, R9).** When the save rejects, the
   exact failure message shows, and the mode the gates report matches
   the message (strict in both cases). The message has two buttons,
@@ -2460,9 +2635,13 @@ list), and in `paused`, `failed` and `smokeFailed` (on
   R9's, the gates then allow); when it fails, the message shows
   again. After OK on step 3's
   message, and after R3's read failure, a tap on the selected Strict
-  privacy choice saves `'strict'` with no confirmation and no
-  `stopForStrict()`. A tap on a selected choice that is saved starts
-  nothing.
+  privacy choice saves `'strict'` with no confirmation, no
+  `stopForStrict()` and no sweep. A tap on a selected choice that is
+  saved starts
+  nothing. While the status is `unsaved`, Settings → Privacy shows the
+  not-saved line under the Strict privacy choice. The line is still
+  there after the section is unmounted and mounted again, and it goes
+  when a save succeeds.
 - **R8 step 5.** After a check is stopped mid-flight, the update row
   reads "Strict privacy is on. The update check stopped."
 - **R3 read-failure copy.** With the store read failing, Settings →
@@ -2618,11 +2797,20 @@ status line, un-drafting or cleanup (AGENTS.md):
 - [ ] In strict privacy, with a proxy log running: tap a note link,
       then Share…, then Copy. Confirm no request is made.
 - [ ] Turn on strict from Settings when the download can't be kept,
-      then tap Cancel on the warning. The app stays in Standard, and:
-      - on Wi-Fi, the download starts over at once;
-      - on cellular or with no connection, nothing starts from
-        Settings; the next time you open the model hub, it asks on
-        cellular, or waits for Wi-Fi, before the download starts over.
+      then tap Cancel on the warning. The app stays in Standard, and
+      nothing starts from Settings, on Wi-Fi either. The next time
+      you open the model hub, the download starts over: at once on
+      Wi-Fi, after asking on cellular, and after waiting for Wi-Fi
+      with no connection.
+- [ ] Android, strict sweep (R8): force-stop the app mid-download
+      (`adb shell am force-stop …`), relaunch, and turn strict privacy
+      on in Settings without opening the model hub. No warning shows.
+      The partial `.gguf` is gone from the app's documents folder,
+      and the installed model still answers. Open the hub: the
+      download shows paused, with "This download will start over when
+      you resume." Then repeat with a download paused by its Pause
+      button: its partial is still there, and after stepping out
+      Resume continues from where it stopped.
 - [ ] Import anyway, then cancel the file picker or pick a file that
       fails: the kept download is still there and resumes after the hub
       is reopened (cancelling the picker leaves the hub in
@@ -2649,12 +2837,12 @@ status line, un-drafting or cleanup (AGENTS.md):
       launch-time listeners, before and after #119. This is evidence
       for #119.
 
-## Resolved questions (2026-11-16 to 2026-11-23)
+## Resolved questions (2026-11-16 to 2026-11-27)
 
-The owner answered these on 2026-11-16 and 2026-11-21; the entry on
-#133 also records the owner's direction of 2026-11-23. Each question
-is kept as it was asked, with the answer and where the spec encodes
-it.
+The owner answered these on 2026-11-16, 2026-11-21 and 2026-11-27; the
+entry on #133 also records the owner's direction of 2026-11-23. Each
+question is kept as it was asked, with the answer and where the spec
+encodes it.
 
 - **OQ-1 — The default mode's name.** *Asked:* The charter calls it
   "the app's default mode" and does not name it on screen. This spec
@@ -2737,6 +2925,9 @@ it.
   warning, the app stays in Standard and resumes the download; it
   starts over if there is no resume data. *Encoded in:* R10g, the
   warning copy, Verification.
+  **Narrowed (owner, 2026-11-27):** the third cause, "no live handle",
+  is retired, and Cancel no longer starts the download itself. It
+  waits for the model hub (the rulings of 2026-11-27, below).
 - **OQ-7 — Should an iOS model download stop when the app is
   suspended or killed?** *Asked:* On iOS, the download service creates its
   downloads with no `sessionType`, so expo-file-system 58.0.13 runs
@@ -2849,6 +3040,107 @@ it.
   `plan.md` and `LEDGER.md` before the pull request leaves draft.
   *Encoded in:* the lifecycle at the top, INTENT check item 4, Version
   cost.
+- **Owner rulings, 2026-11-27 — the switch to strict is cut down:
+  Cancel parks, no pre-check, the strict sweep.** Three review rounds
+  kept finding defects in one place: the part of R8 and R10g that ran
+  outside the hub, before and after the pause. The owner took both
+  cuts that the review of that text proposed, and set a condition on
+  the second.
+  - *Cancel parks.* On R10g's warning, Cancel always calls `park()`,
+    and the download waits for the model hub. There is no `start()`
+    and no network check from Settings. This narrows the follow-up
+    answer to OQ-6, and supersedes the lead ruling of 2026-11-16 that
+    Cancel restarts at once on Wi-Fi.
+  - *No pre-check.* The pre-check and the merged warning are retired.
+    A row with nothing live to stop is not warned about. The flow is:
+    confirm, `stopForStrict()`, warn only if a live transfer could not
+    be kept, apply, save. This retires OQ-6's third cause, "no live
+    handle".
+  - *Condition: storage.* A dead partial model file can be 1 to 3 GB,
+    and a user in strict privacy may never download again. So
+    switching to strict removes partial model files that nothing can
+    resume, best effort and with no warning. Never the installed
+    model's file, and never a file that a kept paused row with resume
+    data owns. The hub's existing sweep was checked first, and it
+    does not cover this under strict (R8, "The strict sweep", says
+    why).
+
+  Removed with them, because nothing can reach it any more: the
+  pre-check's wait; the hub's M3 event and the provider's
+  registration with the switch flow; the 10 s bound on a network
+  check made from Settings; and every `start()` branch of Cancel.
+  *Encoded in:* Why this cycle exists, INTENT check item 8, survey
+  path 1, Baseline DC4, Step 2 machine changes, R8, R9, R10a, R10f,
+  R10g, R10i, Version cost, Out of scope, Verification.
+
+  These rulings settle five of the eight questions raised since this
+  spec moved onto #133. The owner named 3, 6 and 8. Questions 1 and 4
+  follow from the rulings and were not asked again; the owner can
+  reopen either.
+  - **Question 1 — `not-keepable` because the transfer failed.**
+    *Asked:* While the strict
+    pause runs, or from a closed-hub transfer that failed earlier,
+    #133's result adds a fourth cause to OQ-6's three. Default: same
+    warning, and Cancel restarts on Wi-Fi (R8 step 1, R10g). Confirm,
+    since it extends an owner ruling.
+    **Settled by the rulings:** the flow warns "only if a live
+    transfer could not be kept". A transfer that fails while the
+    strict pause runs was live, so it gets the same warning. One that
+    failed earlier, with the hub closed, was not, so it gets none.
+    Cancel no longer restarts on Wi-Fi. *Encoded in:* R8 step 1,
+    R10g.
+  - **Question 3 — The pre-check's `load()` rejects** (row unreadable
+    in Settings). *Asked:*
+    Default: the plain confirmation, nothing removed, M8 handling any
+    leftover `downloading` row later. Alternative: refuse to switch,
+    which would let a database hiccup block strict privacy.
+    **Answer:** There is no pre-check, so the case is gone. A row
+    that cannot be read when the sweep asks for it only means the
+    sweep deletes nothing. *Encoded in:* R8.
+  - **Question 4 — Defensive Cancel with a hub mounted** (unreachable
+    under DC4). *Asked:*
+    Default: Cancel only releases the latch, the row stays `paused`, and
+    the user taps Resume. This differs slightly from OQ-6's "Cancel
+    resumes the download" in a case that cannot occur.
+    **Settled by the rulings:** Cancel parks wherever it is tapped, so
+    there is no second branch to choose, and the flow no longer needs
+    to know whether a hub is mounted. In the case that cannot occur,
+    the hub shows the download paused and its Resume starts it over.
+    *Encoded in:* R10g.
+  - **Question 6 — What Settings shows while R8's pre-check waits.**
+    *Asked:* The
+    pre-check awaits the controller's `load()` before the confirmation
+    can show. That is normally immediate. At worst it is about 70 s of
+    foreground time, behind a hub pause that is still settling after
+    the hub closed (#133's bounds). Default: the tapped control starts
+    nothing more while it waits (R8, "One switch at a time"), and what
+    it shows is left to the plan, the same answer as question 5.
+    Alternative: a time limit, after which the plain confirmation shows
+    as it does when `load()` rejects (question 3). That could miss the
+    merged warning, and M8 would then handle the leftover row.
+    **Answer:** Nothing waits. The confirmation shows at the tap.
+    *Encoded in:* R8.
+  - **Question 8 — R10g's Cancel starts a download from Settings.**
+    Drafted in review on 2026-11-27 and answered the same day, before
+    it was added to this spec. *Asked:* INTENT's
+    out-of-scope item "Silent model installs" says models enter the
+    device "only through an explicit user action in the model hub".
+    Cancel on R10g's warning, tapped in Settings on Wi-Fi, starts a
+    download over with no hub open (INTENT check, item 8). The owner
+    ruled that this Cancel resumes the download (OQ-6, follow-up), but
+    the item's words were not weighed then. Default: as specified. It
+    is read as putting back a download the user started in the hub, on
+    an explicit tap whose warning says so. Alternative: Cancel never
+    starts a transfer outside the hub. It calls `park(modelId)` on any
+    network, and the download starts over when the hub next opens,
+    through the network check, as it already does on cellular and
+    offline. That follows the item's words. It also removes the
+    network check made from Settings and its 10 s limit, every
+    `start()` branch of R10g's Cancel, and the only transfer that
+    begins outside the hub. The warning's sentences about Cancel would
+    then say that the download waits in the model hub.
+    **Answer:** The alternative. INTENT's words are followed.
+    *Encoded in:* INTENT check item 8, R10g.
 
 ## Open questions for the owner
 
@@ -2863,43 +3155,23 @@ The two raised in review (2026-11-16) were answered on 2026-11-21
   download the user started that continues after reopening is read as
   part of "model downloads the user starts".
 
+Eight questions have been raised since this spec moved onto #133: five
+on 2026-11-23 (1 to 5), and three in review after that (6 to 8). The
+owner's rulings of 2026-11-27 settled 1, 3, 4, 6 and 8, which are
+under Resolved questions as they were asked. Three are open: 2 and 5,
+the two bullets below, and 7. They keep their numbers and their
+wording.
+
 New, raised 2026-11-23 by the #133 rebase (each edit above assumes the
 recommended default):
 
-- **`not-keepable` because the transfer failed.** While the strict
-  pause runs, or from a closed-hub transfer that failed earlier,
-  #133's result adds a fourth cause to OQ-6's three. Default: same
-  warning, and Cancel restarts on Wi-Fi (R8 step 1, R10g). Confirm,
-  since it extends an owner ruling.
 - **`rowSaved: false` from `stopForStrict()` or `abandon()`.** Default:
   go on silently; the controller writes the row again (DC7) and M8
   makes a leftover row safe. Alternative: a message, or blocking the
   switch.
-- **The pre-check's `load()` rejects** (row unreadable in Settings).
-  Default: the plain confirmation, nothing removed, M8 handling any
-  leftover `downloading` row later. Alternative: refuse to switch,
-  which would let a database hiccup block strict privacy.
-- **Defensive Cancel with a hub mounted** (unreachable under DC4).
-  Default: Cancel only releases the latch, the row stays `paused`, and
-  the user taps Resume. This differs slightly from OQ-6's "Cancel
-  resumes the download" in a case that cannot occur.
 - **What the dialog shows while R8 step 1 runs** (60 s worst case
   under #133's bounds). Default: left to the plan. If the owner wants
   specific copy, it belongs in R8.
-
-New, raised in the review of the 2026-11-23 change (the edits above
-assume the recommended default). Counting the five above as 1 to 5:
-
-- **6 — What Settings shows while R8's pre-check waits.** The
-  pre-check awaits the controller's `load()` before the confirmation
-  can show. That is normally immediate. At worst it is about 70 s of
-  foreground time, behind a hub pause that is still settling after
-  the hub closed (#133's bounds). Default: the tapped control starts
-  nothing more while it waits (R8, "One switch at a time"), and what
-  it shows is left to the plan, the same answer as question 5.
-  Alternative: a time limit, after which the plain confirmation shows
-  as it does when `load()` rejects (question 3). That could miss the
-  merged warning, and M8 would then handle the leftover row.
 
 New, raised in the review of "While a switch runs" (the edits above
 assume the recommended default):
@@ -2918,3 +3190,16 @@ assume the recommended default):
   state still hold then (no hub loads under a switch; a mounted hub
   is held), but R10g's warning would have to appear over whatever
   screen the user had moved to.
+
+Notes on the open questions, added 2026-11-27. The questions stand as
+asked.
+
+- Question 2 says M8 makes a leftover row safe. That holds when the
+  hub next opens under strict. If the user steps out before any hub
+  has opened, the row restores as a Standard continuation, through
+  the network check (R9).
+- Question 7 counted its worst case before the rulings of 2026-11-27.
+  Nothing waits before the confirmation now (question 6 is settled),
+  and Cancel's wait is one row write. What is left is 60 s for step 1
+  (question 5) and, after it, at most a row write, the mode save and
+  the sweep's two reads.
