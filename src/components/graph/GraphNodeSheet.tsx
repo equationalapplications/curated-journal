@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Markdown from 'react-native-markdown-display';
+import { NoteMarkdown } from '@/components/NoteMarkdown';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { useMarkdownStyles } from '@/components/ui/markdown-styles';
@@ -63,7 +63,7 @@ export function GraphNodeSheet({ node, onClose, onOpenNote }: Props) {
       ) : null}
       <ScrollView style={{ maxHeight: height * 0.45 }} accessibilityLabel="Note text">
         {body ? (
-          <Markdown style={markdown}>{body}</Markdown>
+          <NoteMarkdown style={markdown}>{body}</NoteMarkdown>
         ) : (
           <ThemedText type="small" themeColor="outline">
             This note has no text yet.
