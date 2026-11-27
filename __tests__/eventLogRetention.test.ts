@@ -2,7 +2,9 @@
 // bans) and src/hooks/useJournalWiki.tsx.
 import { createElement } from 'react';
 import { render, waitFor } from '@testing-library/react-native';
-import { formatOkfBundle, parseOkfBundle } from '@equationalapplications/core-llm-wiki';
+import { createWiki, formatOkfBundle, parseOkfBundle } from '@equationalapplications/core-llm-wiki';
+import { WIKI_CONFIG } from '@/lib/constants';
+import { createNodeSqliteAdapter } from './helpers/nodeSqliteAdapter';
 
 const mockRunPrune = jest.fn();
 const mockCapture: { input?: any } = {};
@@ -26,6 +28,26 @@ describe('event-log retention', () => {
     await waitFor(() => expect(mockCapture.input).toBeDefined());
     await mockCapture.input.maintenance.pruneKeepingEvents('e');
     expect(mockRunPrune).toHaveBeenCalledWith('e', { retainEventsFor: null });
+  });
+
+  it("pins the engine's effective retention policy for the app's WIKI_CONFIG", async () => {
+    const wiki = createWiki(createNodeSqliteAdapter(), {
+      llmProvider: { generate: async () => '' } as never,
+      config: WIKI_CONFIG,
+    });
+    try {
+      // Nothing prunes automatically (autoLibrarian/Heal are Infinity); the app
+      // passes retainEventsFor: null at every runPrune call. This pins what the
+      // engine would use were runPrune ever called with defaults, so an engine
+      // bump that changes a window shows up here.
+      expect(wiki.getRetentionPolicy()).toEqual({
+        retainSoftDeletedFor: 7,
+        retainEventsFor: 30,
+        pruneSupersededAfter: null,
+      });
+    } finally {
+      await wiki.close?.();
+    }
   });
 
   it('pins the export filter: forgotten events are dropped on export and never yield forgotten_at on re-import', () => {

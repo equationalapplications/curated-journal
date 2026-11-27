@@ -59,25 +59,45 @@ const PRUNE_CALL = ":matches(CallExpression[callee.property.name='runPrune'], Ca
 // (fail closed) -- don't loosen the rule to allow them.
 const RUN_PRUNE_SYNTAX = [
   { selector: PRUNE_CALL + ":not([arguments.1.type='ObjectExpression'])", message: RUN_PRUNE_MSG },
-  { selector: PRUNE_CALL + " > ObjectExpression.arguments:not(:has(> Property[key.name='retainEventsFor'][value.raw='null']))", message: RUN_PRUNE_MSG },
-  { selector: PRUNE_CALL + " > ObjectExpression.arguments > Property[key.name='retainEventsFor'] ~ SpreadElement", message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + " > ObjectExpression.arguments:not(:has(> Property[computed=false][key.name='retainEventsFor'][value.raw='null']))", message: RUN_PRUNE_MSG },
+  { selector: PRUNE_CALL + " > ObjectExpression.arguments > Property[computed=false][key.name='retainEventsFor'] ~ SpreadElement", message: RUN_PRUNE_MSG },
   { selector: "ObjectPattern > Property[key.name='runPrune'][shorthand=false]", message: RUN_PRUNE_MSG },
   { selector: "MemberExpression[property.name='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
   { selector: "MemberExpression[property.value='runPrune']:not(.callee)", message: RUN_PRUNE_MSG },
   { selector: "ObjectPattern > Property[key.value='runPrune']", message: RUN_PRUNE_MSG },
   { selector: "Identifier[name='runPrune']:not(CallExpression > .callee, MemberExpression > .property, Property > .key, Property[shorthand=true] > .value, TSPropertySignature > .key, TSMethodSignature > .key, MethodDefinition > .key, PropertyDefinition > .key, TSQualifiedName > .right)", message: RUN_PRUNE_MSG },
 ];
-const SRC_SYNTAX = [
-  HERMES_SYNTAX,
-  { selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]', message: EVENT_LOG_MSG },
-  { selector: "Identifier[name='forgotten_at']", message: EVENT_LOG_MSG },
-  { selector: 'Literal[value=/forgotten_at/]', message: EVENT_LOG_MSG },
-  { selector: 'TemplateElement[value.raw=/forgotten_at/]', message: EVENT_LOG_MSG },
-];
 const ENGINE_PKGS = [
   '@equationalapplications/expo-llm-wiki',
   '@equationalapplications/react-llm-wiki',
   '@equationalapplications/core-llm-wiki',
+];
+const ENGINE_PATHS = ENGINE_PKGS.map((name) => ({
+  name,
+  importNames: ['useWikiForget', 'EraseReport', 'EraseStepError', 'ForgetParams', 'ForgetResult'],
+  message: EVENT_LOG_MSG,
+}));
+const MD_MSG = 'Use NoteMarkdown (src/components/NoteMarkdown.tsx) so markdownRules always applies.';
+const MD_PATHS = [{ name: 'react-native-markdown-display', allowTypeImports: true, message: MD_MSG }];
+const MD_PATTERNS = [{ group: ['react-native-markdown-display/*'], allowTypeImports: true, message: MD_MSG }];
+// Dynamic import / require of the markdown library bypass no-restricted-imports;
+// NoteMarkdown is the only sanctioned entry.
+const MD_SYNTAX = [
+  { selector: 'ImportExpression[source.value=/^react-native-markdown-display/]', message: MD_MSG },
+  { selector: "CallExpression[callee.name='require'][arguments.0.value=/^react-native-markdown-display/]", message: MD_MSG },
+];
+const ENGINE_RE = '^@equationalapplications\\/(expo|react|core)-llm-wiki';
+const SRC_SYNTAX = [
+  HERMES_SYNTAX,
+  { selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]', message: EVENT_LOG_MSG },
+  ...MD_SYNTAX,
+  // Dynamic import()/require() of the engine bypasses the import ban on useWikiForget.
+  { selector: `ImportExpression[source.value=/${ENGINE_RE}/]`, message: EVENT_LOG_MSG },
+  { selector: `CallExpression[callee.name='require'][arguments.0.value=/${ENGINE_RE}/]`, message: EVENT_LOG_MSG },
+  { selector: "Identifier[name='useWikiForget']", message: EVENT_LOG_MSG },
+  { selector: "Identifier[name='forgotten_at']", message: EVENT_LOG_MSG },
+  { selector: 'Literal[value=/forgotten_at/]', message: EVENT_LOG_MSG },
+  { selector: 'TemplateElement[value.raw=/forgotten_at/]', message: EVENT_LOG_MSG },
 ];
 
 module.exports = defineConfig([
@@ -104,7 +124,7 @@ module.exports = defineConfig([
     // via a spread and work on every engine: [...xs].sort() for toSorted,
     // [...xs].reverse() for toReversed, xs.filter for with/toSpliced.
     rules: {
-      'no-restricted-syntax': ['error', HERMES_SYNTAX],
+      'no-restricted-syntax': ['error', HERMES_SYNTAX, ...MD_SYNTAX],
     },
   },
   {
@@ -115,11 +135,7 @@ module.exports = defineConfig([
     rules: {
       'no-restricted-imports': [
         'error',
-        ...ENGINE_PKGS.map((name) => ({
-          name,
-          importNames: ['useWikiForget', 'EraseReport', 'EraseStepError', 'ForgetParams', 'ForgetResult'],
-          message: EVENT_LOG_MSG,
-        })),
+        { paths: [...MD_PATHS, ...ENGINE_PATHS], patterns: MD_PATTERNS },
       ],
       'no-restricted-properties': [
         'error',
@@ -127,6 +143,17 @@ module.exports = defineConfig([
         { property: 'erase', message: EVENT_LOG_MSG },
       ],
       'no-restricted-syntax': ['error', ...SRC_SYNTAX, ...RUN_PRUNE_SYNTAX],
+    },
+  },
+  {
+    // Notes must render through NoteMarkdown, which forces markdownRules (no
+    // remote image fetch, INTENT rule 9). Importing the library directly
+    // would silently bring back the default image rule. The src/** block above
+    // restates this option set (flat config replaces a rule's options) with
+    // the engine bans added.
+    files: ['**/*.{js,jsx,ts,tsx,mjs,cjs}'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: MD_PATHS, patterns: MD_PATTERNS }],
     },
   },
   {

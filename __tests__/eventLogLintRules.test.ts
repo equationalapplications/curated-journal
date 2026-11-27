@@ -28,6 +28,14 @@ const MUST_FLAG = [
   'const f = g ?? runPrune',
   "m['runPrune'](id)",
   "const { 'runPrune': p } = w; p(id)",
+  'm.runPrune(id, { [retainEventsFor]: null })',
+  "import Markdown from 'react-native-markdown-display'",
+  "import { Markdown } from 'react-native-markdown-display/src/lib'",
+  "const M = require('react-native-markdown-display')",
+  "const M = import('react-native-markdown-display')",
+  "const f = () => import('@equationalapplications/expo-llm-wiki')",
+  "const w = require('@equationalapplications/react-llm-wiki')",
+  'const h = useWikiForget',
   'xs.toSorted()',
   'const d = { forgotten_at: 1 }',
   'const q = `UPDATE events SET forgotten_at = ?`',
@@ -38,6 +46,9 @@ const MUST_NOT_FLAG = [
   'const { runLibrarian, runHeal, runPrune } = useWikiMaintenance(); const r = useRef({ runLibrarian, runHeal, runPrune }); r.current.runPrune(id, { retainEventsFor: null })',
   'type T = { runPrune: (id: string) => void }',
   'interface I { runPrune(): void }',
+  "import type { Props } from 'react-native-markdown-display'",
+  "const Lazy = () => import('./SkiaGraphCanvas')",
+  "const A = require('expo-application')",
 ];
 
 describe('event-log lint rules', () => {
