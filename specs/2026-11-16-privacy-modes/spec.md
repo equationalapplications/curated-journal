@@ -442,7 +442,7 @@ ignores a model pick, `RESUME`, and `RETRY` with a pause state).
 - **BL9 — The hub's sweep spares the machine's model and a paused
   row's.** The hub's orphan sweep (`deleteOrphanedModelFiles` in
   `createModelHubApi`, run when `checkingExisting` starts) spares
-  `keepModelId`, which is the machine's `context.modelId` (the restored row's model, whatever its status, or the picked model after SELECT_MODEL, retiringCurrent), and the model of a
+  `keepModelId`, which is the machine's `context.modelId` (the restored row's model, whatever its status, or the picked model, after `SELECT_MODEL` directly or through `retiringCurrent`), and the model of a
   `paused` saved row. An unreadable row skips the sweep. It does not
   cover dead partials under strict (R8, "The strict sweep"). A
   partial with no row is freed only by the next such sweep
@@ -1323,7 +1323,7 @@ warning the user cancels or dismisses, a failed save, a thrown error
    normally well under a second); the switch's sheet shows its
    waiting state meanwhile ("While a switch runs"). By its result:
    - `nothing-running`, or `kept` (with or without resume data): go on
-     to step 2. A kept download's row is saved `paused`.
+     to step 2. After `kept`, the row is `paused`.
    - `completed`: the transfer finished before the pause took effect,
      or it had finished earlier with the hub closed (a held record).
      It is never warned about, and nothing is removed. Go on to
@@ -1438,13 +1438,18 @@ belonged to a transfer that was already dead.
   can lag the in-memory record; the in-memory record is the truth.
 - **What counts as resume data.** A pause state whose `resumeData` is
   a non-empty string (`normalizePauseState`,
-  `src/services/modelDownloadState.ts`). A held pause-failed record
+  `src/services/modelDownloadState.ts`). A held pause-failed record that carries resume data
   (phase `failed` with `pauseFailed`) whose row is `downloading` or
   `paused` is spared by (b); the layout restores it with
   `snapshot().pauseState` (`_layout.tsx`). A `failed` row is not such
   a record: `record('failed')` clears `pauseFailed`, so its partial
-  goes. A mounted hub's in-session Retry starts over, because of BL8's
-  sink guard. Resume works only for a `paused`-status held record. A
+  goes. On Android, a mounted hub's in-session Retry, or a same-model
+  re-pick after `LEAVE_FAILED`, starts over through BL8's sink guard
+  once the sweep has deleted the partial. On iOS the sweep cannot
+  delete the temporary file, so an in-session Retry still resumes.
+  Under strict, a hub open turns a `downloading`-status held record
+  into a `failed` row (M8), so only a `paused`-status one stays
+  resumable after stepping out. A
   transfer error nulls the pause state.
 - **Complete files are kept (a Step 2 code change).** A complete,
   uninstalled catalog file is reusable through `checkingExisting` →
@@ -1461,7 +1466,7 @@ belonged to a transfer that was already dead.
   spare rule: the partial of a `downloading` row with nothing running
   and no resume data, of a `paused` row with no resume data (it was
   already going to start over, R10e), and of a `failed` row, with or
-  without resume data (a mounted hub's Retry starts over, BL8); the file
+  without resume data (on Android, a mounted hub's Retry starts over, BL8); the file
   whose row Turn on and remove has just cleared (R10g); and an
   incomplete catalog file with no row. No row is changed. What the
   user sees afterwards depends on the row. A `paused` row with no
@@ -1482,8 +1487,8 @@ belonged to a transfer that was already dead.
      and the next switch to strict sweeps again (a partial can stay
      until then).
   2. **S2** Call the controller's `load()`, bounded at 10 s by the
-     flow, and read `snapshot().phase`, `snapshot().modelId` and
-     `snapshot().pauseState`. On the bound the sweep is skipped and
+     flow, and read `snapshot().phase`, `snapshot().modelId`,
+     `snapshot().pauseState` and `snapshot().row` (its status). On the bound the sweep is skipped and
      nothing is deleted. Rules (a) and (b) use these values.
   3. **S3** Run the size check on every catalog file not spared by (a)
      or (b) (rule (c)).
@@ -1760,7 +1765,9 @@ app was killed mid-download, or the paused row was never saved) is
 restored under strict as paused, not restarted, and the row is
 **rewritten** as `paused`, so that stepping out and relaunching doesn't
 restart it through the hub's restore (M8). Neither `checkNetwork` nor
-`getNetworkStateAsync` is called. Such a row has no resume data, so the
+`getNetworkStateAsync` is called. Exception: a held pause-failed record
+(in-memory resume data) goes to `failed` instead (M8); it is not
+restarted either. Such a row has no resume data, so the
 screen shows R10e's strict label and its "will start over" line. The
 rewrite happens only when a hub opens under strict. A `downloading`
 row that no hub opened on before the user stepped out restores as a
@@ -1942,7 +1949,7 @@ handler asks again, when it answers, whether a switch has started
   as both statements show).
 
 A `failed` row shows neither confirmation. The hub never restores a
-`failed` row, so it is not a kept download. Its partial is dead: `record('failed')` clears `pauseFailed`, so it is not a held pause-failed record, and the spare predicate (R8) spares its file only if it is complete or installed. A held pause-failed record whose row is `downloading` or `paused` is still spared by rule (b).
+`failed` row, so it is not a kept download. Its partial is dead: `record('failed')` clears `pauseFailed`, so it is not a held pause-failed record, and the spare predicate (R8) spares its file only if it is complete or installed. A held pause-failed record that carries resume data, whose row is `downloading` or `paused`, is still spared by rule (b).
 After `LEAVE_FAILED` (M11) the machine still holds its `modelId` and
 pause state for the session; picking another model, or a successful
 import, clears them without asking. If `readDownloadRow()` rejects,
@@ -2280,6 +2287,9 @@ must pass):
   controller suites build their own controller with no `gate`, never
   use the singleton, and need no seeding. One new suite does use the
   singleton, and only it does (below, "The gate").
+- **`__tests__/modelFiles.test.ts` — `alsoKeepModelIds`.** Ids in
+  `alsoKeepModelIds` are spared, other ids are deleted, and
+  `alsoKeepModelId` and `currentModelPath` still apply.
 - **#125's and #133's tests stay green:** every test in Baseline's two
   keep-green lists, unchanged in what it asserts. The one existing
   test Step 2 rewrites is outside those lists, and Baseline names it
@@ -2591,7 +2601,7 @@ must pass):
     of a `paused` row with resume data; and a complete file of the row's model (for a
     `downloading` row, a `paused` row with no resume data, a
     `smoke-testing` row and a `smoke-failed` row). A size check that
-    throws, or cannot run, keeps that row's model. A path mismatch with the installed id (the size check mocked as not complete, so only rule (d) can spare the file): `getModelPath()` returns a string that
+    throws spares that file (test with both a row's model and a file with no row). A path mismatch with the installed id (the size check mocked as not complete, so only rule (d) can spare the file): `getModelPath()` returns a string that
     differs from the file's `uri`, `getModelId()` returns the
     catalog id, and the installed file is kept (`keepModelId`). The read-order race (the size check mocked as not complete): `smokeTestSettled()` is awaited first; with a
     smoke test that commits (sets the model path, then clears the
