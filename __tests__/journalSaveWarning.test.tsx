@@ -10,9 +10,18 @@ const mockExecute = jest.fn(async (): Promise<IngestResult> => ({
   failedChunks: 0,
 }));
 
+// The stored-facts guard (issue #112) reads the save back after ingest:
+// echo one stored fact under the hash the save carried.
+const mockListSourceRefs = jest.fn(async (_entityId: string) => {
+  const params = mockExecute.mock.calls.at(-1)?.[1] as { sourceHash: string } | undefined;
+  return [
+    { sourceRef: 'journal://stub', sourceHash: params?.sourceHash, factCount: 1, lastIngestedAt: 0 },
+  ];
+});
+
 jest.mock('@equationalapplications/expo-llm-wiki', () => ({
   // The journal calls ingestDocument directly (see src/lib/journalIngest.ts).
-  useWiki: () => ({ ingestDocument: mockExecute }),
+  useWiki: () => ({ ingestDocument: mockExecute, listSourceRefs: mockListSourceRefs }),
 }));
 
 jest.mock('expo-router', () => ({
