@@ -41,6 +41,20 @@ function stripEslint10IncompatiblePlugins(configs) {
   });
 }
 
+const HERMES_SYNTAX = {
+  selector:
+    'CallExpression[callee.property.name=/^(toSorted|toReversed|toSpliced|with|findLast|findLastIndex)$/]',
+  message:
+    "This ES2023 Array method is not implemented by Hermes (React Native on Android) and will crash on device, even though Jest on Node passes. Use the ES2019 equivalent — e.g. [...xs].sort() instead of xs.toSorted().",
+};
+const EVENT_LOG_MSG =
+  "INTENT: the event log is never pruned — the engine's prune hard-deletes forgotten events; the app must never forget/erase.";
+const ENGINE_PKGS = [
+  '@equationalapplications/expo-llm-wiki',
+  '@equationalapplications/react-llm-wiki',
+  '@equationalapplications/core-llm-wiki',
+];
+
 module.exports = defineConfig([
   ...stripEslint10IncompatiblePlugins(Array.isArray(expoConfig) ? expoConfig : [expoConfig]),
   {
@@ -65,13 +79,39 @@ module.exports = defineConfig([
     // via a spread and work on every engine: [...xs].sort() for toSorted,
     // [...xs].reverse() for toReversed, xs.filter for with/toSpliced.
     rules: {
+      'no-restricted-syntax': ['error', HERMES_SYNTAX],
+
+    },
+  },
+  {
+    // Event-log rule (INTENT): the app never forgets/erases. Scoped to src/**;
+    // no-restricted-syntax is restated with the Hermes entry because a later
+    // flat-config entry for the same rule replaces the earlier one.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        ...ENGINE_PKGS.map((name) => ({
+          name,
+          importNames: ['useWikiForget', 'Erase', 'EraseReport', 'EraseStepError', 'ForgetParams', 'ForgetResult', 'countForgettable'],
+          message: EVENT_LOG_MSG,
+        })),
+      ],
+      'no-restricted-properties': [
+        'error',
+        { property: 'forget', message: EVENT_LOG_MSG },
+        { property: 'erase', message: EVENT_LOG_MSG },
+      ],
       'no-restricted-syntax': [
         'error',
+        HERMES_SYNTAX,
         {
-          selector:
-            'CallExpression[callee.property.name=/^(toSorted|toReversed|toSpliced|with|findLast|findLastIndex)$/]',
-          message:
-            "This ES2023 Array method is not implemented by Hermes (React Native on Android) and will crash on device, even though Jest on Node passes. Use the ES2019 equivalent — e.g. [...xs].sort() instead of xs.toSorted().",
+          selector: 'MemberExpression[computed=true][property.value=/^(forget|erase)$/]',
+          message: EVENT_LOG_MSG,
+        },
+        {
+          selector: 'ObjectPattern > Property[key.name=/^(forget|erase)$/]',
+          message: EVENT_LOG_MSG,
         },
       ],
     },

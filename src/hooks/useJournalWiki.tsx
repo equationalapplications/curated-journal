@@ -56,9 +56,10 @@ export function JournalWikiProvider({
             runPrune: async (id: string) => {
               // retainEventsFor: null keeps every live event (they are the
               // librarian's raw source material). The engine's prune still
-              // hard-deletes events marked forgotten, so the "event log is
-              // never pruned" invariant also relies on this app never calling
-              // forget({ eventId }) / erase() (guarded by eventLogGuard.test).
+              // hard-deletes events marked forgotten; only forget({ eventId })
+              // and importDump (from a dump carrying forgotten_at; the app's
+              // OKF parse never sets it, tested) can mark them. ESLint rules
+              // forbid forget/erase in src/.
               await maintenanceRef.current.runPrune(id, { retainEventsFor: null });
             },
           },
